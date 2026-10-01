@@ -1,10 +1,10 @@
 /** Live collectors: each instrument is one data source, listed with its location. */
 import { Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
-import { ThemeToggle } from "./Hud";
+import { AppBar, BarButton } from "./Hud";
 import { KV } from "./primitives";
 
 const INSTRUMENTS_URL = "http://127.0.0.1:8000/api/instruments";
@@ -99,8 +99,26 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [province, setProvince] = useState<(typeof PROVINCES)[number]["id"] | null>(null);
-  const [sort, setSort] = useState<SortId | null>(null);
-  const [sortDesc, setSortDesc] = useState(false);
+  const [sort, setSort] = useState<SortId | null>("risk");
+  const [sortDesc, setSortDesc] = useState(true);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce) return;
+    let frame = 0;
+    const tick = (time: number) => {
+      const wave = (Math.cos((time / 1400) * Math.PI) + 1) / 2;
+      const urgent = (Math.cos((time / 420) * Math.PI) + 1) / 2;
+      const root = rootRef.current;
+      root?.style.setProperty("--risk-blink", (0.38 + 0.62 * wave).toFixed(3));
+      root?.style.setProperty("--risk-blink-urgent", (0.08 + 0.92 * urgent).toFixed(3));
+      root?.style.setProperty("--risk-blink-bright", (1 + 0.85 * urgent).toFixed(3));
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,19 +176,19 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
     });
 
   return (
-    <div className="absolute inset-0 z-20 flex flex-col bg-void">
-      <div className="flex items-center justify-between border-b border-line px-4 py-2">
-        <span className="text-[11px] tracking-[0.16em] text-ink-dim">LIVE INSTRUMENT DATA</span>
-        <div className="flex items-center gap-2">
-          <ThemeToggle engine={engine} />
-          <button
-            onClick={onBack}
-            className="flex h-9 items-center border border-line bg-panel px-3 text-[11px] tracking-wider text-ink-dim transition hover:border-line-strong hover:text-ink"
-          >
-            BACK
-          </button>
-        </div>
-      </div>
+    <div ref={rootRef} className="absolute inset-0 z-20 flex flex-col bg-void">
+      <AppBar
+        engine={engine}
+        screen="instruments"
+        onScreen={(next) => {
+          if (next === "map") onBack();
+        }}
+        extra={
+          <>
+            <BarButton onClick={() => (selected ? setSelectedId(null) : onBack())}>BACK</BarButton>
+          </>
+        }
+      />
       <div className="flex min-h-0 flex-1">
         <aside className={`scroll-thin flex shrink-0 flex-col overflow-y-auto ${selected ? "w-80 border-r border-line" : "w-full"}`}>
           <div className="flex flex-wrap gap-1 px-3 pt-3">
@@ -206,7 +224,6 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
                 className="w-full bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-mute"
               />
             </label>
-            <div className="label-xs shrink-0">Instruments</div>
           </div>
           <div className="flex flex-wrap gap-1 px-3 pb-3">
             {SORTS.map((item) => {
@@ -233,6 +250,18 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={() => {
+                setProvince(null);
+                setQuery("");
+                setSort(null);
+                setSortDesc(false);
+              }}
+              className="border border-line px-2 py-1 text-[10px] tracking-[0.12em] text-ink-dim transition hover:border-line-strong hover:text-ink"
+            >
+              CLEAR FILTERS
+            </button>
           </div>
           {error && <p className="px-4 pb-3 text-[11px] text-fire">{error}</p>}
           {!error && instruments.length === 0 && <p className="px-4 pb-3 text-[11px] text-ink-mute">Loading collectors…</p>}
@@ -247,13 +276,13 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
               ? "—"
               : `${item.reading.risk_score.toFixed(0)}${item.reading.category ? ` ${item.reading.category}` : ""}`;
             const tone = riskColor(item.reading.category);
-            const alert = item.reading.category === "Very high" || item.reading.category === "Extreme";
+            const alert = item.reading.category === "Extreme";
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setSelectedId(item.id)}
-                className={`border border-line px-4 py-3 text-left transition hover:brightness-110 ${alert ? "risk-blink" : ""}`}
+                className={`border border-line px-4 py-3 text-left transition hover:brightness-110 ${alert ? (selected ? "risk-blink" : "risk-blink-urgent") : ""}`}
                 style={tone ? { borderColor: tone, background: `color-mix(in srgb, ${tone} ${active ? "22%" : "12%"}, transparent)`, boxShadow: `inset 3px 0 0 ${tone}` } : undefined}
               >
                 <div className="flex items-baseline justify-between gap-3">

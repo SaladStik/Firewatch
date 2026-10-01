@@ -132,17 +132,22 @@ body,
   scrollbar-color: var(--color-line) transparent;
 }
 
-@keyframes risk-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.38; }
+.risk-blink {
+  opacity: var(--risk-blink, 1);
 }
 
-.risk-blink {
-  animation: risk-blink 2.8s ease-in-out infinite;
+.risk-blink-urgent {
+  opacity: var(--risk-blink-urgent, 1);
+  filter: brightness(var(--risk-blink-bright, 1));
+  transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .risk-blink { animation: none; }
+  .risk-blink,
+  .risk-blink-urgent {
+    opacity: 1;
+    filter: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

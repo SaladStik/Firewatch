@@ -1,5 +1,6 @@
-/** Top bar: brand, live data status, LOD readout. */
+/** Top bar: logo on the left, screen options on the right, map readout in the middle. */
 import { Moon, Radio, Sun } from "lucide-react";
+import type { ReactNode } from "react";
 import type { Engine } from "../engine";
 import { useStore } from "../state/store";
 import { app } from "../state/app";
@@ -43,14 +44,42 @@ export function Brand() {
   );
 }
 
-export function InstrumentDataButton({ onClick }: { onClick: () => void }) {
+export function BarButton({ active, onClick, children }: { active?: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="pointer-events-auto flex h-9 items-center border border-line bg-panel px-3 text-[11px] tracking-wider text-ink-dim transition hover:border-line-strong hover:text-ink"
+      className={`pointer-events-auto flex h-9 items-center border bg-panel px-3 text-[11px] tracking-wider transition ${active ? "border-phos text-phos" : "border-line text-ink-dim hover:border-line-strong hover:text-ink"}`}
     >
-      LIVE INSTRUMENT DATA
+      {children}
     </button>
+  );
+}
+
+export function AppBar({
+  engine,
+  screen,
+  onScreen,
+  center,
+  extra,
+}: {
+  engine: Engine | null;
+  screen: "map" | "instruments";
+  onScreen: (screen: "map" | "instruments") => void;
+  center?: ReactNode;
+  extra?: ReactNode;
+}) {
+  return (
+    <div className={`pointer-events-auto flex w-full items-center justify-between gap-4 px-4 py-2 ${screen === "map" ? "" : "border-b border-line bg-void"}`}>
+      <Brand />
+      <div className="flex min-w-0 flex-1 justify-center">{center}</div>
+      <div className="flex shrink-0 items-center gap-2">
+        <BarButton active={screen === "map"} onClick={() => onScreen("map")}>MAP</BarButton>
+        <BarButton active={screen === "instruments"} onClick={() => onScreen("instruments")}>LIVE INSTRUMENT DATA</BarButton>
+        {extra}
+        <ThemeToggle engine={engine} />
+      </div>
+    </div>
   );
 }
 
