@@ -82,8 +82,10 @@ export class ChunkMesh {
     // Culling bounds: chunk footprint, generous height.
     const size = GRID.levels[data.level].size;
     const b = chunkWorldBounds(data.cx, data.cz, GRID.chunkCells, size);
-    const c = new Vector3((b.minX + b.maxX) / 2, 20, (b.minZ + b.maxZ) / 2);
-    g.boundingSphere = new Sphere(c, Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 120);
+    // Generous vertical allowance: with relief shaping + national exaggeration the Rockies
+    // can stand a few hundred km tall in world units; under-sized bounds would cull them.
+    const c = new Vector3((b.minX + b.maxX) / 2, 150, (b.minZ + b.maxZ) / 2);
+    g.boundingSphere = new Sphere(c, Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 400);
 
     const mesh = new Mesh(g, mats.hex);
     mesh.frustumCulled = true;

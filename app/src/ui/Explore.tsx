@@ -92,6 +92,8 @@ function Places({ engine }: { engine: Engine | null }) {
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return places
+      // Focused provinces only, like the map labels; a search also finds places elsewhere.
+      .filter((p) => focus.has(p.region) || needle)
       .filter((p) => !p.landmark || needle)
       .filter((p) => !needle || p.name.toLowerCase().includes(needle))
       .sort((a, b) => Number(focus.has(b.region)) - Number(focus.has(a.region)) || b.pop - a.pop);
@@ -119,7 +121,7 @@ function Places({ engine }: { engine: Engine | null }) {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder={`Search ${places.length} places`}
+          placeholder="Search places (all provinces)"
           className="w-full bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-mute"
         />
       </label>

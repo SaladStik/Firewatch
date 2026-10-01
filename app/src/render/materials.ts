@@ -169,6 +169,10 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
         if (kind == 2) { vec2 g = fract(p * 3.2) - 0.5; return aaLine(length(g) - 0.04, 1.0); } // dots
         if (kind == 3) return repLine(p.y * 3.0 + sin(p.x * 7.0 + uTime * 0.7) * 0.18, 0.6); // waves
         if (kind == 4) return max(repLine(p.x * 3.5, 0.5), repLine(p.y * 3.5, 0.5));       // grid
+        if (kind == 5) {                                                                     // ice: cracked crosshatch
+          float a = repLine(p.x * 2.1 + p.y * 1.2, 0.55), b = repLine(p.x * 1.4 - p.y * 2.3 + 0.37, 0.55);
+          return max(a, b * 0.8);
+        }
         return 0.0;
       }
 

@@ -75,8 +75,15 @@ export class HexWorld {
   }
 
   // ------------------------------------------------------------ streaming
+  /**
+   * While true, no chunks are requested (the engine sets this during boot so nothing
+   * is built — and cached as "empty" — before every region's data has loaded).
+   */
+  hold = false;
+
   update(focusX: number, focusZ: number, dist: number) {
     this.frame++;
+    if (this.hold) return;
     this.switchLevel(dist);
     const L = this.active;
     const size = GRID.levels[L].size;
@@ -147,7 +154,7 @@ export class HexWorld {
     if (target === this.active) return;
     // Hysteresis: only switch once we're clearly past the threshold.
     const edge = GRID.levels[Math.min(target, this.active)].minDist;
-    if (Math.abs(dist - edge) < edge * 0.06) return;
+    if (Math.abs(dist - edge) < edge * GRID.hysteresis) return;
     const prev = this.levels[this.active];
     const next = this.levels[target];
     gsap.to(prev.uniforms.uLevelAlpha, {

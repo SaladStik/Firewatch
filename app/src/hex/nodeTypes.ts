@@ -12,14 +12,14 @@
 import { LandClass } from "../geo/landClass";
 
 /** Surface pattern drawn on the top face (in-shader, zero geometry cost). */
-export const Pattern = { None: 0, Stripes: 1, Dots: 2, Waves: 3, Grid: 4 } as const;
+export const Pattern = { None: 0, Stripes: 1, Dots: 2, Waves: 3, Grid: 4, Ice: 5 } as const;
 export type Pattern = (typeof Pattern)[keyof typeof Pattern];
 
 /** 3D prop placed on the top face (instanced line geometry, fine levels only). */
 export type PropKind = "tree" | "pine" | "house" | "tower" | "rock";
 
 /** Region families — borders are only drawn between different families. */
-export type Family = "none" | "open" | "forest" | "water" | "settlement" | "alpine" | "road" | "rail";
+export type Family = "none" | "open" | "forest" | "water" | "settlement" | "alpine" | "ice" | "tundra" | "road" | "rail";
 
 export interface NodeType {
   id: LandClass;
@@ -62,12 +62,13 @@ export const NODE_TYPES: Record<LandClass, NodeType> = {
     id: LandClass.Rock, key: "rock", label: "Rock / bare", line: "#7f9a8c", fill: 0.06, pattern: Pattern.None, fuel: 0.05, family: "alpine",
     props: [{ kind: "rock", count: [0, 2], scale: 1 }],
   },
-  [LandClass.Snow]: { id: LandClass.Snow, key: "snow", label: "Snow / ice", line: "#cfeef5", fill: 0.05, pattern: Pattern.None, fuel: 0, family: "alpine" },
+  // Permanent snow & ice: Arctic ice caps (Ellesmere, Devon, Baffin), Rocky Mountain glaciers.
+  [LandClass.Snow]: { id: LandClass.Snow, key: "ice", label: "Ice / glacier", line: "#bfefff", fill: 0.09, emphasis: 0.6, pattern: Pattern.Ice, fuel: 0, family: "ice" },
   [LandClass.Wetland]: { id: LandClass.Wetland, key: "wetland", label: "Wetland", line: "#3fcfa8", fill: 0.07, pattern: Pattern.Waves, fuel: 0.35, family: "water" },
   [LandClass.River]: { id: LandClass.River, key: "river", label: "River", line: "#1ec8d8", fill: 0.16, emphasis: 0.85, pattern: Pattern.Waves, fuel: 0, family: "water" },
   [LandClass.Road]: { id: LandClass.Road, key: "road", label: "Road", line: "#e8f0ec", fill: 0.12, emphasis: 0.8, pattern: Pattern.None, fuel: 0.05, family: "road" },
   [LandClass.Rail]: { id: LandClass.Rail, key: "rail", label: "Railway", line: "#c9a070", fill: 0.08, emphasis: 0.6, pattern: Pattern.Stripes, fuel: 0.05, family: "rail" },
-  [LandClass.Tundra]: { id: LandClass.Tundra, key: "tundra", label: "Moss / lichen", line: "#9cc7a8", fill: 0.05, pattern: Pattern.Dots, fuel: 0.5, family: "open" },
+  [LandClass.Tundra]: { id: LandClass.Tundra, key: "tundra", label: "Tundra (moss / lichen)", line: "#a6c9a0", fill: 0.05, pattern: Pattern.Dots, fuel: 0.5, family: "tundra" },
 };
 
 // ─── STATUSES ──────────────────────────────────────────────────────────────

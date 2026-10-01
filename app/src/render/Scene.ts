@@ -12,7 +12,8 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-import { BASE_ELEVATION_M, GRID, verticalScale } from "../config/grid";
+import { BASE_ELEVATION_M, GRID, RELIEF_EXPONENT, verticalScale } from "../config/grid";
+import { reliefKm } from "./heights";
 import { project } from "../geo/projection";
 import type { Place } from "../data/places";
 import type { WorldClient } from "../world/WorldClient";
@@ -66,7 +67,8 @@ export class Scene {
   private bloomWanted = true;
   private light = false;
   private home = { x: 0, z: 0, dist: 1500 };
-  private maxDist = 4200;
+  /** Far enough out to reach the national level and see all of Canada. */
+  private maxDist = 9000;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -80,7 +82,7 @@ export class Scene {
     this.renderer.setClearColor(new Color("#010403"));
 
     this.camera = new PerspectiveCamera(34, 1, 0.5, 20000);
-    this.camera.position.set(this.home.x, this.home.dist * 0.83, this.home.z + this.home.dist * 0.73);
+    this.camera.position.set(this.home.x, this.home.dist * 0.62, this.home.z + this.home.dist * 0.79);
 
     this.controls = new MapControls(this.camera, canvas);
     this.controls.enableDamping = true;
@@ -201,7 +203,7 @@ export class Scene {
         varying float vT; varying float vSim;
         void main(){
           vec3 p = position;
-          float base = max(0.0, (aElev - ${(BASE_ELEVATION_M / 1000).toFixed(3)}) * uVScale);
+          float base = pow(max(0.0, aElev - ${(BASE_ELEVATION_M / 1000).toFixed(3)}), ${RELIEF_EXPONENT.toFixed(3)}) * uVScale;
           p.y = base + aT * uH * (0.85 + 0.15 * sin(uTime * 3.0 + position.x));
           vT = aT; vSim = aSim;
           gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
@@ -349,20 +351,21 @@ export class Scene {
     const minPop = this.labelMinPop >= 0 ? this.labelMinPop : dist > 120 ? 50_000 : dist > 40 ? 5_000 : 0;
     for (const l of this.labels) {
       const inRange = Math.hypot(l.pos.x - focus.x, l.pos.z - focus.y) < radius * 0.85;
-      const hidden = l.place.landmark ? dist > 45 || minPop === Infinity : l.place.pop < minPop;
-      if (!inRange || hidden) { l.el.style.display = "none"; continue; }
-      l.pos.y = Math.max(0, ((l.elevM - BASE_ELEVATION_M) / 1000) * sharedUniforms.uVScale.value) + dist * 0.01;
+      // Only provinces in focus are labelled, so each one's places stay readable.
+      const hidden = !this.focus.has(l.region) || (l.place.landmark ? dist > 45 || minPop === Infinity : l.place.pop < minPop);
+      if (!inRange || hidden) { hide(l.el); continue; }
+      l.pos.y = reliefKm(l.elevM) * sharedUniforms.uVScale.value + dist * 0.01;
       v.copy(l.pos).project(this.camera);
       const sx = ((v.x + 1) / 2) * w, sy = ((1 - v.y) / 2) * h;
-      if (v.z > 1 || sx < -50 || sx > w + 50 || sy < -20 || sy > h + 20) { l.el.style.display = "none"; continue; }
+      if (v.z > 1 || sx < -50 || sx > w + 50 || sy < -20 || sy > h + 20) { hide(l.el); continue; }
       const box: [number, number, number, number] = [sx - 4, sy - 10, sx + l.width, sy + 10];
       if (placed.some((p) => box[0] < p[2] && box[2] > p[0] && box[1] < p[3] && box[3] > p[1])) {
-        l.el.style.display = "none";
+        hide(l.el);
         continue;
       }
       placed.push(box);
-      l.el.style.display = "";
-      l.el.style.transform = `translate(${sx}px, ${sy}px)`;
+      if (l.el.style.display) l.el.style.display = "";
+      l.el.style.transform = `translate(${sx | 0}px, ${sy | 0}px)`;
     }
   }
 
@@ -378,7 +381,7 @@ export class Scene {
     const t = this.controls.target;
     const offset = this.camera.position.clone().sub(t).normalize();
     // Keep the view tilted even if the user was looking straight down.
-    if (offset.y > 0.92) offset.set(0, 0.8, 0.6).normalize();
+    if (offset.y > 0.92) offset.set(0, 0.62, 0.79).normalize();
     const state = { x: t.x, z: t.z, d: this.distance };
     gsap.to(state, {
       x, z, d: dist, duration, ease: "power3.inOut", overwrite: true,
@@ -463,4 +466,9 @@ export class Scene {
     this.composer.dispose();
     this.renderer.dispose();
   }
+}
+
+/** Hide a label only if it isn't already hidden (avoids thousands of style writes per frame). */
+function hide(el: HTMLElement) {
+  if (el.style.display !== "none") el.style.display = "none";
 }

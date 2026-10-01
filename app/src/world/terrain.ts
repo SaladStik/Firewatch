@@ -7,13 +7,18 @@ import type { TerrainMeta } from "./types";
 
 export class Terrain {
   readonly meta: TerrainMeta;
-  private elev: Float32Array;
+  /** Whole metres (0..65535) — half the memory of floats; there are 13 provinces' worth. */
+  private elev: Uint16Array;
   private land: Uint8Array;
+  /** World-space bounds of the raster (cheap rejection before sampling). */
+  readonly x0: number; readonly x1: number; readonly z0: number; readonly z1: number;
 
   constructor(meta: TerrainMeta, rgba: Uint8ClampedArray) {
     this.meta = meta;
+    this.x0 = meta.minX; this.x1 = meta.minX + meta.width * meta.pxKm;
+    this.z0 = meta.minZ; this.z1 = meta.minZ + meta.height * meta.pxKm;
     const n = meta.width * meta.height;
-    this.elev = new Float32Array(n);
+    this.elev = new Uint16Array(n);
     this.land = new Uint8Array(n);
     for (let i = 0; i < n; i++) {
       this.elev[i] = rgba[i * 4] * 256 + rgba[i * 4 + 1];
@@ -76,7 +81,11 @@ export class TerrainStack {
       : b;
   }
   private layerAt(x: number, z: number) {
-    for (const l of this.layers) if (l.t.landAt(x, z) !== LandClass.None) return l;
+    for (const l of this.layers) {
+      const t = l.t;
+      if (x < t.x0 || x >= t.x1 || z < t.z0 || z >= t.z1) continue;
+      if (t.landAt(x, z) !== LandClass.None) return l;
+    }
     return null;
   }
   /** Workspace index of the region at (x,z), or -1. */

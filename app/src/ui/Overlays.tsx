@@ -64,6 +64,11 @@ export function BootScreen() {
         <div className="text-[11px] tracking-[0.2em] text-ink-mute">
           {boot.error ? <span className="text-fire">{boot.error}</span> : <>{boot.stage.toUpperCase()}<span className="animate-pulse">_</span></>}
         </div>
+        {!boot.error && (
+          <div className="h-[3px] w-64 overflow-hidden border border-line">
+            <div className="h-full bg-phos transition-[width] duration-300" style={{ width: `${Math.round((boot.progress ?? 0) * 100)}%`, boxShadow: "0 0 8px var(--color-phos)" }} />
+          </div>
+        )}
       </div>
     </div>
   );

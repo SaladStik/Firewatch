@@ -1,5 +1,6 @@
 /** Promise-based RPC wrapper around world.worker.ts. */
 import type { Landmark } from "../hex/overlayStyles";
+import type { ProjectionParams } from "../geo/projection";
 import type { ChunkData, HazardSnapshot, TerrainMeta, WorkerRequest, WorkerResponse } from "./types";
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
@@ -37,9 +38,9 @@ export class WorldClient {
     });
   }
 
-  /** Shared projection centre (must match the bake). */
-  init(lat0: number, lng0: number) {
-    return this.call<boolean>({ type: "init", lat0, lng0 });
+  /** Shared projection (must match the bake). */
+  init(projection: ProjectionParams) {
+    return this.call<boolean>({ type: "init", projection });
   }
   /** Load one region's baked data (folder with terrain.{png,json}, osm.json). */
   addRegion(dataUrl: string, index: number, landmarks: Landmark[] = []) {

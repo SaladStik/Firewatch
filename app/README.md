@@ -1,16 +1,18 @@
 # EMBER//GRID
 
-Wildfire risk intelligence on a 3D hex grid, built entirely on open data. Alberta, British Columbia and Saskatchewan load side by side; the provinces in focus render at full strength and the rest are slightly greyed.
+Wildfire risk intelligence on a 3D hex grid, built entirely on open data. It covers all of Canada: every province and territory gets the same treatment. Alberta loads first and is usable straight away, and the rest stream in behind it. The provinces in focus render at full strength and the rest are slightly greyed.
 
 ```bash
 npm install
 npm run dev          # http://localhost:5173
 npm run build        # static site in dist/ (deploy anywhere; set BASE=/sub/path/ for sub-path hosting)
 npm run bake -- alberta       # terrain + land-cover raster for a region
-npm run bake:osm -- alberta   # OSM rivers, roads, rail, bridges, buildings, places for a region
+npm run bake:osm -- alberta   # OSM rivers, roads, rail, buildings, places for a region
+npm run bake:all              # terrain for every province and territory
+npm run bake:osm:all          # OSM for every province and territory (slow: public Overpass servers)
 ```
 
-The baked files for all three provinces ship in `public/data/`, so you only need the bake scripts to add a province or refresh data. Downloads are cached in `scripts/.cache`. The public Overpass servers can be busy; the OSM bake retries across mirrors.
+The baked files for every region ship in `public/data/<region>/`, so you only need the bake scripts to add a province or refresh data. Downloads are cached in `scripts/.cache`. The public Overpass servers can be busy; the OSM bake retries across mirrors.
 
 **Controls:**
 - Left-drag pans; right-drag, middle-drag or Ctrl+drag rotates and tilts; scroll zooms toward the cursor.
@@ -30,9 +32,9 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 
 | Data | Source | Licence | How we use it |
 |---|---|---|---|
-| Elevation | [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (Tilezen/Mapzen Terrarium; in Canada built from NRCan CDEM, SRTM and others: [source list](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | Open, attribution required ([details](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | Zoom-8 tiles (~350 m) resampled to a 500 m raster; hex heights |
-| Land cover | [ESA WorldCover 2021 v200](https://esa-worldcover.org/en) ([AWS mirror](https://registry.opendata.aws/esa-worldcover-vito/)) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | 10 m classes, majority-voted per 500 m pixel; hex land types |
-| Province boundary | [click_that_hood `canada.geojson`](https://github.com/codeforgermany/click_that_hood) | Open-source repository (MIT) | Region mask and border line |
+| Elevation | [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (Tilezen/Mapzen Terrarium; in Canada built from NRCan CDEM, SRTM and others: [source list](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | Open, attribution required ([details](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | Zoom 6–8 tiles (matched to each region's raster resolution) resampled to a 0.3–1.6 km raster; hex heights |
+| Land cover | [ESA WorldCover 2021 v200](https://esa-worldcover.org/en) ([AWS mirror](https://registry.opendata.aws/esa-worldcover-vito/)) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | 10 m classes, majority-voted per raster pixel; hex land types (incl. ice / glacier, tundra, wetland) |
+| Province & territory boundaries | [click_that_hood `canada.geojson`](https://github.com/codeforgermany/click_that_hood) | Open-source repository (MIT) | Region masks and border lines (all 13) |
 | Buildings, rivers, roads, rail | [OpenStreetMap](https://www.openstreetmap.org/copyright) via the [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) | [ODbL](https://opendatacommons.org/licenses/odbl/) | Rivers become true-width channels on hex tops; roads and rail become hex connections; building heights and footprints become towers |
 | Community names and populations | [OpenStreetMap](https://www.openstreetmap.org/copyright) (`place=city/town`) | [ODbL](https://opendatacommons.org/licenses/odbl/) | Map labels and quick-jump |
 | Landmark positions | [OpenStreetMap](https://www.openstreetmap.org/copyright), looked up by name | [ODbL](https://opendatacommons.org/licenses/odbl/) | Positions of hand-drawn wireframe landmark models (the shapes are our own) |
@@ -110,7 +112,14 @@ Rivers, roads and rail aren't drawn on top of the map; they are hexes. Every hex
 
 ## Regions and focus
 
-- **Loading.** Every region in `WORKSPACE.regions` is loaded onto one map using one shared projection (`PROJECTION`). The focused ones load first, and the rest stream in behind.
+- **Coverage.** All 13 provinces and territories.
+- **Load order.** Regions load in `WORKSPACE.regions` order, with focused regions always first: **AB → BC → SK → MB → ON → QC → NB → NS → PE → NL → YT → NT → NU**. Alberta is interactive as soon as it's in; the others appear as they arrive.
+- **Projection.** Everything uses one shared projection (`PROJECTION`): Lambert conformal conic with Statistics Canada's national-map parameters (standard parallels 49° N and 77° N), so shapes hold up from BC to Newfoundland. Changing it means re-running `npm run bake:all`. OSM files store lat/lng and don't need re-baking.
+- **Detail per region.** Raster resolution (`pxKm`) scales with region size: 0.3 km for PEI, 0.5 km for Alberta, up to 1.6 km for Nunavut. Source detail (elevation zoom, land-cover sampling) follows it.
+- **Zoom levels.** A national level with ~38 km hexes shows the whole country, and the finer levels take over as you zoom in.
+- **Heights.** Hex heights use a relief curve (`RELIEF_EXPONENT` = 1.3 in `config/grid.ts`), so high ground like the Rockies, Torngats and Arctic ice caps stands out from plateaus like the prairies. Vertical exaggeration (`verticalScale`) stays near-real close up (×4–7) and ramps to about ×40 at province view and about ×60 nationally. During the bake, elevation spikes are filtered out and values are capped at each region's official high point.
+- **Weather.** Live weather is fetched only for regions **in focus**, hourly, at most ~90 points each, to stay inside Open-Meteo's free daily limit. Unfocused regions still show fires, perimeters and fuel-based risk.
+- **The north reads as the north.** Land types come from ESA WorldCover. Ice caps and glaciers are **Ice / glacier** (pale ice with a cracked crosshatch), and moss/lichen is **Tundra**, its own region type, so the treeline is drawn as a border. Where land-cover data is missing in the far Arctic, hexes fall back to tundra, not grassland. The legend lists every land type.
 - **Unfocused regions.** Hexes outside the focus keep all their data (fires, risk, rivers, buildings) but are pulled toward grey. The amount is set by `UNFOCUSED_STYLE` in `nodeTypes.ts`.
 - **What follows focus.** The headline numbers, the brand title, the home view and the label emphasis all follow the focus.
 
@@ -152,13 +161,25 @@ engine.scene.world.setStyler((ctx, base) => ctx.risk > 0.9 ? { line: [1, 0, 1] }
 
 Landmarks (hand-drawn models for specific buildings) are listed per region in `config/regions.ts`.
 
+**LOD tuner (dev).** Press **Ctrl+Shift+L** in dev builds, or on a page opened once with `?fireflydev`, to tune the map live:
+- each level's switch distance, with a **go** button that flies the camera to it;
+- switch hysteresis;
+- render distance (view radius × camera distance, and the max radius in hexes);
+- height exaggeration (close / province / national, and the ramp curve).
+
+A live readout shows the camera distance, active level, cell size, exaggeration, hex count and fps. Tweaks persist in that browser until **Reset**. **Copy config** copies paste-ready values for `config/grid.ts`. Hex sizes and terraces aren't live-editable; they're used by the worker, so change them in the file.
+
 **Grid tuning.** All of it is in `config/grid.ts`: hex sizes per level, zoom thresholds, chunk size, gap, view radius and cache size.
 
 ## Adding a province
 
-1. Add an entry to `REGIONS` in `src/config/regions.ts`. You need a `boundaryName` that matches the provinces GeoJSON, a bbox, a raster resolution, and optionally landmarks and demo sites.
-2. Run `npm run bake -- <id>` and `npm run bake:osm -- <id>`.
-3. Add the id to `WORKSPACE.regions`.
+1. Add an entry to `REGIONS` in `src/config/regions.ts`. You need:
+   - a `boundaryName` that matches the provinces GeoJSON;
+   - the `iso` code (ISO 3166-2, used to find it in OSM);
+   - a bbox and a raster resolution;
+   - optionally landmarks and demo sites.
+2. Run `npm run bake -- <id>` and `npm run bake:osm -- <id>`. For big regions the OSM bake splits line queries into 5° tiles, each cached, so an interrupted bake resumes where it left off.
+3. Add the id to `WORKSPACE.regions`, in the position you want it to load.
 
 Fires, weather, labels, borders, focus and the Explore menu all pick the new province up automatically.
 

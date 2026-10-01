@@ -9,7 +9,7 @@
 import { GRID } from "../config/grid";
 import { LandClass } from "../geo/landClass";
 import { LineKind } from "../geo/lineKinds";
-import { setProjectionCenter } from "../geo/projection";
+import { setProjection } from "../geo/projection";
 import { axialToOffset, chunkWorldBounds, hexToWorld, offsetToAxial, SQRT3, worldToHex } from "../hex/hexMath";
 import { NODE_TYPES, type NodeStatus } from "../hex/nodeTypes";
 import type { Landmark } from "../hex/overlayStyles";
@@ -206,7 +206,7 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
   try {
     switch (msg.type) {
       case "init":
-        setProjectionCenter(msg.lat0, msg.lng0);
+        setProjection(msg.projection);
         reply(true);
         break;
       case "addRegion":
