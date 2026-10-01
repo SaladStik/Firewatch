@@ -132,6 +132,19 @@ body,
   scrollbar-color: var(--color-line) transparent;
 }
 
+@keyframes risk-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.38; }
+}
+
+.risk-blink {
+  animation: risk-blink 2.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .risk-blink { animation: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

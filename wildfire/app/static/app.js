@@ -41,6 +41,7 @@ const devWindKeys = document.querySelector("#dev-wind-keys");
 const devSim = document.querySelector("#dev-sim");
 const devTempEl = document.querySelector("#dev-temp");
 const devHumidityEl = document.querySelector("#dev-humidity");
+const devWindEl = document.querySelector("#dev-wind");
 if (stationId) devSim.hidden = false;
 const themeToggle = document.querySelector("#theme-toggle");
 const tickTempEl = document.querySelector("#tick-temp");
@@ -145,6 +146,7 @@ function renderStatus(data) {
   if (stationId) {
     devTempEl.textContent = formatMeasure(sensor.temperature_c, "°C", 1);
     devHumidityEl.textContent = formatMeasure(sensor.humidity_pct, "%", 0);
+    devWindEl.textContent = formatMeasure(wind.speed_mph, "mph", 1);
   }
   sensorStatusEl.textContent = sensor.label || "—";
   sensorStatusEl.className = statusClass(sensor.label);
@@ -422,6 +424,21 @@ devToggle.addEventListener("click", (event) => {
 devSim.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button || !stationId) return;
+  if (button.dataset.windStep) {
+    const current = shownWindMph == null ? 0 : shownWindMph;
+    const speed = Math.min(200, Math.max(0, Math.round((current + Number(button.dataset.windStep)) * 10) / 10));
+    fetch("/api/wind", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: windPayload(speed, "dev: arrows"),
+    }).then(async (response) => {
+      if (!response.ok) return;
+      renderStatus(await response.json());
+      historyKey = "";
+      loadHistory();
+    }).catch(() => {});
+    return;
+  }
   const body = { instrument: stationId };
   if (button.dataset.temp) body.temperature_delta = Number(button.dataset.temp);
   if (button.dataset.humidity) body.humidity_delta = Number(button.dataset.humidity);

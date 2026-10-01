@@ -217,20 +217,40 @@ def _history_point(state: dict[str, float], when: datetime) -> dict[str, Any]:
     }
 
 
+def _climate(entry: dict[str, Any]) -> dict[str, float]:
+    """Each station keeps its own weather, so the list does not collapse to one climate."""
+    seed = random.Random(str(entry.get("id") or "station"))
+    latitude = entry.get("latitude")
+    lat_nudge = 0.0
+    if isinstance(latitude, (int, float)):
+        lat_nudge = (54.0 - float(latitude)) * 0.9
+    return {
+        "temp_center": _clamp(seed.uniform(0.0, 34.0) + lat_nudge, -12.0, 37.0),
+        "humidity_center": seed.uniform(12.0, 94.0),
+        "wind_center": seed.uniform(0.5, 34.0),
+    }
+
+
 def _step_demo(state: dict[str, float], elapsed: float, rng: random.Random) -> dict[str, float]:
     temperature = state["temperature_c"]
     humidity = state["humidity_pct"]
     wind = state["wind_mph"]
+    temp_center = state.get("temp_center", 16.5)
+    humidity_center = state.get("humidity_center", 48.0)
+    wind_center = state.get("wind_center", 8.0)
     if not state.get("temp_hold"):
-        temperature = _drift(temperature, 16.5, 0.05, 5.0, 32.0, elapsed, rng)
+        temperature = _drift(temperature, temp_center, 0.08, -12.0, 38.0, elapsed, rng)
     if not state.get("humidity_hold"):
-        humidity = _drift(humidity, 48.0, 0.2, 18.0, 80.0, elapsed, rng)
+        humidity = _drift(humidity, humidity_center, 0.35, 8.0, 98.0, elapsed, rng)
     if not state.get("wind_hold"):
-        wind = _drift(wind, 8.0, 0.08, 1.0, 28.0, elapsed, rng)
+        wind = _drift(wind, wind_center, 0.15, 0.0, 42.0, elapsed, rng)
     return {
         "temperature_c": temperature,
         "humidity_pct": humidity,
         "wind_mph": wind,
+        "temp_center": temp_center,
+        "humidity_center": humidity_center,
+        "wind_center": wind_center,
         "wind_hold": state.get("wind_hold", 0.0),
         "temp_hold": state.get("temp_hold", 0.0),
         "humidity_hold": state.get("humidity_hold", 0.0),
@@ -246,10 +266,14 @@ def demo_reading(entry: dict[str, Any], now: float | None = None) -> dict[str, A
     rng = random.Random()
     history = _demo_history.setdefault(station_id, [])
     if state is None:
+        climate = _climate(entry)
         state = {
-            "temperature_c": 16.5,
-            "humidity_pct": 48.0,
-            "wind_mph": 8.0,
+            "temperature_c": climate["temp_center"],
+            "humidity_pct": climate["humidity_center"],
+            "wind_mph": climate["wind_center"],
+            "temp_center": climate["temp_center"],
+            "humidity_center": climate["humidity_center"],
+            "wind_center": climate["wind_center"],
             "wind_hold": 0.0,
             "temp_hold": 0.0,
             "humidity_hold": 0.0,

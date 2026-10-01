@@ -1,4 +1,5 @@
 /** Live collectors: each instrument is one data source, listed with its location. */
+import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
@@ -44,6 +45,49 @@ function dashboardUrl(base: string, theme: "dark" | "light") {
   return url.toString();
 }
 
+const PROVINCES = [
+  { id: "Alberta", label: "ALBERTA" },
+  { id: "British Columbia", label: "BC" },
+  { id: "Saskatchewan", label: "SASKATCHEWAN" },
+] as const;
+
+function provinceOf(location: string) {
+  const text = location.toLowerCase();
+  if (text.includes("alberta")) return "Alberta";
+  if (text.includes("british columbia")) return "British Columbia";
+  if (text.includes("saskatchewan")) return "Saskatchewan";
+  return null;
+}
+
+function riskColor(category: string | null) {
+  switch (category) {
+    case "Low": return "var(--color-water)";
+    case "Moderate": return "var(--color-risk-elev)";
+    case "High": return "var(--color-risk-high)";
+    case "Very high": return "var(--color-risk-ext)";
+    case "Extreme": return "var(--color-fire)";
+    default: return null;
+  }
+}
+
+const SORTS = [
+  { id: "risk", label: "FILTER BY RISK", active: "RISK HIGH TO LOW", desc: true },
+  { id: "humidity", label: "HUMIDITY LOW TO HIGH", active: "HUMIDITY LOW TO HIGH", desc: false },
+  { id: "temp", label: "TEMP HIGH TO LOW", active: "TEMP HIGH TO LOW", desc: true },
+  { id: "wind", label: "WIND HIGH TO LOW", active: "WIND HIGH TO LOW", desc: true },
+] as const;
+
+type SortId = (typeof SORTS)[number]["id"];
+
+function sortValue(item: Instrument, sort: SortId) {
+  switch (sort) {
+    case "risk": return item.reading.risk_score;
+    case "humidity": return item.reading.humidity_pct;
+    case "temp": return item.reading.temperature_c;
+    case "wind": return item.reading.wind_mph;
+  }
+}
+
 function metric(value: number | null, digits: number, unit: string) {
   if (value == null || Number.isNaN(value)) return "—";
   return `${value.toFixed(digits)}${unit}`;
@@ -53,6 +97,10 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [province, setProvince] = useState<(typeof PROVINCES)[number]["id"] | null>(null);
+  const [sort, setSort] = useState<SortId | null>(null);
+  const [sortDesc, setSortDesc] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,7 +113,6 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
         const rows = body.instruments ?? [];
         setInstruments(rows);
         setError(null);
-        setSelectedId((current) => current ?? rows[0]?.id ?? null);
       } catch {
         if (!cancelled) setError("Cannot reach the instrument server.");
       }
@@ -79,8 +126,36 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
   }, []);
 
   const theme = useStore(app, (s) => s.theme);
-  const selected = instruments.find((item) => item.id === selectedId) ?? instruments[0] ?? null;
+  const selected = selectedId ? instruments.find((item) => item.id === selectedId) ?? null : null;
   const where = selected ? coords(selected.latitude, selected.longitude) : null;
+  const needle = query.trim().toLowerCase();
+  const visible = [...instruments]
+    .filter((item) => {
+      const home = provinceOf(item.location);
+      if (province && home !== province) return false;
+      if (!needle) return true;
+      const place = coords(item.latitude, item.longitude) ?? "";
+      return [item.name, item.location, place, item.reading.label].some((part) => part.toLowerCase().includes(needle));
+    })
+    .sort((a, b) => {
+      if (sort) {
+        const av = sortValue(a, sort);
+        const bv = sortValue(b, sort);
+        if (av == null && bv == null) return a.name.localeCompare(b.name);
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        const delta = sortDesc ? bv - av : av - bv;
+        if (delta !== 0) return delta;
+        return a.name.localeCompare(b.name);
+      }
+      const order = PROVINCES.map((item) => item.id);
+      const ai = order.indexOf((provinceOf(a.location) ?? "") as (typeof PROVINCES)[number]["id"]);
+      const bi = order.indexOf((provinceOf(b.location) ?? "") as (typeof PROVINCES)[number]["id"]);
+      const ar = ai === -1 ? -1 : ai;
+      const br = bi === -1 ? -1 : bi;
+      if (ar !== br) return ar - br;
+      return a.name.localeCompare(b.name);
+    });
 
   return (
     <div className="absolute inset-0 z-20 flex flex-col bg-void">
@@ -97,38 +172,120 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
         </div>
       </div>
       <div className="flex min-h-0 flex-1">
-        <aside className="scroll-thin flex w-80 shrink-0 flex-col overflow-y-auto border-r border-line">
-          <div className="label-xs px-4 py-3">Instruments</div>
+        <aside className={`scroll-thin flex shrink-0 flex-col overflow-y-auto ${selected ? "w-80 border-r border-line" : "w-full"}`}>
+          <div className="flex flex-wrap gap-1 px-3 pt-3">
+            <button
+              type="button"
+              onClick={() => setProvince(null)}
+              className={`border px-2 py-1 text-[10px] tracking-[0.14em] transition ${province === null ? "border-phos text-phos" : "border-line text-ink-dim hover:border-line-strong hover:text-ink"}`}
+            >
+              ALL
+            </button>
+            {PROVINCES.map((item) => {
+              const on = province === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setProvince(item.id)}
+                  className={`border px-2 py-1 text-[10px] tracking-[0.14em] transition ${on ? "border-phos text-phos" : "border-line text-ink-dim hover:border-line-strong hover:text-ink"}`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center gap-2 px-3 py-3">
+            <label className="flex min-w-0 flex-1 items-center gap-2 border border-line px-2 py-1">
+              <Search size={12} className="shrink-0 text-ink-mute" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search"
+                aria-label="Search instruments"
+                className="w-full bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-mute"
+              />
+            </label>
+            <div className="label-xs shrink-0">Instruments</div>
+          </div>
+          <div className="flex flex-wrap gap-1 px-3 pb-3">
+            {SORTS.map((item) => {
+              const on = sort === item.id;
+              const label = !on ? item.label : item.desc ? item.active : sortDesc ? "HUMIDITY HIGH TO LOW" : item.active;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    if (!on) {
+                      setSort(item.id);
+                      setSortDesc(item.desc);
+                    } else if (!item.desc && !sortDesc) {
+                      setSortDesc(true);
+                    } else {
+                      setSort(null);
+                      setSortDesc(false);
+                    }
+                  }}
+                  className={`border px-2 py-1 text-[10px] tracking-[0.12em] transition ${on ? "border-phos text-phos" : "border-line text-ink-dim hover:border-line-strong hover:text-ink"}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
           {error && <p className="px-4 pb-3 text-[11px] text-fire">{error}</p>}
           {!error && instruments.length === 0 && <p className="px-4 pb-3 text-[11px] text-ink-mute">Loading collectors…</p>}
-          {instruments.map((item) => {
-            const active = item.id === (selected?.id ?? null);
+          {!error && instruments.length > 0 && visible.length === 0 && (
+            <p className="px-4 pb-3 text-[11px] text-ink-mute">No matches.</p>
+          )}
+          <div className={selected ? "" : "grid sm:grid-cols-2 xl:grid-cols-3"}>
+          {visible.map((item) => {
+            const active = item.id === selectedId;
             const place = coords(item.latitude, item.longitude);
+            const band = item.reading.risk_score == null
+              ? "—"
+              : `${item.reading.risk_score.toFixed(0)}${item.reading.category ? ` ${item.reading.category}` : ""}`;
+            const tone = riskColor(item.reading.category);
+            const alert = item.reading.category === "Very high" || item.reading.category === "Extreme";
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setSelectedId(item.id)}
-                className={`border-t border-line px-4 py-3 text-left transition hover:bg-phos/5 ${active ? "bg-phos/10" : ""}`}
+                className={`border border-line px-4 py-3 text-left transition hover:brightness-110 ${alert ? "risk-blink" : ""}`}
+                style={tone ? { borderColor: tone, background: `color-mix(in srgb, ${tone} ${active ? "22%" : "12%"}, transparent)`, boxShadow: `inset 3px 0 0 ${tone}` } : undefined}
               >
-                <div className="text-[12px] tracking-wide text-ink">{item.name}</div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <div className="text-[12px] tracking-wide text-ink">{item.name}</div>
+                  <div className={`text-[10px] tracking-[0.14em] ${item.reading.ok ? "text-phos" : "text-ink-mute"}`}>{item.reading.label}</div>
+                </div>
                 <div className="mt-1 text-[11px] text-ink-dim">{item.location}</div>
                 {place && <div className="mt-0.5 text-[10px] tracking-wide text-ink-mute">{place}</div>}
-                <div className={`mt-2 text-[10px] tracking-[0.14em] ${item.reading.ok ? "text-phos" : "text-ink-mute"}`}>
-                  {item.reading.label}
-                  {item.reading.temperature_c != null && ` · ${item.reading.temperature_c.toFixed(1)}°C`}
-                </div>
+                {selected ? (
+                  <div className="mt-2 text-[10px] tracking-[0.14em] text-ink-dim">
+                    {item.reading.temperature_c != null ? `${item.reading.temperature_c.toFixed(1)}°C` : "—"}
+                  </div>
+                ) : (
+                  <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] tracking-[0.12em] sm:grid-cols-4">
+                    <span><span className="text-ink-mute">TEMP </span>{metric(item.reading.temperature_c, 1, "°C")}</span>
+                    <span><span className="text-ink-mute">HUM </span>{metric(item.reading.humidity_pct, 0, "%")}</span>
+                    <span><span className="text-ink-mute">WIND </span>{metric(item.reading.wind_mph, 1, " mph")}</span>
+                    <span style={tone ? { color: tone } : undefined}><span className="text-ink-mute">FOSBERG </span>{band}</span>
+                  </div>
+                )}
               </button>
             );
           })}
+          </div>
           <p className="mt-auto px-4 py-3 text-[10px] leading-relaxed text-ink-mute">
             Add another collector in wildfire/instruments.json with its name, location, and status URL.
           </p>
         </aside>
+        {selected && (
         <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {selected && (
             <>
-              <div className="border-b border-line px-4 py-3">
+              <div className="border-b border-line px-4 py-3" style={riskColor(selected.reading.category) ? { borderColor: riskColor(selected.reading.category)! } : undefined}>
                 <div className="text-[13px] tracking-wide text-ink">{selected.name}</div>
                 <div className="mt-1 text-[11px] text-ink-dim">{selected.location}{where ? ` · ${where}` : ""}</div>
                 <div className="mt-3 grid max-w-xl grid-cols-2 gap-x-6">
@@ -136,7 +293,7 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
                   <KV k="TEMP" v={metric(selected.reading.temperature_c, 1, "°C")} />
                   <KV k="HUMIDITY" v={metric(selected.reading.humidity_pct, 0, "%")} />
                   <KV k="WIND" v={metric(selected.reading.wind_mph, 1, " mph")} />
-                  <KV k="FOSBERG" v={selected.reading.risk_score == null ? "—" : `${selected.reading.risk_score.toFixed(0)}${selected.reading.category ? ` ${selected.reading.category}` : ""}`} />
+                  <KV k="FOSBERG" v={selected.reading.risk_score == null ? "—" : `${selected.reading.risk_score.toFixed(0)}${selected.reading.category ? ` ${selected.reading.category}` : ""}`} accent={riskColor(selected.reading.category) ?? undefined} />
                   <KV k="COLLECTOR" v={selected.reading.endpoint ?? (selected.kind === "local" ? "This server" : "—")} />
                 </div>
                 {selected.reading.detail && <p className="mt-2 text-[11px] text-ink-mute">{selected.reading.detail}</p>}
@@ -151,8 +308,8 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
                 </div>
               )}
             </>
-          )}
         </section>
+        )}
       </div>
     </div>
   );

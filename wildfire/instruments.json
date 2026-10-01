@@ -16,5 +16,266 @@
     "longitude": -111.379,
     "kind": "demo",
     "dashboard": "http://127.0.0.1:8000/?instrument=fort-mcmurray"
+  },
+  {
+    "id": "high-level",
+    "name": "High Level Station",
+    "location": "High Level, Alberta",
+    "latitude": 58.5169,
+    "longitude": -117.136,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=high-level"
+  },
+  {
+    "id": "fort-chipewyan",
+    "name": "Fort Chipewyan Station",
+    "location": "Fort Chipewyan, Alberta",
+    "latitude": 58.7146,
+    "longitude": -111.1585,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=fort-chipewyan"
+  },
+  {
+    "id": "peace-river",
+    "name": "Peace River Station",
+    "location": "Peace River, Alberta",
+    "latitude": 56.2339,
+    "longitude": -117.2897,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=peace-river"
+  },
+  {
+    "id": "grande-prairie",
+    "name": "Grande Prairie Station",
+    "location": "Grande Prairie, Alberta",
+    "latitude": 55.1707,
+    "longitude": -118.7947,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=grande-prairie"
+  },
+  {
+    "id": "slave-lake",
+    "name": "Slave Lake Station",
+    "location": "Slave Lake, Alberta",
+    "latitude": 55.2851,
+    "longitude": -114.7706,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=slave-lake"
+  },
+  {
+    "id": "cold-lake",
+    "name": "Cold Lake Station",
+    "location": "Cold Lake, Alberta",
+    "latitude": 54.4642,
+    "longitude": -110.1825,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=cold-lake"
+  },
+  {
+    "id": "edmonton",
+    "name": "Edmonton Station",
+    "location": "Edmonton, Alberta",
+    "latitude": 53.5461,
+    "longitude": -113.4938,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=edmonton"
+  },
+  {
+    "id": "whitecourt",
+    "name": "Whitecourt Station",
+    "location": "Whitecourt, Alberta",
+    "latitude": 54.1416,
+    "longitude": -115.6846,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=whitecourt"
+  },
+  {
+    "id": "hinton",
+    "name": "Hinton Station",
+    "location": "Hinton, Alberta",
+    "latitude": 53.4114,
+    "longitude": -117.5639,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=hinton"
+  },
+  {
+    "id": "jasper",
+    "name": "Jasper Station",
+    "location": "Jasper, Alberta",
+    "latitude": 52.8734,
+    "longitude": -118.0814,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=jasper"
+  },
+  {
+    "id": "red-deer",
+    "name": "Red Deer Station",
+    "location": "Red Deer, Alberta",
+    "latitude": 52.2681,
+    "longitude": -113.8112,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=red-deer"
+  },
+  {
+    "id": "lloydminster",
+    "name": "Lloydminster Station",
+    "location": "Lloydminster, Alberta",
+    "latitude": 53.2783,
+    "longitude": -110.0055,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=lloydminster"
+  },
+  {
+    "id": "calgary",
+    "name": "Calgary Station",
+    "location": "Calgary, Alberta",
+    "latitude": 51.0447,
+    "longitude": -114.0719,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=calgary"
+  },
+  {
+    "id": "banff",
+    "name": "Banff Station",
+    "location": "Banff, Alberta",
+    "latitude": 51.1784,
+    "longitude": -115.5708,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=banff"
+  },
+  {
+    "id": "drumheller",
+    "name": "Drumheller Station",
+    "location": "Drumheller, Alberta",
+    "latitude": 51.4635,
+    "longitude": -112.7114,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=drumheller"
+  },
+  {
+    "id": "medicine-hat",
+    "name": "Medicine Hat Station",
+    "location": "Medicine Hat, Alberta",
+    "latitude": 50.0405,
+    "longitude": -110.6764,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=medicine-hat"
+  },
+  {
+    "id": "lethbridge",
+    "name": "Lethbridge Station",
+    "location": "Lethbridge, Alberta",
+    "latitude": 49.6956,
+    "longitude": -112.8328,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=lethbridge"
+  },
+  {
+    "id": "vancouver",
+    "name": "Vancouver Station",
+    "location": "Vancouver, British Columbia",
+    "latitude": 49.2827,
+    "longitude": -123.1207,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=vancouver"
+  },
+  {
+    "id": "victoria",
+    "name": "Victoria Station",
+    "location": "Victoria, British Columbia",
+    "latitude": 48.4284,
+    "longitude": -123.3656,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=victoria"
+  },
+  {
+    "id": "prince-george",
+    "name": "Prince George Station",
+    "location": "Prince George, British Columbia",
+    "latitude": 53.9171,
+    "longitude": -122.7497,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=prince-george"
+  },
+  {
+    "id": "kamloops",
+    "name": "Kamloops Station",
+    "location": "Kamloops, British Columbia",
+    "latitude": 50.6745,
+    "longitude": -120.3273,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=kamloops"
+  },
+  {
+    "id": "kelowna",
+    "name": "Kelowna Station",
+    "location": "Kelowna, British Columbia",
+    "latitude": 49.888,
+    "longitude": -119.496,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=kelowna"
+  },
+  {
+    "id": "fort-st-john",
+    "name": "Fort St. John Station",
+    "location": "Fort St. John, British Columbia",
+    "latitude": 56.2524,
+    "longitude": -120.8464,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=fort-st-john"
+  },
+  {
+    "id": "saskatoon",
+    "name": "Saskatoon Station",
+    "location": "Saskatoon, Saskatchewan",
+    "latitude": 52.1332,
+    "longitude": -106.67,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=saskatoon"
+  },
+  {
+    "id": "regina",
+    "name": "Regina Station",
+    "location": "Regina, Saskatchewan",
+    "latitude": 50.4452,
+    "longitude": -104.6189,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=regina"
+  },
+  {
+    "id": "prince-albert",
+    "name": "Prince Albert Station",
+    "location": "Prince Albert, Saskatchewan",
+    "latitude": 53.2033,
+    "longitude": -105.7531,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=prince-albert"
+  },
+  {
+    "id": "moose-jaw",
+    "name": "Moose Jaw Station",
+    "location": "Moose Jaw, Saskatchewan",
+    "latitude": 50.3934,
+    "longitude": -105.5519,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=moose-jaw"
+  },
+  {
+    "id": "la-ronge",
+    "name": "La Ronge Station",
+    "location": "La Ronge, Saskatchewan",
+    "latitude": 55.1001,
+    "longitude": -105.2842,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=la-ronge"
+  },
+  {
+    "id": "swift-current",
+    "name": "Swift Current Station",
+    "location": "Swift Current, Saskatchewan",
+    "latitude": 50.2881,
+    "longitude": -107.7939,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=swift-current"
   }
 ]

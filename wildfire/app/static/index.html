@@ -78,6 +78,12 @@
                       <strong id="dev-humidity">—</strong>
                       <button type="button" class="dev-step" data-humidity="1" aria-label="Raise moisture">↑</button>
                     </div>
+                    <div class="dev-sim-row">
+                      <span>Wind</span>
+                      <button type="button" class="dev-step" data-wind-step="-1" aria-label="Lower wind">↓</button>
+                      <strong id="dev-wind">—</strong>
+                      <button type="button" class="dev-step" data-wind-step="1" aria-label="Raise wind">↑</button>
+                    </div>
                   </div>
                   <label class="dev-keys" for="dev-wind-keys">
                     <input type="checkbox" id="dev-wind-keys">
@@ -232,6 +238,6 @@
     </footer>
   </div>
   <noscript>This dashboard needs JavaScript to load live readings.</noscript>
-  <script src="/static/app.js?v=sim"></script>
+  <script src="/static/app.js?v=wind"></script>
 </body>
 </html>
