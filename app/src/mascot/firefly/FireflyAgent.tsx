@@ -37,24 +37,25 @@ export function FireflyAgent({ controller, config = DEFAULT_CONFIG, size = 120 }
         willChange: "transform",
       }}
     >
-      {controller.speech && <SpeechBubble text={controller.speech} />}
+      {controller.speech && <SpeechBubble text={controller.speech} flip={pose.x > window.innerWidth * 0.55} />}
       <Firefly pose={pose} config={config} size={size} />
     </div>
   );
 }
 
-function SpeechBubble({ text }: { text: string }) {
+/** `flip`: open to the left (used near the right edge so the bubble stays on screen). */
+function SpeechBubble({ text, flip }: { text: string; flip?: boolean }) {
   return (
     <div
       style={{
         position: "absolute",
         bottom: "92%",
-        left: "60%",
+        ...(flip ? { right: "60%" } : { left: "60%" }),
         maxWidth: 220,
         width: "max-content",
         padding: "8px 11px",
         borderRadius: 12,
-        borderBottomLeftRadius: 2,
+        ...(flip ? { borderBottomRightRadius: 2 } : { borderBottomLeftRadius: 2 }),
         background: "rgba(8, 18, 28, 0.92)",
         border: "1px solid rgba(55, 227, 255, 0.55)",
         boxShadow: "0 0 18px -6px rgba(55, 227, 255, 0.8)",

@@ -17,7 +17,7 @@ export function LayerDock({ engine }: { engine: Engine | null }) {
   const layers = useStore(app, (s) => s.layers);
   const sim = useStore(app, (s) => s.simulation);
   return (
-    <Panel className="w-[220px]" title="Layers">
+    <Panel className="w-[220px]" title="Layers" tour="layers">
       <div className="py-1.5">
         {LAYERS.map((l) => (
           <Toggle key={l.key} on={layers[l.key]} label={l.label} color={l.color} hint={l.hint} onChange={(v) => engine?.setLayer(l.key, v)} />
@@ -35,7 +35,7 @@ const LEGEND_TYPES = [LandClass.Forest, LandClass.Grass, LandClass.Crop, LandCla
 
 export function Legend() {
   return (
-    <Panel className="w-[220px]" title="Legend">
+    <Panel className="w-[220px]" title="Legend" tour="legend">
       <div className="grid grid-cols-1 gap-y-1 px-3 py-2">
         {LEGEND_STATUSES.map((s) => (
           <div key={s} className="flex items-center gap-2 text-[10.5px] text-ink-dim">

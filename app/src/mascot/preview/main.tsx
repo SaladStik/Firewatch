@@ -10,6 +10,7 @@ import {
   DEFAULT_POSE, Firefly, FireflyAgent, makeConfig, mix, MOOD_NAMES, MOODS, SKINS, useFirefly,
   type EmoteName, type FireflyConfig, type FireflyPalette, type FireflyPose, type MoodName,
 } from "../firefly";
+import { mountFireflyDev, playScript, type FireflyScript } from "../firefly/script";
 
 const EMOTES: EmoteName[] = ["hop", "spin", "shake", "nod", "flutter"];
 const LINES = [
@@ -81,6 +82,14 @@ function App() {
 
       <aside style={S.panel}>
         <h1 style={S.h1}>FIREFLY <span style={{ color: "#37e3ff" }}>//</span> MASCOT</h1>
+
+        <Section title="Scripts & tutorials">
+          <Grid>
+            <Btn onClick={() => dispatchEvent(new Event("firefly-dev-toggle"))}>Recorder</Btn>
+            <Btn onClick={() => { ctl.stop(); void playScript(DEMO_TOUR).done.then(() => ctl.start()); }}>Spotlight demo</Btn>
+          </Grid>
+          <div style={{ fontSize: 10, color: "#5d7f90", marginTop: 6 }}>Recorder: Ctrl+Shift+F on any page.</div>
+        </Section>
 
         <Section title="Mood">
           <Grid>
@@ -259,9 +268,32 @@ export const FIREFLY_CONFIG = makeConfig(${JSON.stringify(c, null, 2)});
 `;
 }
 
+// ---------------------------------------------------------------- demo tutorial
+/** Hand-written example: anchors use the panel's data-tour sections, so it works at any size. */
+const DEMO_TOUR: FireflyScript = {
+  version: 1,
+  name: "Preview tour",
+  size: 0.1,
+  speed: 0.5,
+  start: { vx: 0.35, vy: 0.45 },
+  steps: [
+    { type: "mood", mood: "happy" },
+    { type: "say", text: "Hi! Quick tour of this page." },
+    { type: "spotlight", area: { selector: '[data-tour="mood"]', vx0: 0.84, vy0: 0.05, vx1: 1, vy1: 0.2 }, text: "Pick a mood here — I'll act it out." },
+    { type: "spotlight", area: { selector: '[data-tour="emotes"]', vx0: 0.84, vy0: 0.18, vx1: 1, vy1: 0.32 }, shape: "rect", text: "Emotes — try the spin!" },
+    { type: "emote", emote: "spin" },
+    { type: "spotlight", area: { selector: '[data-tour="colours"]', vx0: 0.84, vy0: 0.5, vx1: 1, vy1: 0.95 }, text: "Recolour me, then Copy config." },
+    { type: "spotlight", area: { vx0: 0.02, vy0: 0.86, vx1: 0.82, vy1: 0.99 }, shape: "ellipse", text: "And here's every mood at once." },
+    { type: "mood", mood: "excited" },
+    { type: "emote", emote: "hop" },
+    { type: "say", text: "That's it — press Ctrl+Shift+F to record your own!", seconds: 2.5 },
+  ],
+};
+
 // ---------------------------------------------------------------- tiny UI kit
 function Section({ title, children }: { title: string; children: ReactNode }) {
-  return <section style={{ marginBottom: 16 }}><div style={S.label}>{title}</div>{children}</section>;
+  const tour = title.toLowerCase().split(" ")[0].replace(/[^a-z]/g, "");
+  return <section data-tour={tour} style={{ marginBottom: 16 }}><div style={S.label}>{title}</div>{children}</section>;
 }
 function Grid({ children }: { children: ReactNode }) {
   return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4 }}>{children}</div>;
@@ -306,3 +338,6 @@ const S: Record<string, React.CSSProperties> = {
 };
 
 createRoot(document.getElementById("root")!).render(<App />);
+
+// Script recorder overlay (Ctrl+Shift+F).
+mountFireflyDev();

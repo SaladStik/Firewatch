@@ -21,6 +21,7 @@ export function Explore({ engine }: { engine: Engine | null }) {
     <Panel
       className="flex max-h-full w-[240px] flex-col"
       title="Explore"
+      tour="explore"
       right={
         <div className="flex gap-1">
           {(["regions", "places"] as const).map((t) => (

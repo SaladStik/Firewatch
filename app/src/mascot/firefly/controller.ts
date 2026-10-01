@@ -14,11 +14,16 @@ import { MOODS, type MoodName, type MoodSpec } from "./moods";
 import type { FireflyPose, WingPose } from "./types";
 
 export type EmoteName = "hop" | "spin" | "shake" | "nod" | "flutter";
-const EMOTE_DURATION: Record<EmoteName, number> = { hop: 0.55, spin: 1.9, shake: 0.6, nod: 0.6, flutter: 0.9 };
+export const EMOTE_DURATION: Record<EmoteName, number> = { hop: 0.55, spin: 1.9, shake: 0.6, nod: 0.6, flutter: 0.9 };
 
 export interface FlyOptions {
   /** Top speed in px/s (default 420). */
   speed?: number;
+  /**
+   * Pass-through waypoint: resolve as soon as he's within this many px and keep full
+   * speed (no slowing down), so a chain of waypoints flies as one smooth path.
+   */
+  pass?: number;
 }
 
 type Listener = (pose: FireflyPose, ctl: FireflyController) => void;
@@ -41,11 +46,12 @@ export class FireflyController {
   private blinkIn = 2.5;
   private blinkLeft = 0;
   private vel = { x: 0, y: 0 };
-  private target: { x: number; y: number; speed: number; done?: () => void } | null = null;
+  private target: { x: number; y: number; speed: number; pass?: number; done?: () => void } | null = null;
   private followFn: (() => { x: number; y: number } | null) | null = null;
   private lookPoint: { x: number; y: number } | null = null;
   private emote: { name: EmoteName; t: number; onPeak?: () => void; peaked?: boolean } | null = null;
   private talkUntil = 0;
+  private holdSpeech = false;
   private wanderIn = 1;
   private raf = 0;
   private last = 0;
@@ -64,8 +70,29 @@ export class FireflyController {
   flyTo(x: number, y: number, opts: FlyOptions = {}): Promise<void> {
     this.followFn = null;
     this.target?.done?.();
-    return new Promise((done) => { this.target = { x, y, speed: opts.speed ?? 420, done }; });
+    return new Promise((done) => { this.target = { x, y, speed: opts.speed ?? 420, pass: opts.pass, done }; });
   }
+
+  /** Stop any flight / follow / emote immediately (pending flyTo promises resolve). */
+  halt() {
+    const done = this.target?.done;
+    this.target = null;
+    this.followFn = null;
+    this.emote = null;
+    this.vel = { x: 0, y: 0 };
+    Object.assign(this.pose, { turn: 0, offsetX: 0, whirl: 0 });
+    done?.();
+  }
+
+  /** Jump to a point instantly (no flight). */
+  teleport(x: number, y: number) {
+    this.pose.x = x;
+    this.pose.y = y;
+    this.vel = { x: 0, y: 0 };
+  }
+
+  /** True while a flyTo / follow is in progress. */
+  get flying() { return !!this.target; }
 
   /** Continuously chase a point (e.g. the cursor). Pass null to stop. */
   follow(fn: (() => { x: number; y: number } | null) | null) { this.followFn = fn; }
@@ -81,10 +108,20 @@ export class FireflyController {
    */
   spin(opts: { onPeak?: () => void } = {}) { this.emote = { name: "spin", t: 0, onPeak: opts.onPeak }; }
 
-  /** Show a speech bubble and animate the mouth for `seconds`. */
-  say(text: string, seconds = Math.max(1.5, text.length * 0.06)) {
+  /**
+   * Show a speech bubble and animate the mouth for `seconds`.
+   * `hold`: keep the bubble up afterwards until clearSpeech() (e.g. tutorial steps).
+   */
+  say(text: string, seconds = Math.max(1.5, text.length * 0.06), opts: { hold?: boolean } = {}) {
     this.speech = text;
     this.talkUntil = this.t + seconds;
+    this.holdSpeech = !!opts.hold;
+  }
+
+  clearSpeech() {
+    this.speech = null;
+    this.holdSpeech = false;
+    this.talkUntil = 0;
   }
 
   subscribe(fn: Listener) {
@@ -139,11 +176,12 @@ export class FireflyController {
     if (this.target) {
       const dx = this.target.x - p.x, dy = this.target.y - p.y, d = Math.hypot(dx, dy);
       // Arrive steering: full speed far away, ease in near the target.
-      const want = Math.min(this.target.speed, d * 3);
+      const want = this.target.pass ? this.target.speed : Math.min(this.target.speed, d * 3);
       const vx = d > 0 ? (dx / d) * want : 0, vy = d > 0 ? (dy / d) * want : 0;
       ax = (vx - this.vel.x) * 6;
       ay = (vy - this.vel.y) * 6;
-      if (d < 3 && Math.hypot(this.vel.x, this.vel.y) < 25 && !this.followFn) {
+      const arrived = this.target.pass ? d < this.target.pass : d < 3 && Math.hypot(this.vel.x, this.vel.y) < 25;
+      if (arrived && !this.followFn) {
         const done = this.target.done;
         this.target = null;
         done?.();
@@ -221,7 +259,7 @@ export class FireflyController {
     if (this.t < this.talkUntil) {
       p.mouthOpen = 0.15 + 0.55 * Math.abs(Math.sin(this.t * 13)) * (0.6 + 0.4 * Math.sin(this.t * 3.1));
     } else {
-      if (this.speech && this.t > this.talkUntil + 1.2) this.speech = null;
+      if (this.speech && !this.holdSpeech && this.t > this.talkUntil + 1.2) this.speech = null;
       p.mouthOpen += ((f.mouthOpen ?? 0) - p.mouthOpen) * k;
     }
   }

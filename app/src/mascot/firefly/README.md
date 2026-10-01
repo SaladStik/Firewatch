@@ -5,6 +5,8 @@ A 2D mascot (and future AI agent) for EMBER//GRID: a glowing firefly drawn entir
 He's built so that every part of him can be animated on its own. He can fly around the screen, emote, talk and change outfits mid-spin.
 
 > **Status: preview.** He isn't used in the map yet. Try him at **`/firefly.html`** (`npm run dev`, then open http://localhost:5173/firefly.html).
+>
+> **Tours and tutorials:** record him on any page with **Ctrl+Shift+F**: flying, talking, emoting, and spotlighting parts of the UI. Replay the result anywhere, at any resolution. See **[script/README.md](script/README.md)**.
 
 ---
 
@@ -44,6 +46,7 @@ mascot/firefly/
   controller.ts    FireflyController: the "brain" (procedural animation, flight, emotes, speech)
   FireflyAgent.tsx useFirefly() hook + <FireflyAgent/> (positioned on screen, speech bubble)
   index.ts         public exports
+  script/          recorder overlay, script player, spotlight tutorials (see script/README.md)
 mascot/preview/    the /firefly.html playground
 ```
 
