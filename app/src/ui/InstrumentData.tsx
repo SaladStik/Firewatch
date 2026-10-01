@@ -191,7 +191,7 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
       />
       <div className="flex min-h-0 flex-1">
         <aside className={`scroll-thin flex shrink-0 flex-col overflow-y-auto ${selected ? "w-80 border-r border-line" : "w-full"}`}>
-          <div className="flex flex-wrap gap-1 px-3 pt-3">
+          <div className="flex flex-wrap items-center gap-1 px-3 pt-3">
             <button
               type="button"
               onClick={() => setProvince(null)}
@@ -213,19 +213,7 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
               );
             })}
           </div>
-          <div className="flex items-center gap-2 px-3 py-3">
-            <label className="flex min-w-0 flex-1 items-center gap-2 border border-line px-2 py-1">
-              <Search size={12} className="shrink-0 text-ink-mute" />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search"
-                aria-label="Search instruments"
-                className="w-full bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-mute"
-              />
-            </label>
-          </div>
-          <div className="flex flex-wrap gap-1 px-3 pb-3">
+          <div className="flex flex-wrap items-center gap-1 px-3 py-3">
             {SORTS.map((item) => {
               const on = sort === item.id;
               const label = !on ? item.label : item.desc ? item.active : sortDesc ? "HUMIDITY HIGH TO LOW" : item.active;
@@ -262,6 +250,16 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
             >
               CLEAR FILTERS
             </button>
+            <label className="ml-1 flex w-44 shrink-0 items-center gap-2 border border-line px-2 py-1">
+              <Search size={12} className="shrink-0 text-ink-mute" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search"
+                aria-label="Search instruments"
+                className="w-full bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-mute"
+              />
+            </label>
           </div>
           {error && <p className="px-4 pb-3 text-[11px] text-fire">{error}</p>}
           {!error && instruments.length === 0 && <p className="px-4 pb-3 text-[11px] text-ink-mute">Loading collectors…</p>}

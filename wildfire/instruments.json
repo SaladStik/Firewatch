@@ -225,6 +225,123 @@
     "dashboard": "http://127.0.0.1:8000/?instrument=fort-st-john"
   },
   {
+    "id": "nanaimo",
+    "name": "Nanaimo Station",
+    "location": "Nanaimo, British Columbia",
+    "latitude": 49.1659,
+    "longitude": -123.9401,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=nanaimo"
+  },
+  {
+    "id": "abbotsford",
+    "name": "Abbotsford Station",
+    "location": "Abbotsford, British Columbia",
+    "latitude": 49.0504,
+    "longitude": -122.3045,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=abbotsford"
+  },
+  {
+    "id": "penticton",
+    "name": "Penticton Station",
+    "location": "Penticton, British Columbia",
+    "latitude": 49.4991,
+    "longitude": -119.5937,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=penticton"
+  },
+  {
+    "id": "cranbrook",
+    "name": "Cranbrook Station",
+    "location": "Cranbrook, British Columbia",
+    "latitude": 49.512,
+    "longitude": -115.769,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=cranbrook"
+  },
+  {
+    "id": "nelson",
+    "name": "Nelson Station",
+    "location": "Nelson, British Columbia",
+    "latitude": 49.4928,
+    "longitude": -117.2948,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=nelson"
+  },
+  {
+    "id": "williams-lake",
+    "name": "Williams Lake Station",
+    "location": "Williams Lake, British Columbia",
+    "latitude": 52.1417,
+    "longitude": -122.1417,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=williams-lake"
+  },
+  {
+    "id": "quesnel",
+    "name": "Quesnel Station",
+    "location": "Quesnel, British Columbia",
+    "latitude": 52.9784,
+    "longitude": -122.4927,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=quesnel"
+  },
+  {
+    "id": "smithers",
+    "name": "Smithers Station",
+    "location": "Smithers, British Columbia",
+    "latitude": 54.7804,
+    "longitude": -127.1743,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=smithers"
+  },
+  {
+    "id": "terrace",
+    "name": "Terrace Station",
+    "location": "Terrace, British Columbia",
+    "latitude": 54.5182,
+    "longitude": -128.6032,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=terrace"
+  },
+  {
+    "id": "dawson-creek",
+    "name": "Dawson Creek Station",
+    "location": "Dawson Creek, British Columbia",
+    "latitude": 55.7596,
+    "longitude": -120.2377,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=dawson-creek"
+  },
+  {
+    "id": "fort-nelson",
+    "name": "Fort Nelson Station",
+    "location": "Fort Nelson, British Columbia",
+    "latitude": 58.805,
+    "longitude": -122.6972,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=fort-nelson"
+  },
+  {
+    "id": "revelstoke",
+    "name": "Revelstoke Station",
+    "location": "Revelstoke, British Columbia",
+    "latitude": 50.9981,
+    "longitude": -118.1957,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=revelstoke"
+  },
+  {
+    "id": "campbell-river",
+    "name": "Campbell River Station",
+    "location": "Campbell River, British Columbia",
+    "latitude": 50.0244,
+    "longitude": -125.2475,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=campbell-river"
+  },
+  {
     "id": "saskatoon",
     "name": "Saskatoon Station",
     "location": "Saskatoon, Saskatchewan",
@@ -277,5 +394,95 @@
     "longitude": -107.7939,
     "kind": "demo",
     "dashboard": "http://127.0.0.1:8000/?instrument=swift-current"
+  },
+  {
+    "id": "yorkton",
+    "name": "Yorkton Station",
+    "location": "Yorkton, Saskatchewan",
+    "latitude": 51.2139,
+    "longitude": -102.4628,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=yorkton"
+  },
+  {
+    "id": "north-battleford",
+    "name": "North Battleford Station",
+    "location": "North Battleford, Saskatchewan",
+    "latitude": 52.7575,
+    "longitude": -108.2861,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=north-battleford"
+  },
+  {
+    "id": "estevan",
+    "name": "Estevan Station",
+    "location": "Estevan, Saskatchewan",
+    "latitude": 49.1392,
+    "longitude": -102.9861,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=estevan"
+  },
+  {
+    "id": "weyburn",
+    "name": "Weyburn Station",
+    "location": "Weyburn, Saskatchewan",
+    "latitude": 49.6611,
+    "longitude": -103.8525,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=weyburn"
+  },
+  {
+    "id": "meadow-lake",
+    "name": "Meadow Lake Station",
+    "location": "Meadow Lake, Saskatchewan",
+    "latitude": 54.1242,
+    "longitude": -108.4356,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=meadow-lake"
+  },
+  {
+    "id": "melfort",
+    "name": "Melfort Station",
+    "location": "Melfort, Saskatchewan",
+    "latitude": 52.8564,
+    "longitude": -104.61,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=melfort"
+  },
+  {
+    "id": "humboldt",
+    "name": "Humboldt Station",
+    "location": "Humboldt, Saskatchewan",
+    "latitude": 52.2019,
+    "longitude": -105.1231,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=humboldt"
+  },
+  {
+    "id": "kindersley",
+    "name": "Kindersley Station",
+    "location": "Kindersley, Saskatchewan",
+    "latitude": 51.4678,
+    "longitude": -109.1564,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=kindersley"
+  },
+  {
+    "id": "nipawin",
+    "name": "Nipawin Station",
+    "location": "Nipawin, Saskatchewan",
+    "latitude": 53.3572,
+    "longitude": -104.0186,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=nipawin"
+  },
+  {
+    "id": "buffalo-narrows",
+    "name": "Buffalo Narrows Station",
+    "location": "Buffalo Narrows, Saskatchewan",
+    "latitude": 55.8419,
+    "longitude": -108.4694,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=buffalo-narrows"
   }
 ]
