@@ -11,6 +11,8 @@ export interface HazardInputs {
   hotspots: Hotspot[];
   perimeters: Perimeter[];
   weather: WeatherGrid[];
+  /** Forecast day index into each cell's `days` (0 = now). */
+  day: number;
   /** Demo scenario: multiplies weather risk (1 = real data). */
   weatherBoost: number;
 }
@@ -41,7 +43,7 @@ export function buildSnapshot(inp: HazardInputs): HazardSnapshot {
     }),
     weather: inp.weather.map((w) => ({
       lat0: w.lat0, lng0: w.lng0, step: w.step, nLat: w.nLat, nLng: w.nLng,
-      risk: w.cells.map((c) => Math.min(1, c.risk * inp.weatherBoost)),
+      risk: w.cells.map((c) => Math.min(1, (c.days[inp.day]?.risk ?? 0) * inp.weatherBoost)),
     })),
   };
 }

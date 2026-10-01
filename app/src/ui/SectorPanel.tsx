@@ -6,6 +6,7 @@ import { NODE_STATUSES, NODE_TYPES, NodeStatus } from "../hex/nodeTypes";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
+import { compass, dayLabel } from "./weatherFormat";
 import { HexIcon, KV, Panel, SegBar } from "./primitives";
 
 function riskColor(r: number) {
@@ -17,11 +18,12 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
   const sample = useStore(app, (s) => s.selectedSample);
   const weather = useStore(app, (s) => s.weather);
   const flagged = useStore(app, (s) => s.flagged);
+  const day = useStore(app, (s) => s.forecastDay);
   const regionName = useStore(app, (s) => s.regions[n?.region ?? 0]?.name);
   if (!n) return null;
   const type = NODE_TYPES[n.land];
   const status = NODE_STATUSES[n.status];
-  const wx = weatherAt(weather, n.lat, n.lng);
+  const wx = weatherAt(weather, n.lat, n.lng)?.days[day];
   const statusColor = status.line ?? type.line;
   const isFlagged = flagged.includes(n.key);
   const cellM = GRID.levels[n.level].size * Math.sqrt(3) * 1000;
@@ -67,10 +69,12 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
         />
         {wx && (
           <>
-            <div className="mt-2 mb-1 label-xs">Weather · Open-Meteo</div>
-            <KV k="Temp / RH" v={`${wx.temp.toFixed(0)}°C / ${wx.rh.toFixed(0)}%`} />
-            <KV k="Wind" v={`${wx.wind.toFixed(0)} km/h`} />
-            <KV k="Rain (72h)" v={`${wx.rain3d.toFixed(1)} mm`} />
+            <div className="mt-2 mb-1 label-xs">Weather · Open-Meteo · {dayLabel(day, weather[0]?.dates)}</div>
+            <KV k={day === 0 ? "Temp / RH" : "Max temp / min RH"} v={`${wx.temp.toFixed(0)}°C / ${wx.rh.toFixed(0)}%`} />
+            <KV k="Wind" v={`${wx.wind.toFixed(0)} km/h from ${compass(wx.windFrom)} (${Math.round(wx.windFrom)}°)`} />
+            <KV k="Rain (day)" v={`${wx.rainMm.toFixed(1)} mm`} />
+            <KV k="Days since rain" v={wx.daysSinceRain > 30 ? "30+" : String(wx.daysSinceRain)} />
+            <KV k="Fosberg FFWI" v={wx.ffwi.toFixed(1)} />
           </>
         )}
       </div>

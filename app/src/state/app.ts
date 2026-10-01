@@ -56,6 +56,8 @@ export interface AppState {
   weather: WeatherGrid[];
   dataStatus: { cwfis: "loading" | "ok" | "error"; weather: "loading" | "ok" | "error"; at?: string };
   simulation: boolean;
+  /** Forecast slider: 0 = now, 1..7 = days ahead. Fires stay as observed now. */
+  forecastDay: number;
   /** Sectors flagged for patrol this session. */
   flagged: string[];
 }
@@ -78,6 +80,7 @@ export const app = createStore<AppState>({
   weather: [],
   dataStatus: { cwfis: "loading", weather: "loading" },
   simulation: false,
+  forecastDay: 0,
   flagged: [],
 });
 

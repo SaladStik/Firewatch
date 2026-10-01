@@ -20,8 +20,11 @@ import type { HexNodeInfo } from "./world/types";
 const RISK_STATUSES = new Set<number>([NodeStatus.Elevated, NodeStatus.High, NodeStatus.Extreme]);
 const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Burned]);
 const DATA_REFRESH_MS = 10 * 60 * 1000;
-/** Weather changes slowly and Open-Meteo is rate-limited per point: refresh each region at most this often. */
-const WEATHER_TTL_MS = 30 * 60 * 1000;
+/**
+ * Weather changes slowly and Open-Meteo is rate-limited per point (a 38-day request
+ * counts as several calls per point): refresh each region at most this often.
+ */
+const WEATHER_TTL_MS = 60 * 60 * 1000;
 
 export class Engine {
   scene!: Scene;
@@ -158,7 +161,7 @@ export class Engine {
     const s = app.get();
     const hotspots = this.allHotspots();
     await this.client.setHazards(buildSnapshot({
-      hotspots, perimeters: s.perimeters, weather: s.weather, weatherBoost: s.simulation ? 1.35 : 1,
+      hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost: s.simulation ? 1.35 : 1,
     }));
     await this.scene.world.refreshStatus();
     const beacons = await Promise.all(hotspots.map(async (h) => {
