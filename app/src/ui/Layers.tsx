@@ -7,7 +7,7 @@ import { useStore } from "../state/store";
 import { HexIcon, Panel, Toggle } from "./primitives";
 
 const LAYERS: { key: keyof Layers; label: string; color?: string; hint: string }[] = [
-  { key: "risk", label: "Fire risk", color: "var(--color-risk-high)", hint: "Weather × fuel risk model" },
+  { key: "risk", label: "Fire risk", color: "var(--color-risk-high)", hint: "Fosberg FFWI × dryness × fuel, stretched downwind of fires" },
   { key: "fires", label: "Fires + perimeters", color: "var(--color-fire)", hint: "CWFIS satellite hotspots + M3 perimeters" },
   { key: "beacons", label: "Hotspot beacons", color: "var(--color-fire)", hint: "Vertical markers visible from any zoom" },
   { key: "bloom", label: "Glow", hint: "Bloom post-processing (turn off on slow devices)" },
