@@ -1,5 +1,19 @@
 const temperatureEl = document.querySelector("#temperature");
 const humidityEl = document.querySelector("#humidity");
+const stationId = new URLSearchParams(location.search).get("instrument");
+
+function withStation(path) {
+  if (!stationId) return path;
+  const join = path.includes("?") ? "&" : "?";
+  return `${path}${join}instrument=${encodeURIComponent(stationId)}`;
+}
+
+function windPayload(speed, source) {
+  const body = { wind_speed_mph: speed, source };
+  if (stationId) body.instrument = stationId;
+  return JSON.stringify(body);
+}
+
 const sensorStatusEl = document.querySelector("#sensor-status");
 const lastReadingEl = document.querySelector("#last-reading");
 const sensorDetailEl = document.querySelector("#sensor-detail");
@@ -24,9 +38,11 @@ const devToggle = document.querySelector("#dev-toggle");
 const devPanel = document.querySelector("#dev-panel");
 const devWindNote = document.querySelector("#dev-wind-note");
 const devWindKeys = document.querySelector("#dev-wind-keys");
+const devSim = document.querySelector("#dev-sim");
+const devTempEl = document.querySelector("#dev-temp");
+const devHumidityEl = document.querySelector("#dev-humidity");
+if (stationId) devSim.hidden = false;
 const themeToggle = document.querySelector("#theme-toggle");
-const linkLabelEl = document.querySelector("#link-label");
-const syncClockEl = document.querySelector("#sync-clock");
 const tickTempEl = document.querySelector("#tick-temp");
 const tickHumidityEl = document.querySelector("#tick-humidity");
 const tickWindEl = document.querySelector("#tick-wind");
@@ -126,10 +142,12 @@ function renderStatus(data) {
 
   temperatureEl.textContent = formatMeasure(sensor.temperature_c, "°C", 1);
   humidityEl.textContent = formatMeasure(sensor.humidity_pct, "%", 1);
+  if (stationId) {
+    devTempEl.textContent = formatMeasure(sensor.temperature_c, "°C", 1);
+    devHumidityEl.textContent = formatMeasure(sensor.humidity_pct, "%", 0);
+  }
   sensorStatusEl.textContent = sensor.label || "—";
   sensorStatusEl.className = statusClass(sensor.label);
-  linkLabelEl.textContent = sensor.label || "—";
-  linkLabelEl.className = statusClass(sensor.label);
   lastReadingEl.textContent = formatClock(sensor.last_reading);
   sensorDetailEl.textContent = sensor.detail || "";
   sensorCard.classList.toggle("is-dim", !connected);
@@ -364,14 +382,14 @@ function drawRiskChart(points) {
 }
 
 async function loadStatus() {
-  const response = await fetch("/api/status", { cache: "no-store" });
+  const response = await fetch(withStation("/api/status"), { cache: "no-store" });
   if (!response.ok) throw new Error("status failed");
   renderStatus(await response.json());
   appErrorEl.hidden = true;
 }
 
 async function loadHistory() {
-  const response = await fetch("/api/history?limit=500", { cache: "no-store" });
+  const response = await fetch(withStation("/api/history?limit=500"), { cache: "no-store" });
   if (!response.ok) throw new Error("history failed");
   const payload = await response.json();
   const points = payload.points || [];
@@ -399,6 +417,25 @@ function setDevOpen(open) {
 devToggle.addEventListener("click", (event) => {
   event.stopPropagation();
   setDevOpen(devPanel.hidden);
+});
+
+devSim.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button || !stationId) return;
+  const body = { instrument: stationId };
+  if (button.dataset.temp) body.temperature_delta = Number(button.dataset.temp);
+  if (button.dataset.humidity) body.humidity_delta = Number(button.dataset.humidity);
+  if (body.temperature_delta == null && body.humidity_delta == null) return;
+  fetch("/api/demo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then(async (response) => {
+    if (!response.ok) return;
+    renderStatus(await response.json());
+    historyKey = "";
+    loadHistory();
+  }).catch(() => {});
 });
 
 document.addEventListener("click", (event) => {
@@ -448,7 +485,7 @@ function postKeyWind(speed) {
     const response = await fetch("/api/wind", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wind_speed_mph: speed, source: "dev: arrow keys" }),
+      body: windPayload(speed, "dev: arrow keys"),
     });
     if (!response.ok) {
       devWindNote.textContent = "Could not save that wind choice.";
@@ -505,7 +542,7 @@ function easeWindTo(target, label) {
         const response = await fetch("/api/wind", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ wind_speed_mph: posted, source: `dev: ${label}` }),
+          body: windPayload(posted, `dev: ${label}`),
         });
         if (!response.ok) {
           devWindNote.textContent = "Could not save that wind choice.";
@@ -537,7 +574,7 @@ function commitWind(target, label) {
   fetch("/api/wind", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ wind_speed_mph: target, source: `dev: ${label}` }),
+    body: windPayload(target, `dev: ${label}`),
   }).then(async (response) => {
     if (!response.ok) {
       devWindNote.textContent = "Could not save that wind choice.";
@@ -574,19 +611,9 @@ themeToggle.addEventListener("click", () => {
   applyTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
 });
 
+if (window.parent !== window) themeToggle.hidden = true;
+
 applyTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
 
-function renderClock() {
-  const time = new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-  syncClockEl.textContent = `WX · SYNC ${time}`;
-}
-
-renderClock();
-setInterval(renderClock, 1000);
 refresh();
 setInterval(refresh, 3000);

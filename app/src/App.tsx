@@ -64,7 +64,7 @@ export default function App() {
       </div>
       <HoverTip />
       <BootScreen />
-      {screen === "instruments" && <InstrumentData onBack={() => setScreen("map")} />}
+      {screen === "instruments" && <InstrumentData engine={engine} onBack={() => setScreen("map")} />}
     </main>
   );
 }

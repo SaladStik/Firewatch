@@ -189,7 +189,7 @@ body::before {
   top: calc(100% + 8px);
   right: 0;
   z-index: 6;
-  width: 230px;
+  width: 260px;
   padding: 10px;
   border: 1px solid var(--line-strong);
   background: var(--panel-raise);
@@ -235,6 +235,44 @@ body::before {
   letter-spacing: 0;
   text-transform: none;
   line-height: 1.35;
+}
+
+.dev-sim {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.dev-sim[hidden] {
+  display: none;
+}
+
+.dev-sim-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.dev-sim-row span {
+  flex: 1;
+  font-size: 0.78rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.dev-sim-row strong {
+  min-width: 58px;
+  font-family: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.dev-step {
+  width: 28px;
+  padding: 2px 0;
+  text-align: center;
 }
 
 .dev-keys input {
@@ -329,6 +367,25 @@ h3 {
 
 .detail { margin-bottom: 8px; }
 .meta { margin-bottom: 0; font-size: 0.8rem; }
+
+.sensor-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.sensor-title h2 {
+  margin: 0;
+}
+
+.sensor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
 
 .readings {
   display: grid;

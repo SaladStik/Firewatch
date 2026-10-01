@@ -1,0 +1,20 @@
+[
+  {
+    "id": "local-dht11",
+    "name": "Local DHT11",
+    "location": "Local station",
+    "latitude": null,
+    "longitude": null,
+    "kind": "local",
+    "dashboard": "http://127.0.0.1:8000/"
+  },
+  {
+    "id": "fort-mcmurray",
+    "name": "Fort McMurray Station",
+    "location": "Fort McMurray, Alberta",
+    "latitude": 56.7267,
+    "longitude": -111.379,
+    "kind": "demo",
+    "dashboard": "http://127.0.0.1:8000/?instrument=fort-mcmurray"
+  }
+]

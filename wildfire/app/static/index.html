@@ -12,47 +12,10 @@
       if (theme === "light") document.documentElement.dataset.theme = "light";
     } catch (error) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=units">
+  <link rel="stylesheet" href="/static/styles.css?v=sim">
 </head>
 <body>
   <div class="shell">
-    <header class="topbar">
-      <div class="brand">
-        <svg class="hex" viewBox="0 0 24 28" aria-hidden="true">
-          <polygon points="12,1.2 22.5,7.2 22.5,20.8 12,26.8 1.5,20.8 1.5,7.2" fill="none" stroke="currentColor" stroke-width="1.2"/>
-        </svg>
-        <div>
-          <p class="brand-title">Wildfire weather intel</p>
-          <p class="brand-sub">Local monitor</p>
-        </div>
-      </div>
-      <div class="top-tools">
-        <p class="sync" id="sync-clock">WX · SYNC</p>
-        <div class="link-chip">
-          <span class="link-kicker">Feed</span>
-          <span id="link-label">—</span>
-        </div>
-        <button type="button" id="theme-toggle" class="theme-toggle" aria-pressed="false">Light</button>
-        <div class="dev-wrap">
-          <button type="button" id="dev-toggle" class="dev-button" aria-expanded="false" aria-haspopup="true" aria-controls="dev-panel">Dev</button>
-          <div id="dev-panel" class="dev-panel" hidden>
-            <p>Stand-in wind for the model. This does not change the DHT11 reading.</p>
-            <div class="dev-choices">
-              <button type="button" data-wind="0" data-label="No wind">No wind</button>
-              <button type="button" data-wind="5" data-label="Light wind">Light wind</button>
-              <button type="button" data-wind="15" data-label="Med wind">Med wind</button>
-              <button type="button" data-wind="30" data-label="Heavy wind">Heavy wind</button>
-            </div>
-            <label class="dev-keys" for="dev-wind-keys">
-              <input type="checkbox" id="dev-wind-keys">
-              <span>Arrow keys change wind</span>
-            </label>
-            <p id="dev-wind-note" class="dev-result"></p>
-          </div>
-        </div>
-      </div>
-    </header>
-
     <section class="ticker" aria-label="Current readings">
       <div>
         <strong id="tick-temp">—</strong>
@@ -87,7 +50,44 @@
       <div class="stack">
         <section class="card sensor-card" aria-labelledby="sensor-heading">
           <p class="eyebrow">Sensor</p>
-          <h2 id="sensor-heading">DHT11 feed</h2>
+          <div class="sensor-title">
+            <h2 id="sensor-heading">DHT11 feed</h2>
+            <div class="sensor-actions">
+              <button type="button" id="theme-toggle" class="theme-toggle" aria-pressed="false">Light</button>
+              <div class="dev-wrap">
+                <button type="button" id="dev-toggle" class="dev-button" aria-expanded="false" aria-haspopup="true" aria-controls="dev-panel">Dev options</button>
+                <div id="dev-panel" class="dev-panel" hidden>
+                  <p>Stand-in wind for the model. This does not change the DHT11 reading.</p>
+                  <div class="dev-choices">
+                    <button type="button" data-wind="0" data-label="No wind">No wind</button>
+                    <button type="button" data-wind="5" data-label="Light wind">Light wind</button>
+                    <button type="button" data-wind="15" data-label="Med wind">Med wind</button>
+                    <button type="button" data-wind="30" data-label="Heavy wind">Heavy wind</button>
+                  </div>
+                  <div id="dev-sim" hidden>
+                    <p>Test data for this station. Arrows hold that reading in place.</p>
+                    <div class="dev-sim-row">
+                      <span>Temperature</span>
+                      <button type="button" class="dev-step" data-temp="-0.5" aria-label="Lower temperature">↓</button>
+                      <strong id="dev-temp">—</strong>
+                      <button type="button" class="dev-step" data-temp="0.5" aria-label="Raise temperature">↑</button>
+                    </div>
+                    <div class="dev-sim-row">
+                      <span>Moisture</span>
+                      <button type="button" class="dev-step" data-humidity="-1" aria-label="Lower moisture">↓</button>
+                      <strong id="dev-humidity">—</strong>
+                      <button type="button" class="dev-step" data-humidity="1" aria-label="Raise moisture">↑</button>
+                    </div>
+                  </div>
+                  <label class="dev-keys" for="dev-wind-keys">
+                    <input type="checkbox" id="dev-wind-keys">
+                    <span>Arrow keys change wind</span>
+                  </label>
+                  <p id="dev-wind-note" class="dev-result"></p>
+                </div>
+              </div>
+            </div>
+          </div>
           <p class="lede">Measured by the DHT11 on the Arduino. This page reads them from the application, which listens to the board over USB or Wi-Fi.</p>
           <dl class="readings">
             <div>
@@ -232,6 +232,6 @@
     </footer>
   </div>
   <noscript>This dashboard needs JavaScript to load live readings.</noscript>
-  <script src="/static/app.js?v=units"></script>
+  <script src="/static/app.js?v=sim"></script>
 </body>
 </html>
