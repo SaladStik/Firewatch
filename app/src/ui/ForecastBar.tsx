@@ -1,5 +1,6 @@
 /** Forecast slider: re-scores the map for a chosen day, and lists the communities most at risk that day. */
 import { useMemo } from "react";
+import { SIM_WEATHER_BOOST } from "../data/hazards";
 import { FORECAST_DAYS, PAST_DAYS, weatherAt, type WeatherCell } from "../data/openMeteo";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
@@ -14,6 +15,7 @@ export function ForecastBar({ engine }: { engine: Engine | null }) {
   const day = useStore(app, (s) => s.forecastDay);
   const weather = useStore(app, (s) => s.weather);
   const places = useStore(app, (s) => s.places);
+  const sim = useStore(app, (s) => s.simulation);
   const focus = useFocusIndices();
 
   const atRisk = useMemo(() => {
@@ -26,13 +28,15 @@ export function ForecastBar({ engine }: { engine: Engine | null }) {
         const w = c?.days[day];
         return c && w ? [{ p, w, c }] : [];
       })
-      .sort((a, b) => b.w.ffwi - a.w.ffwi || b.p.pop - a.p.pop)
+      .sort((a, b) => b.w.risk - a.w.risk || b.p.pop - a.p.pop)
       .filter(({ c }) => !seen.has(c) && !!seen.add(c))
       .slice(0, 5);
   }, [places, weather, day, focus]);
 
   if (!weather.length) return null;
   const dates = weather[0].dates;
+  // Same scale as the map colour and "Peak wx risk".
+  const score = (risk: number) => Math.round(Math.min(1, risk * (sim ? SIM_WEATHER_BOOST : 1)) * 100);
 
   return (
     <div className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-stretch">
@@ -56,9 +60,9 @@ export function ForecastBar({ engine }: { engine: Engine | null }) {
             key={`${p.region}-${p.name}`}
             onClick={() => engine?.flyToLatLng(p.lat, p.lng, 25)}
             className="shrink-0 border border-line px-2 py-1 text-[10.5px] text-ink-dim transition hover:border-risk-high"
-            title={`Fosberg FFWI ${w.ffwi.toFixed(1)} · ${w.daysSinceRain > PAST_DAYS ? `${PAST_DAYS}+` : w.daysSinceRain} days since rain`}
+            title={`Risk ${score(w.risk)} · Fosberg FFWI ${w.ffwi.toFixed(1)} · ${w.daysSinceRain > PAST_DAYS ? `${PAST_DAYS}+` : w.daysSinceRain} days since rain`}
           >
-            {p.name} <span className="text-risk-high tabular-nums">{w.ffwi.toFixed(0)}</span>
+            {p.name} <span className="text-risk-high tabular-nums">{score(w.risk)}</span>
           </button>
         ))}
         {day > 0 && <span className="ml-auto shrink-0 text-[10px] text-ink-mute">Fires shown as observed now</span>}

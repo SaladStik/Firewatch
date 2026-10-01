@@ -1,6 +1,6 @@
 /** Bottom strip: headline numbers + strongest hotspots (click to fly). */
 import { useMemo } from "react";
-import { isPerimeterActive, simulatedHotspots } from "../data/hazards";
+import { isPerimeterActive, SIM_WEATHER_BOOST, simulatedHotspots } from "../data/hazards";
 import { useFocusIndices } from "./region";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
@@ -36,7 +36,7 @@ export function FireFeed({ engine }: { engine: Engine | null }) {
   const active = focusPer.filter((p) => isPerimeterActive(p)).length;
   const burnedHa = focusPer.reduce((a, p) => a + p.areaHa, 0);
   const wxCells = weather.flatMap((w) => w.cells);
-  const wxMax = wxCells.length ? Math.max(...wxCells.map((c) => c.days[day]?.risk ?? 0)) * (sim ? 1.35 : 1) : 0;
+  const wxMax = wxCells.length ? Math.max(...wxCells.map((c) => c.days[day]?.risk ?? 0)) * (sim ? SIM_WEATHER_BOOST : 1) : 0;
 
   return (
     <div data-tour="fire-feed" className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-stretch">

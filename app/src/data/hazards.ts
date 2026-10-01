@@ -19,6 +19,8 @@ export interface HazardInputs {
 }
 
 const ACTIVE_PERIMETER_DAYS = 5;
+/** Demo scenario: heatwave multiplier on weather risk. */
+export const SIM_WEATHER_BOOST = 1.35;
 
 export function isPerimeterActive(p: Perimeter, now = Date.now()) {
   return now - Date.parse(p.lastDate) < ACTIVE_PERIMETER_DAYS * 86_400_000;

@@ -5,7 +5,7 @@
  */
 import { PROJECTION, type Region } from "./config/regions";
 import { fetchHotspots, fetchPerimeters } from "./data/cwfis";
-import { buildSnapshot, simulatedHotspots } from "./data/hazards";
+import { buildSnapshot, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
 import { FORECAST_DAYS, fetchWeatherGrid, type WeatherGrid } from "./data/openMeteo";
 import type { Place } from "./data/places";
 import { project, setProjectionCenter } from "./geo/projection";
@@ -168,7 +168,7 @@ export class Engine {
     const s = app.get();
     const hotspots = this.allHotspots();
     await this.client.setHazards(buildSnapshot({
-      hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost: s.simulation ? 1.35 : 1,
+      hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost: s.simulation ? SIM_WEATHER_BOOST : 1,
     }));
     await this.scene.world.refreshStatus();
     // The open sector panel shows status/risk from click time; re-read it for the new hazards.
