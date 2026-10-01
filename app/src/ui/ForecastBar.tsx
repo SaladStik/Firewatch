@@ -1,6 +1,6 @@
 /** Forecast slider: re-scores the map for a chosen day, and lists the communities most at risk that day. */
 import { useMemo } from "react";
-import { FORECAST_DAYS, PAST_DAYS, weatherAt } from "../data/openMeteo";
+import { FORECAST_DAYS, PAST_DAYS, weatherAt, type WeatherCell } from "../data/openMeteo";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
@@ -16,31 +16,34 @@ export function ForecastBar({ engine }: { engine: Engine | null }) {
   const places = useStore(app, (s) => s.places);
   const focus = useFocusIndices();
 
-  const atRisk = useMemo(
-    () => places
+  const atRisk = useMemo(() => {
+    // Weather cells are ~160 km: keep the biggest town per cell so the list shows 5 distinct areas.
+    const seen = new Set<WeatherCell>();
+    return places
       .filter((p) => !p.landmark && p.pop >= MIN_POP && focus.has(p.region))
       .flatMap((p) => {
-        const w = weatherAt(weather, p.lat, p.lng)?.days[day];
-        return w ? [{ p, w }] : [];
+        const c = weatherAt(weather, p.lat, p.lng);
+        const w = c?.days[day];
+        return c && w ? [{ p, w, c }] : [];
       })
-      .sort((a, b) => b.w.ffwi - a.w.ffwi)
-      .slice(0, 5),
-    [places, weather, day, focus],
-  );
+      .sort((a, b) => b.w.ffwi - a.w.ffwi || b.p.pop - a.p.pop)
+      .filter(({ c }) => !seen.has(c) && !!seen.add(c))
+      .slice(0, 5);
+  }, [places, weather, day, focus]);
 
   if (!weather.length) return null;
   const dates = weather[0].dates;
 
   return (
     <div className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-stretch">
-      <div className="flex items-center gap-1 border-r border-line px-2 py-1.5">
-        <span className="label-xs mr-1">Forecast</span>
+      <div className="scroll-thin flex min-w-0 items-center gap-1 overflow-x-auto px-2 py-1.5 lg:border-r lg:border-line">
+        <span className="label-xs mr-1 hidden shrink-0 sm:inline">Forecast</span>
         {Array.from({ length: FORECAST_DAYS + 1 }, (_, d) => (
           <button
             key={d}
             onClick={() => engine?.setForecastDay(d)}
             aria-pressed={d === day}
-            className={`border px-2 py-1 text-[10.5px] tracking-widest transition ${d === day ? "border-phos text-phos-glow" : "border-line text-ink-dim hover:border-phos"}`}
+            className={`shrink-0 whitespace-nowrap border px-2 py-1 text-[10.5px] tracking-widest transition ${d === day ? "border-phos text-phos-glow" : "border-line text-ink-dim hover:border-phos"}`}
           >
             {dayLabel(d, dates)}
           </button>

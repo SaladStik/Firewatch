@@ -164,6 +164,9 @@ export class Engine {
       hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost: s.simulation ? 1.35 : 1,
     }));
     await this.scene.world.refreshStatus();
+    // The open sector panel shows status/risk from click time; re-read it for the new hazards.
+    const sel = app.get().selected;
+    if (sel) app.set({ selected: this.scene.world.getNode(sel.level, sel.q, sel.r) ?? sel });
     const beacons = await Promise.all(hotspots.map(async (h) => {
       const w = project(h.lat, h.lng);
       const smp = await this.client.sample(w.x, w.z);
