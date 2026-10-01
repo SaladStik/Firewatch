@@ -177,6 +177,12 @@ export class Engine {
     void this.pushHazards();
   }
 
+  /** Re-score the map with forecast weather for `day` (0 = now, 1..7 ahead). */
+  setForecastDay(day: number) {
+    app.set({ forecastDay: day });
+    void this.pushHazards();
+  }
+
   // ------------------------------------------------------------ view options
   setTheme(theme: Theme) {
     app.set({ theme });

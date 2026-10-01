@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Engine } from "./engine";
 import { app } from "./state/app";
 import { FireFeed } from "./ui/FireFeed";
+import { ForecastBar } from "./ui/ForecastBar";
 import { AppBar, LodReadout } from "./ui/Hud";
 import { Explore } from "./ui/Explore";
 import { InstrumentData } from "./ui/InstrumentData";
@@ -50,7 +51,10 @@ export default function App() {
           </div>
           <div className="flex items-end justify-between gap-4">
             <div className="w-9" />
-            <ErrorBoundary name="FireFeed"><FireFeed engine={engine} /></ErrorBoundary>
+            <div className="flex min-w-0 flex-col items-center gap-2">
+              <ErrorBoundary name="ForecastBar"><ForecastBar engine={engine} /></ErrorBoundary>
+              <ErrorBoundary name="FireFeed"><FireFeed engine={engine} /></ErrorBoundary>
+            </div>
             <NavControls engine={engine} />
           </div>
         </div>
