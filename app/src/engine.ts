@@ -6,7 +6,7 @@
 import { PROJECTION, type Region } from "./config/regions";
 import { fetchHotspots, fetchPerimeters } from "./data/cwfis";
 import { buildSnapshot, simulatedHotspots } from "./data/hazards";
-import { fetchWeatherGrid, type WeatherGrid } from "./data/openMeteo";
+import { FORECAST_DAYS, fetchWeatherGrid, type WeatherGrid } from "./data/openMeteo";
 import type { Place } from "./data/places";
 import { project, setProjectionCenter } from "./geo/projection";
 import { NodeStatus } from "./hex/nodeTypes";
@@ -112,11 +112,18 @@ export class Engine {
     const [hs, per, ...wx] = await Promise.allSettled([
       fetchHotspots(box), fetchPerimeters(box),
       ...loaded.map(async (r) => {
-        const c = this.weatherCache.get(r.id);
+        const c = this.weatherCache.get(r.id) ?? readStoredWeather(r.id);
         if (c && now - c.at < WEATHER_TTL_MS) return c.grid;
-        const grid = await fetchWeatherGrid(r.bbox);
-        this.weatherCache.set(r.id, { at: now, grid });
-        return grid;
+        try {
+          const grid = await fetchWeatherGrid(r.bbox);
+          const entry = { at: now, grid };
+          this.weatherCache.set(r.id, entry);
+          storeWeather(r.id, entry);
+          return grid;
+        } catch (e) {
+          if (c) return c.grid; // a stale forecast beats a province with no weather
+          throw e;
+        }
       }),
     ]);
     const hotspots = hs.status === "fulfilled" ? await this.tagRegion(hs.value, (h) => [h.lat, h.lng]) : app.get().hotspots;
@@ -249,6 +256,19 @@ export class Engine {
     this.scene?.dispose();
     this.client.dispose();
   }
+}
+
+/** Weather survives page reloads for WEATHER_TTL_MS so demos and dev reloads don't burn Open-Meteo quota. */
+const WX_KEY = (id: string) => `embergrid.wx.${id}`;
+function readStoredWeather(id: string): { at: number; grid: WeatherGrid } | undefined {
+  try {
+    const v = JSON.parse(localStorage.getItem(WX_KEY(id)) ?? "null");
+    // Ignore entries written by an older data shape.
+    return v?.grid?.cells?.[0]?.days?.length === FORECAST_DAYS + 1 && v.grid.cells[0].now ? v : undefined;
+  } catch { return undefined; }
+}
+function storeWeather(id: string, entry: { at: number; grid: WeatherGrid }) {
+  try { localStorage.setItem(WX_KEY(id), JSON.stringify(entry)); } catch { /* storage full or unavailable */ }
 }
 
 /**
