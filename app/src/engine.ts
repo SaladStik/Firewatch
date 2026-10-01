@@ -21,7 +21,7 @@ const RISK_STATUSES = new Set<number>([NodeStatus.Elevated, NodeStatus.High, Nod
 const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Burned]);
 const DATA_REFRESH_MS = 10 * 60 * 1000;
 /**
- * Weather changes slowly and Open-Meteo is rate-limited per point (a 38-day request
+ * Weather changes slowly and Open-Meteo is rate-limited per point (a 3-week request
  * counts as several calls per point): refresh each region at most this often.
  */
 const WEATHER_TTL_MS = 60 * 60 * 1000;

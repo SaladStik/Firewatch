@@ -1,13 +1,15 @@
 /** Details for the selected hex + actions. */
 import { Crosshair, Flag, X } from "lucide-react";
 import { GRID } from "../config/grid";
-import { weatherAt } from "../data/openMeteo";
+import { PAST_DAYS, weatherAt } from "../data/openMeteo";
 import { NODE_STATUSES, NODE_TYPES, NodeStatus } from "../hex/nodeTypes";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
 import { compass, dayLabel } from "./weatherFormat";
 import { HexIcon, KV, Panel, SegBar } from "./primitives";
+
+const fx = (v: number, d = 0) => (Number.isFinite(v) ? v.toFixed(d) : "–");
 
 function riskColor(r: number) {
   return r >= 0.8 ? "var(--color-risk-ext)" : r >= 0.6 ? "var(--color-risk-high)" : r >= 0.4 ? "var(--color-risk-elev)" : "var(--color-phos)";
@@ -70,11 +72,11 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
         {wx && (
           <>
             <div className="mt-2 mb-1 label-xs">Weather · Open-Meteo · {dayLabel(day, weather[0]?.dates)}</div>
-            <KV k={day === 0 ? "Temp / RH" : "Max temp / min RH"} v={`${wx.temp.toFixed(0)}°C / ${wx.rh.toFixed(0)}%`} />
-            <KV k="Wind" v={`${wx.wind.toFixed(0)} km/h from ${compass(wx.windFrom)} (${Math.round(wx.windFrom)}°)`} />
-            <KV k="Rain (day)" v={`${wx.rainMm.toFixed(1)} mm`} />
-            <KV k="Days since rain" v={wx.daysSinceRain > 30 ? "30+" : String(wx.daysSinceRain)} />
-            <KV k="Fosberg FFWI" v={wx.ffwi.toFixed(1)} />
+            <KV k={day === 0 ? "Temp / RH" : "Max temp / min RH"} v={`${fx(wx.temp)}°C / ${fx(wx.rh)}%`} />
+            <KV k="Wind" v={`${fx(wx.wind)} km/h${Number.isFinite(wx.windFrom) ? ` from ${compass(wx.windFrom)} (${Math.round(wx.windFrom)}°)` : ""}`} />
+            <KV k="Rain (day)" v={`${fx(wx.rainMm, 1)} mm`} />
+            <KV k="Days since rain" v={wx.daysSinceRain > PAST_DAYS ? `${PAST_DAYS}+` : String(wx.daysSinceRain)} />
+            <KV k="Fosberg FFWI" v={fx(wx.ffwi, 1)} />
           </>
         )}
       </div>
