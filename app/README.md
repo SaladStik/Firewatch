@@ -164,19 +164,7 @@ Fires, weather, labels, borders, focus and the Explore menu all pick the new pro
 
 ## Firefly mascot (preview)
 
-`src/mascot/firefly/` is a self-contained 2D mascot, not yet used in the map. Open **`/firefly.html`** to try him.
-
-- `Firefly.tsx` is a pure SVG renderer: it draws whatever `FireflyPose` it's given. Every part is independent: each of the 4 wings, both antennae, each eye, look direction, mouth, brows, blush, lantern brightness, fire-alarm colour, tilt and squash. Drive it with anything (GSAP, Motion, `requestAnimationFrame`, sliders).
-- `config.ts` sets the look (colours, proportions); `SKINS` holds the palettes.
-- `moods.ts` holds the personalities as data.
-- `controller.ts` handles behaviour: flapping, hover, blink, lantern pulse, gaze, `flyTo`, `follow`, `wander`, `play(emote)`, `say(text)`, plus `manual` and `override` modes for hand animation.
-- `useFirefly()` and `<FireflyAgent/>` drop him into any React page.
-
-```tsx
-const ctl = useFirefly({ x: 300, y: 200, mood: "happy" });
-ctl.setMood("alert"); await ctl.flyTo(640, 300); ctl.play("hop"); ctl.say("New hotspot near Swan Hills!");
-<FireflyAgent controller={ctl} size={120} />
-```
+A fully customisable, individually animatable 2D mascot lives in `src/mascot/firefly/`. Try him at **`/firefly.html`**. For the full docs (config, pose fields, moods, controller API, emotes, the 3D transformation spin, recipes, extending), see **[src/mascot/firefly/README.md](src/mascot/firefly/README.md)**.
 
 ## Notes
 

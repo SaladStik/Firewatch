@@ -14,7 +14,7 @@ import { MOODS, type MoodName, type MoodSpec } from "./moods";
 import type { FireflyPose, WingPose } from "./types";
 
 export type EmoteName = "hop" | "spin" | "shake" | "nod" | "flutter";
-const EMOTE_DURATION: Record<EmoteName, number> = { hop: 0.55, spin: 0.85, shake: 0.6, nod: 0.6, flutter: 0.9 };
+const EMOTE_DURATION: Record<EmoteName, number> = { hop: 0.55, spin: 1.9, shake: 0.6, nod: 0.6, flutter: 0.9 };
 
 export interface FlyOptions {
   /** Top speed in px/s (default 420). */
@@ -44,7 +44,7 @@ export class FireflyController {
   private target: { x: number; y: number; speed: number; done?: () => void } | null = null;
   private followFn: (() => { x: number; y: number } | null) | null = null;
   private lookPoint: { x: number; y: number } | null = null;
-  private emote: { name: EmoteName; t: number } | null = null;
+  private emote: { name: EmoteName; t: number; onPeak?: () => void; peaked?: boolean } | null = null;
   private talkUntil = 0;
   private wanderIn = 1;
   private raf = 0;
@@ -74,6 +74,12 @@ export class FireflyController {
   lookAt(pt: { x: number; y: number } | null) { this.lookPoint = pt; }
 
   play(name: EmoteName) { this.emote = { name, t: 0 }; }
+
+  /**
+   * Transformation spin. `onPeak` fires at full speed, mid-whirl — swap his look
+   * there (palette / config) for an "outfit change".
+   */
+  spin(opts: { onPeak?: () => void } = {}) { this.emote = { name: "spin", t: 0, onPeak: opts.onPeak }; }
 
   /** Show a speech bubble and animate the mouth for `seconds`. */
   say(text: string, seconds = Math.max(1.5, text.length * 0.06)) {
@@ -231,9 +237,24 @@ export class FireflyController {
         p.hover -= bell * 26;
         p.squash = u < 0.15 ? 0.18 * (u / 0.15) : u > 0.85 ? 0.15 * ((u - 0.85) / 0.15) : -0.1 * bell;
         break;
-      case "spin":
-        p.rotation += easeInOut(u) * 360;
+      case "spin": {
+        // Dreidel / outfit-change spin: rise onto the "toe", raise the wings, whip round
+        // ~5 times in place with an air whirl, then slow with a growing wobble and settle.
+        const turns = SPIN_TURNS;
+        const f = spinProgress(u);
+        p.turn = f * turns * 360;
+        const speed = spinSpeed(u); // 0..1
+        const plateau = smooth(0, 0.12, u) * (1 - smooth(0.82, 1, u));
+        p.hover -= plateau * 16;
+        p.squash = -0.08 * plateau;
+        for (const w of Object.values(p.wings)) { w.lift -= 34 * plateau; w.open = 1 - 0.45 * plateau; }
+        const wobble = 2 + 16 * Math.pow(smooth(0.5, 1, u), 1.4) * (1 - smooth(0.92, 1, u));
+        p.rotation += Math.sin((p.turn * Math.PI) / 180) * wobble;
+        p.whirl = speed;
+        p.whirlPhase = (p.turn * Math.PI) / 180;
+        if (!e.peaked && u >= 0.5) { e.peaked = true; e.onPeak?.(); }
         break;
+      }
       case "shake":
         p.rotation += Math.sin(u * Math.PI * 8) * 14 * (1 - u);
         break;
@@ -246,14 +267,38 @@ export class FireflyController {
         p.scale = 1 + bell * 0.08;
         break;
     }
-    if (u >= 1) this.emote = null;
+    if (u >= 1) {
+      if (!e.peaked) e.onPeak?.();
+      this.emote = null;
+      p.turn = 0;
+      p.offsetX = 0;
+      p.whirl = 0;
+    }
   }
+}
+
+// ---- spin profile: angular speed ramps up fast, holds, then winds down.
+const SPIN_TURNS = 5;
+function spinSpeed(u: number) {
+  return smooth(0, 0.14, u) * (1 - smooth(0.5, 1, u) ** 0.8);
+}
+/** Normalised integral of spinSpeed (0..1), so the spin ends exactly facing forward. */
+const SPIN_TABLE = (() => {
+  const n = 200, t = new Float32Array(n + 1);
+  for (let i = 1; i <= n; i++) t[i] = t[i - 1] + spinSpeed((i - 0.5) / n);
+  for (let i = 0; i <= n; i++) t[i] /= t[n];
+  return t;
+})();
+function spinProgress(u: number) {
+  const x = clamp(u, 0, 1) * 200, i = Math.min(199, Math.floor(x));
+  return SPIN_TABLE[i] + (SPIN_TABLE[i + 1] - SPIN_TABLE[i]) * (x - i);
+}
+function smooth(a: number, b: number, x: number) {
+  const t = clamp((x - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
 }
 
 function clonePose(p: FireflyPose): FireflyPose {
   return { ...p, wings: { upperL: { ...p.wings.upperL }, upperR: { ...p.wings.upperR }, lowerL: { ...p.wings.lowerL }, lowerR: { ...p.wings.lowerR } } };
 }
 
-function easeInOut(u: number) {
-  return u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
-}

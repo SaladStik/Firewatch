@@ -7,8 +7,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/700.css";
 import {
-  DEFAULT_POSE, Firefly, FireflyAgent, makeConfig, MOOD_NAMES, MOODS, SKINS, useFirefly,
-  type EmoteName, type FireflyPose, type MoodName,
+  DEFAULT_POSE, Firefly, FireflyAgent, makeConfig, mix, MOOD_NAMES, MOODS, SKINS, useFirefly,
+  type EmoteName, type FireflyConfig, type FireflyPalette, type FireflyPose, type MoodName,
 } from "../firefly";
 
 const EMOTES: EmoteName[] = ["hop", "spin", "shake", "nod", "flutter"];
@@ -22,8 +22,11 @@ const LINES = [
 function App() {
   const stage = useRef<HTMLDivElement>(null);
   const ctl = useFirefly({ x: 420, y: 320, mood: "happy" });
+  if (import.meta.env.DEV) Object.assign(window, { firefly: ctl }); // debug handle
   const mouse = useRef<{ x: number; y: number } | null>(null);
   const [skin, setSkin] = useState("classic");
+  const [palette, setPalette] = useState<FireflyPalette>(SKINS.classic);
+  const [copied, setCopied] = useState(false);
   const [size, setSize] = useState(150);
   const [wingScale, setWingScale] = useState(1);
   const [follow, setFollow] = useState(false);
@@ -33,13 +36,19 @@ function App() {
   const [text, setText] = useState(LINES[0]);
 
   const config = useMemo(() => {
-    const base = makeConfig({ palette: SKINS[skin] });
+    const base = makeConfig({ palette });
     return {
       ...base,
       wingUpper: { ...base.wingUpper, length: base.wingUpper.length * wingScale, width: base.wingUpper.width * wingScale },
       wingLower: { ...base.wingLower, length: base.wingLower.length * wingScale, width: base.wingLower.width * wingScale },
     };
-  }, [skin, wingScale]);
+  }, [palette, wingScale]);
+
+  const copyConfig = async () => {
+    await navigator.clipboard.writeText(configSnippet(config));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
 
   // Keep wander bounds = the stage.
   useEffect(() => {
@@ -83,6 +92,12 @@ function App() {
 
         <Section title="Emotes">
           <Grid>{EMOTES.map((e) => <Btn key={e} onClick={() => ctl.play(e)}>{e}</Btn>)}</Grid>
+          <div style={{ ...S.label, marginTop: 10 }}>Spin into (outfit change)</div>
+          <Grid>
+            {Object.keys(SKINS).map((s) => (
+              <Btn key={s} onClick={() => ctl.spin({ onPeak: () => { setSkin(s); setPalette(SKINS[s]); } })}>{s}</Btn>
+            ))}
+          </Grid>
         </Section>
 
         <Section title="Behaviour">
@@ -101,9 +116,14 @@ function App() {
         </Section>
 
         <Section title="Look">
-          <Grid>{Object.keys(SKINS).map((s) => <Btn key={s} on={skin === s} onClick={() => setSkin(s)}>{s}</Btn>)}</Grid>
+          <Grid>{Object.keys(SKINS).map((s) => <Btn key={s} on={skin === s} onClick={() => { setSkin(s); setPalette(SKINS[s]); }}>{s}</Btn>)}</Grid>
           <Slider label="Size" min={60} max={260} step={1} value={size} set={setSize} />
           <Slider label="Wing size" min={0.6} max={1.5} step={0.01} value={wingScale} set={setWingScale} />
+        </Section>
+
+        <Section title="Colours">
+          <ColourEditor palette={palette} set={(p) => { setPalette(p); setSkin("custom"); }} />
+          <Btn onClick={copyConfig}>{copied ? "Copied ✓" : "Copy config"}</Btn>
         </Section>
 
         <Section title="Manual pose (every part independent)">
@@ -169,6 +189,74 @@ async function tour(ctl: ReturnType<typeof useFirefly>, stage: HTMLDivElement) {
   ctl.play("spin");
   ctl.setMood("happy");
   ctl.say("Tour complete!");
+}
+
+// ---------------------------------------------------------------- colours
+const PALETTE_LABELS: Record<keyof FireflyPalette, string> = {
+  body: "Body", bodyLight: "Body highlight", bodyShade: "Body shade",
+  wingFill: "Wing fill", wingEdge: "Wing edge",
+  eye: "Eyes", eyeShine: "Eye shine", mouth: "Mouth", cheek: "Cheeks",
+  antenna: "Antennae", antennaTip: "Antenna tips",
+  band: "Abdomen band", lantern: "Lantern", lanternCore: "Lantern core", glow: "Glow",
+  alarmLantern: "Alarm lantern", alarmGlow: "Alarm glow",
+};
+
+/** Any CSS colour (#hex or rgba) → { hex, alpha } for the pickers. */
+function splitColour(c: string): { hex: string; alpha: number } {
+  const m = c.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?/i);
+  if (m) {
+    const hex = "#" + [m[1], m[2], m[3]].map((v) => (+v).toString(16).padStart(2, "0")).join("");
+    return { hex, alpha: m[4] !== undefined ? +m[4] : 1 };
+  }
+  return { hex: c.length === 4 ? "#" + [...c.slice(1)].map((ch) => ch + ch).join("") : c, alpha: 1 };
+}
+function joinColour(hex: string, alpha: number): string {
+  if (alpha >= 1) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${+alpha.toFixed(2)})`;
+}
+
+function ColourEditor({ palette, set }: { palette: FireflyPalette; set: (p: FireflyPalette) => void }) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      {(Object.keys(PALETTE_LABELS) as (keyof FireflyPalette)[]).map((key) => {
+        const { hex, alpha } = splitColour(palette[key]);
+        const translucent = key === "wingFill" || alpha < 1;
+        return (
+          <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, margin: "3px 0", fontSize: 11 }}>
+            <input
+              type="color"
+              value={hex}
+              onChange={(e) => {
+                const v = joinColour(e.target.value, alpha);
+                // Body drives its highlight + shade so a recolour stays consistent (both still editable).
+                set(key === "body"
+                  ? { ...palette, body: v, bodyLight: mix(v, "#ffffff", 0.6), bodyShade: mix(v, "#000000", 0.18) }
+                  : { ...palette, [key]: v });
+              }}
+              style={{ width: 26, height: 20, padding: 0, border: "none", background: "none", cursor: "pointer" }}
+            />
+            <span style={{ flex: 1, color: "#bfe9f5" }}>{PALETTE_LABELS[key]}</span>
+            {translucent && (
+              <input
+                type="range" min={0} max={1} step={0.01} value={alpha} title="Opacity"
+                onChange={(e) => set({ ...palette, [key]: joinColour(hex, +e.target.value) })}
+                style={{ width: 70 }}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Paste-ready TypeScript for the current look. */
+function configSnippet(c: FireflyConfig): string {
+  return `import { makeConfig } from "./mascot/firefly";
+
+export const FIREFLY_CONFIG = makeConfig(${JSON.stringify(c, null, 2)});
+`;
 }
 
 // ---------------------------------------------------------------- tiny UI kit

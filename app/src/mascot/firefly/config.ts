@@ -46,7 +46,7 @@ export const DEFAULT_CONFIG: FireflyConfig = {
 export const REST_WING = { lift: 0, open: 1 };
 
 export const DEFAULT_POSE: FireflyPose = {
-  x: 0, y: 0, hover: 0, rotation: 0, scale: 1, squash: 0,
+  x: 0, y: 0, hover: 0, offsetX: 0, turn: 0, whirl: 0, whirlPhase: 0, rotation: 0, scale: 1, squash: 0,
   wings: { upperL: { ...REST_WING }, upperR: { ...REST_WING }, lowerL: { ...REST_WING }, lowerR: { ...REST_WING } },
   antennaL: 0, antennaR: 0,
   eyeOpenL: 1, eyeOpenR: 1, lookX: 0, lookY: 0,

@@ -71,6 +71,18 @@ export interface FireflyPose {
   y: number;
   /** Extra vertical offset in px (hover bob), separate from the flight position. */
   hover: number;
+  /** Extra horizontal offset in px (e.g. orbiting during a spin), separate from the flight position. */
+  offsetX: number;
+  /**
+   * Turn around the vertical axis in degrees (0 = facing you, 180 = back to you).
+   * Rendered with real depth: the body is a sphere, face features slide around it,
+   * wings/antennae swing round in front of or behind the body.
+   */
+  turn: number;
+  /** 0..1 strength of the spin "air" effect (swirling streaks + sparkles). */
+  whirl: number;
+  /** Phase (radians) of the whirl streaks — advance it to make them travel. */
+  whirlPhase: number;
   /** Whole-body tilt in degrees (banking). */
   rotation: number;
   scale: number;
