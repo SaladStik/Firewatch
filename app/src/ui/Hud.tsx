@@ -43,6 +43,17 @@ export function Brand() {
   );
 }
 
+export function InstrumentDataButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="pointer-events-auto flex h-9 items-center border border-line bg-panel px-3 text-[11px] tracking-wider text-ink-dim transition hover:border-line-strong hover:text-ink"
+    >
+      LIVE INSTRUMENT DATA
+    </button>
+  );
+}
+
 export function ThemeToggle({ engine }: { engine: Engine | null }) {
   const theme = useStore(app, (s) => s.theme);
   const next = theme === "dark" ? "light" : "dark";

@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { Engine } from "./engine";
 import { app } from "./state/app";
 import { FireFeed } from "./ui/FireFeed";
-import { Brand, LodReadout, ThemeToggle } from "./ui/Hud";
+import { Brand, InstrumentDataButton, LodReadout, ThemeToggle } from "./ui/Hud";
 import { Explore } from "./ui/Explore";
+import { InstrumentData } from "./ui/InstrumentData";
 import { LayerDock, Legend } from "./ui/Layers";
 import { BootScreen, HoverTip, NavControls } from "./ui/Overlays";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
@@ -13,6 +14,7 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
   const [engine, setEngine] = useState<Engine | null>(null);
+  const [screen, setScreen] = useState<"map" | "instruments">("map");
 
   useEffect(() => {
     const e = new Engine();
@@ -33,7 +35,10 @@ export default function App() {
         <div className="flex items-start justify-between gap-4">
           <Brand />
           <LodReadout />
-          <ThemeToggle engine={engine} />
+          <div className="flex items-start gap-2">
+            <InstrumentDataButton onClick={() => setScreen("instruments")} />
+            <ThemeToggle engine={engine} />
+          </div>
         </div>
 
         <div className="flex min-h-0 flex-1 items-center justify-between gap-4 py-4">
@@ -59,6 +64,7 @@ export default function App() {
       </div>
       <HoverTip />
       <BootScreen />
+      {screen === "instruments" && <InstrumentData onBack={() => setScreen("map")} />}
     </main>
   );
 }
