@@ -6,9 +6,11 @@ export function compass(deg: number): string {
   return POINTS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
 }
 
-/** Forecast day index → "Now" / "Thu 2" (local date) / "+3d" when dates aren't loaded. */
+/** Forecast day index → "Now" / "Thu 1" (local date) / "+3d" when dates aren't loaded. */
 export function dayLabel(day: number, dates?: string[]): string {
   if (day === 0) return "Now";
   const iso = dates?.[day];
-  return iso ? new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", day: "numeric" }) : `+${day}d`;
+  if (!iso) return `+${day}d`;
+  const d = new Date(`${iso}T12:00:00`);
+  return `${d.toLocaleDateString(undefined, { weekday: "short" })} ${d.getDate()}`;
 }

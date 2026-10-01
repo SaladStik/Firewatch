@@ -24,6 +24,8 @@ function emc(tF: number, rh: number): number {
 
 /** Fosberg FFWI (0..100) from °C, % RH and km/h. */
 export function fosbergFFWI(tempC: number, rh: number, windKmh: number): number {
+  // Missing data (null/NaN from the API) → no signal, not bone-dry air.
+  if (!Number.isFinite(tempC) || !Number.isFinite(rh) || !Number.isFinite(windKmh)) return 0;
   const tF = (tempC * 9) / 5 + 32;
   const mph = windKmh / 1.609344;
   const m = Math.max(0, emc(tF, Math.min(100, Math.max(0, rh)))) / 30;
@@ -31,7 +33,10 @@ export function fosbergFFWI(tempC: number, rh: number, windKmh: number): number 
   return Math.min(100, (eta * Math.sqrt(1 + mph * mph)) / 0.3002);
 }
 
-/** Days from `dayIdx` back to the last day with ≥ WETTING_RAIN_MM (0 = rained that day). */
+/**
+ * Days from `dayIdx` back to the last day with ≥ WETTING_RAIN_MM (0 = rained that day).
+ * Returns `dayIdx + 1` when no wetting rain is in the history.
+ */
 export function daysSinceRain(precip: (number | null)[], dayIdx: number): number {
   for (let i = dayIdx; i >= 0; i--) if ((precip[i] ?? 0) >= WETTING_RAIN_MM) return dayIdx - i;
   return dayIdx + 1;

@@ -30,7 +30,7 @@ export function downwind(fromDeg: number, kmh: number): Downwind {
 
 /** Influence 0..1 of a hotspot on a point offset (vx, vz) km from it. */
 export function spreadInfluence(vx: number, vz: number, w: Downwind): number {
-  const d = Math.hypot(vx, vz);
+  const d = Math.sqrt(vx * vx + vz * vz);
   if (d === 0) return 1;
   const cos = (vx * w.dx + vz * w.dz) / d;
   return Math.max(0, 1 - d / (SPREAD_BASE_KM * (1 + w.stretch * cos)));

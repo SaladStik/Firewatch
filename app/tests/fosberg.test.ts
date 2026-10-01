@@ -38,3 +38,8 @@ test("fireWeatherRisk = FFWI/100 × dryness, clamped to 1", () => {
   assert.ok(Math.abs(fireWeatherRisk(50, 0) - 0.3) < 1e-9);
   assert.equal(fireWeatherRisk(100, 30), 1);
 });
+
+test("fosbergFFWI treats missing inputs as no signal", () => {
+  assert.equal(fosbergFFWI(20, NaN, 10), 0);
+  assert.equal(fosbergFFWI(20, null as unknown as number, 10), 0);
+});
