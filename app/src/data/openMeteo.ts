@@ -1,19 +1,20 @@
 /**
  * Open-Meteo (open-meteo.com) — free weather API, CORS enabled, no key.
- * Samples a 1.5° lat/lng grid over the region bbox: current conditions, a
- * 7-day daily forecast and two weeks of rain history (for days-since-rain).
- * Each day is scored with the Fosberg FFWI × a dryness factor (data/fosberg.ts).
+ * Samples a 1.5° lat/lng grid over the region bbox: today + a 7-day daily
+ * forecast, live current conditions (display only) and two weeks of rain history
+ * (for days-since-rain). Each day's peak is scored with the Fosberg FFWI × a
+ * dryness factor (data/fosberg.ts).
  */
 import { daysSinceRain, fireWeatherRisk, fosbergFFWI, FULLY_DRY_DAYS } from "./fosberg";
 
-/** Days after today on the forecast slider (day 0 = now). */
+/** Days after today on the forecast slider (day 0 = today). */
 export const FORECAST_DAYS = 7;
 /** Rain history for days-since-rain; dryness saturates at FULLY_DRY_DAYS, so more is wasted quota. */
 export const PAST_DAYS = FULLY_DRY_DAYS;
 
 /**
- * One cell on one day. Day 0 = current conditions; forecast days use the
- * daily peak (max temperature, min humidity, max wind, dominant direction).
+ * One cell on one day. Each day uses the daily peak (max temperature, min
+ * humidity, max wind, dominant direction), so today compares like with like.
  */
 export interface DayWeather {
   temp: number; // °C
@@ -29,8 +30,10 @@ export interface DayWeather {
 export interface WeatherCell {
   lat: number;
   lng: number;
-  /** Index 0 = now, 1..FORECAST_DAYS = upcoming days. */
+  /** Index 0 = today, 1..FORECAST_DAYS = upcoming days. */
   days: DayWeather[];
+  /** Live conditions right now (display only; risk uses the daily peaks). */
+  now: { temp: number; rh: number; wind: number; windFrom: number };
 }
 
 export interface WeatherGrid {
@@ -90,13 +93,14 @@ export async function fetchWeatherGrid(bbox: [number, number, number, number], s
   const rows: Row[] = Array.isArray(json) ? json : [json];
   const cells = rows.map((r, k): WeatherCell => {
     const c = r.current, d = r.daily, rain = d.precipitation_sum;
-    // Day 0: today's rain total includes the forecast for the rest of today.
-    const days = [scoreDay(c.temperature_2m, c.relative_humidity_2m, c.wind_speed_10m, c.wind_direction_10m, rain[PAST_DAYS] ?? 0, daysSinceRain(rain, PAST_DAYS))];
-    for (let n = 1; n <= FORECAST_DAYS; n++) {
+    const days: DayWeather[] = [];
+    // Day 0 = today: its rain total includes the forecast for the rest of today.
+    for (let n = 0; n <= FORECAST_DAYS; n++) {
       const i = PAST_DAYS + n;
       days.push(scoreDay(d.temperature_2m_max[i], d.relative_humidity_2m_min[i], d.wind_speed_10m_max[i], d.wind_direction_10m_dominant[i], rain[i] ?? 0, daysSinceRain(rain, i)));
     }
-    return { lat: lats[k], lng: lngs[k], days };
+    const now = { temp: num(c.temperature_2m), rh: num(c.relative_humidity_2m), wind: num(c.wind_speed_10m), windFrom: num(c.wind_direction_10m) };
+    return { lat: lats[k], lng: lngs[k], days, now };
   });
   const dates = (rows[0]?.daily.time ?? []).slice(PAST_DAYS, PAST_DAYS + FORECAST_DAYS + 1);
   return { lat0, lng0, step, nLat, nLng, cells, dates, fetchedAt: new Date().toISOString() };

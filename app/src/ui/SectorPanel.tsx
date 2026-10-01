@@ -25,7 +25,8 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
   if (!n) return null;
   const type = NODE_TYPES[n.land];
   const status = NODE_STATUSES[n.status];
-  const wx = weatherAt(weather, n.lat, n.lng)?.days[day];
+  const cell = weatherAt(weather, n.lat, n.lng);
+  const wx = cell?.days[day];
   const statusColor = status.line ?? type.line;
   const isFlagged = flagged.includes(n.key);
   const cellM = GRID.levels[n.level].size * Math.sqrt(3) * 1000;
@@ -72,7 +73,8 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
         {wx && (
           <>
             <div className="mt-2 mb-1 label-xs">Weather · Open-Meteo · {dayLabel(day, weather[0]?.dates)}</div>
-            <KV k={day === 0 ? "Temp / RH" : "Max temp / min RH"} v={`${fx(wx.temp)}°C / ${fx(wx.rh)}%`} />
+            {day === 0 && cell?.now && <KV k="Live now" v={`${fx(cell.now.temp)}°C / ${fx(cell.now.rh)}% · ${fx(cell.now.wind)} km/h`} />}
+            <KV k="Max temp / min RH" v={`${fx(wx.temp)}°C / ${fx(wx.rh)}%`} />
             <KV k="Wind" v={`${fx(wx.wind)} km/h${Number.isFinite(wx.windFrom) ? ` from ${compass(wx.windFrom)} (${Math.round(wx.windFrom)}°)` : ""}`} />
             <KV k="Rain (day)" v={`${fx(wx.rainMm, 1)} mm`} />
             <KV k="Days since rain" v={wx.daysSinceRain > PAST_DAYS ? `${PAST_DAYS}+` : String(wx.daysSinceRain)} />

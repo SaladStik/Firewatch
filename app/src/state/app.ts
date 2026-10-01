@@ -56,7 +56,7 @@ export interface AppState {
   weather: WeatherGrid[];
   dataStatus: { cwfis: "loading" | "ok" | "error"; weather: "loading" | "ok" | "error"; at?: string };
   simulation: boolean;
-  /** Forecast slider: 0 = now, 1..7 = days ahead. Fires stay as observed now. */
+  /** Forecast slider: 0 = today, 1..7 = days ahead. Fires stay as observed now. */
   forecastDay: number;
   /** Sectors flagged for patrol this session. */
   flagged: string[];

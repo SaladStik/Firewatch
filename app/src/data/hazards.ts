@@ -12,7 +12,7 @@ export interface HazardInputs {
   hotspots: Hotspot[];
   perimeters: Perimeter[];
   weather: WeatherGrid[];
-  /** Forecast day index into each cell's `days` (0 = now). */
+  /** Forecast day index into each cell's `days` (0 = today). */
   day: number;
   /** Demo scenario: multiplies weather risk (1 = real data). */
   weatherBoost: number;

@@ -11,8 +11,8 @@ test("compass maps degrees to 8 points", () => {
   assert.equal(compass(-90), "W");
 });
 
-test("dayLabel: day 0 is Now, missing dates fall back to +Nd", () => {
-  assert.equal(dayLabel(0, ["2026-09-30"]), "Now");
+test("dayLabel: day 0 is Today, missing dates fall back to +Nd", () => {
+  assert.equal(dayLabel(0, ["2026-09-30"]), "Today");
   assert.equal(dayLabel(3), "+3d");
   assert.match(dayLabel(1, ["2026-09-30", "2026-10-01"]), /^\S+ 1$/);
 });
