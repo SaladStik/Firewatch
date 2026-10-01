@@ -1,0 +1,39 @@
+{
+  "name": "app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "bake": "tsx scripts/bake-terrain.ts",
+    "bake:osm": "tsx scripts/bake-osm.ts"
+  },
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/lato": "^5.3.0",
+    "gsap": "^3.15.0",
+    "lucide-react": "^1.49.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.13.3",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "geotiff": "^3.0.5",
+    "oxlint": "^1.81.0",
+    "pngjs": "^7.0.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
+  }
+}
