@@ -3,9 +3,10 @@
  * Add a new source: fetch it, then push into hotspots/perimeters/weather here.
  */
 import { project } from "../geo/projection";
+import { downwind } from "../world/spread";
 import type { HazardSnapshot } from "../world/types";
 import type { Hotspot, Perimeter } from "./cwfis";
-import type { WeatherGrid } from "./openMeteo";
+import { weatherAt, type WeatherGrid } from "./openMeteo";
 
 export interface HazardInputs {
   hotspots: Hotspot[];
@@ -26,7 +27,12 @@ export function isPerimeterActive(p: Perimeter, now = Date.now()) {
 export function buildSnapshot(inp: HazardInputs): HazardSnapshot {
   const now = Date.now();
   return {
-    hotspots: inp.hotspots.map((h) => ({ ...project(h.lat, h.lng), frp: h.frp, fwi: h.fwi })),
+    hotspots: inp.hotspots.map((h) => {
+      // Nearest weather cell; outside every grid or missing wind → calm (plain circle).
+      const wx = weatherAt(inp.weather, h.lat, h.lng)?.days[inp.day];
+      const calm = !wx || !Number.isFinite(wx.windFrom) || !Number.isFinite(wx.wind);
+      return { ...project(h.lat, h.lng), frp: h.frp, fwi: h.fwi, ...downwind(calm ? 0 : wx.windFrom, calm ? 0 : wx.wind) };
+    }),
     perimeters: inp.perimeters.map((p) => {
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
       const rings = p.rings.map((ring) => {
