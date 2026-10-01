@@ -162,6 +162,12 @@ Landmarks (hand-drawn models for specific buildings) are listed per region in `c
 
 Fires, weather, labels, borders, focus and the Explore menu all pick the new province up automatically.
 
+## Firefly mascot (preview)
+
+A fully customisable, individually animatable 2D mascot lives in `src/mascot/firefly/`. Try him at **`/firefly.html`**. For the full docs (config, pose fields, moods, controller API, emotes, the 3D transformation spin, recipes, extending), see **[src/mascot/firefly/README.md](src/mascot/firefly/README.md)**.
+
+**Tours and tutorials:** press **Ctrl+Shift+F** on any page (dev builds, or add `?fireflydev`) to record the firefly flying around, talking and spotlighting UI. Copy the result as JSON and replay it with `playScript()` at any resolution. See **[src/mascot/firefly/script/README.md](src/mascot/firefly/script/README.md)**.
+
 ## Notes
 
 - **Demo scenario** adds clearly flagged simulated ignitions plus a heatwave. It's meant for presentations when nothing is burning.

@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 
-export function Panel({ children, className = "", title, right }: { children: ReactNode; className?: string; title?: string; right?: ReactNode }) {
+export function Panel({ children, className = "", title, right, tour }: { children: ReactNode; className?: string; title?: string; right?: ReactNode; tour?: string }) {
   return (
-    <section className={`panel pointer-events-auto ${className}`}>
+    <section className={`panel pointer-events-auto ${className}`} data-tour={tour}>
       {title && (
         <header className="flex items-center justify-between border-b border-line px-3 py-2">
           <span className="label-xs">{title}</span>

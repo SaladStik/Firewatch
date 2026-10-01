@@ -10,7 +10,7 @@ import { HexIcon, IconButton } from "./primitives";
 
 export function NavControls({ engine }: { engine: Engine | null }) {
   return (
-    <div className="pointer-events-auto flex flex-col gap-1">
+    <div className="pointer-events-auto flex flex-col gap-1" data-tour="nav">
       <IconButton title="Zoom in" onClick={() => engine?.scene.zoomBy(0.5)}><Plus size={15} /></IconButton>
       <IconButton title="Zoom out" onClick={() => engine?.scene.zoomBy(2)}><Minus size={15} /></IconButton>
       <IconButton title="Whole province" onClick={() => engine?.scene.resetView()}><Home size={14} /></IconButton>

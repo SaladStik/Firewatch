@@ -19,7 +19,7 @@ export function Brand() {
   const title = focused.length === 1 ? focused[0].name.toUpperCase() : focused.map((r) => r.code).join(" · ");
   const at = ds.at ? new Date(ds.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--";
   return (
-    <div className="pointer-events-auto flex items-center gap-3">
+    <div className="pointer-events-auto flex items-center gap-3" data-tour="brand">
       <div className="relative">
         <HexIcon size={34} color="var(--color-phos)" className="drop-shadow-[0_0_8px_rgba(46,234,124,.6)]" />
         <span className="absolute inset-0 flex items-center justify-center text-[10px] font-bold text-phos-glow">E</span>
@@ -104,7 +104,7 @@ export function LodReadout() {
   if (!s) return null;
   const km = s.hexSizeKm * Math.sqrt(3);
   return (
-    <div className="pointer-events-none hidden items-center gap-4 border border-line bg-panel px-3 py-1.5 text-[10px] tracking-[0.14em] text-ink-dim md:flex">
+    <div data-tour="lod" className="pointer-events-none hidden items-center gap-4 border border-line bg-panel px-3 py-1.5 text-[10px] tracking-[0.14em] text-ink-dim md:flex">
       <span><span className="text-ink-mute">LOD</span> <span className="text-phos">{s.level}</span></span>
       <span><span className="text-ink-mute">CELL</span> {km < 1 ? `${Math.round(km * 1000)} M` : `${km.toFixed(1)} KM`}</span>
       <span><span className="text-ink-mute">NODES</span> {s.hexes.toLocaleString()}</span>

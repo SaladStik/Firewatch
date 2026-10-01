@@ -38,7 +38,7 @@ export function FireFeed({ engine }: { engine: Engine | null }) {
   const wxMax = wxCells.length ? Math.max(...wxCells.map((c) => c.risk)) * (sim ? 1.35 : 1) : 0;
 
   return (
-    <div className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-stretch">
+    <div data-tour="fire-feed" className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-stretch">
       <div className="flex divide-x divide-line border-r border-line">
         <Metric label="Hotspots 24h" value={focusHs.length} color="var(--color-fire)" />
         <Metric label="Elsewhere 24h" value={elsewhere} color="var(--color-ink-dim)" />

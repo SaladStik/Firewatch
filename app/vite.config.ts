@@ -48,4 +48,10 @@ export default defineConfig({
   base: process.env.BASE ?? '/',
   plugins: [react(), tailwindcss(), instrumentServer()],
   worker: { format: 'es' },
+  build: {
+    rollupOptions: {
+      // Main app + the standalone mascot preview page.
+      input: { main: path.resolve(appDir, 'index.html'), firefly: path.resolve(appDir, 'firefly.html') },
+    },
+  },
 })
