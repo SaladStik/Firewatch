@@ -165,6 +165,14 @@ export function riskFromFwi(f: number): number {
 }
 
 // ------------------------------------------------------------ FBP: rate of spread
+/**
+ * Minutes per day a fire spreads at its FBP (peak, afternoon) rate. FBP gives a rate, not a daily
+ * distance; fire growth models apply it over the active burning period with a diurnal curve.
+ * We use 4 h equivalent at the peak rate (a common rule of thumb for the boreal afternoon burning
+ * window); each fire's own growth calibration (data/fireHistory.ts) corrects it per fire.
+ */
+export const ACTIVE_BURN_MIN = 240;
+
 /** FBP fuel types we map the land cover to (see FUEL_FOR_LAND in the engine / docs). */
 export type FuelType = "C-2" | "D-1" | "M-1" | "O-1a" | "O-1b";
 
