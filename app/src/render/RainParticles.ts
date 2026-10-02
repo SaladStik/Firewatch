@@ -3,23 +3,22 @@
  * it's raining (real Open-Meteo rain + demo storms, data/rain.ts). A coarse intensity
  * grid over the view is rebuilt a few times a second and drops are spawned from it
  * (importance sampling), so rain looks equally dense per km² whether the storm fills
- * the view or a corner of it, and dry views cost nothing. The same grid draws a soft blue
- * wash on the ground under the rain, so rain areas read at a glance. Drawn after bloom (see Scene).
+ * the view or a corner of it, and dry views cost nothing. The same grid is handed to the hex
+ * shader as a texture, which tints wet ground blue (so it follows the terrain and is hidden by
+ * mountains in front). Drawn after bloom (see Scene), depth-tested against the map.
  */
-import { BufferAttribute, BufferGeometry, Color, Group, LineSegments, Mesh, ShaderMaterial, Vector3 } from "three";
+import { BufferAttribute, BufferGeometry, Color, Group, LineSegments, ShaderMaterial, Vector3 } from "three";
 import type { RainField } from "../data/rain";
 import type { WindField } from "../data/wind";
 import { reliefKm } from "./heights";
-import { sharedUniforms } from "./materials";
+import { makeRainTexture, sharedUniforms } from "./materials";
 
 /** Most drops alive at once. */
-const MAX = 3000;
-/** Ground wash opacity at full intensity (dark / light theme). */
-const WASH_DARK = 0.2;
-const WASH_LIGHT = 0.16;
+const MAX = 1200;
+
 /** Fall height, streak length and fall speed, as fractions of camera distance (zoom-independent look). */
 const FALL_FRAC = 0.05;
-const LEN_FRAC = 0.016;
+const LEN_FRAC = 0.011;
 const SPEED_FRAC = 0.09; // per second
 /** Streak lean per km/h of wind (fraction of streak length), capped, and horizontal drift while falling. */
 const LEAN_PER_KMH = 0.03;
@@ -31,20 +30,17 @@ const DRY_RETRY_S = 0.3;
 const GRID = 28;
 const GRID_EVERY_S = 0.4;
 /** Drops for a view that's fully raining at intensity 1 (scaled by the wet share of the view). */
-const FULL_VIEW_DROPS = 20000;
+const FULL_VIEW_DROPS = 6000;
 
 type GroundElev = (x: number, z: number) => number | null;
 
 export class RainParticles {
-  /** Add this to the scene: the falling streaks and the ground wash. */
+  /** Add this to the scene (the falling streaks; the ground tint lives in the hex shader). */
   readonly object = new Group();
   readonly lines: LineSegments;
-  private wash: Mesh;
-  private washMat: ShaderMaterial;
-  /** Per grid cell: intensity and ground elevation (m). */
-  private k = new Float32Array(GRID * GRID);
-  private ge = new Float32Array(GRID * GRID);
-  private washPos = new Float32Array(GRID * GRID * 3);
+  /** Per grid cell rain intensity (0..255), uploaded as the hex shader's rain texture. */
+  private tex = new Uint8Array(GRID * GRID);
+  private rainTex = makeRainTexture(GRID, this.tex);
   private field: RainField | null = null;
   /** Wind the drops lean into and drift with (same field as the streamlines). */
   private wind: WindField | null = null;
@@ -75,7 +71,7 @@ export class RainParticles {
     g.setAttribute("position", new BufferAttribute(this.pos, 3));
     g.setAttribute("aAlpha", new BufferAttribute(this.alpha, 1));
     this.mat = new ShaderMaterial({
-      uniforms: { uColor: { value: new Color("#a8d6ff") }, uOpacity: { value: 0.75 } },
+      uniforms: { uColor: { value: new Color("#a8d6ff") }, uOpacity: { value: 0.42 } },
       vertexShader: `
         attribute float aAlpha; varying float vA;
         void main(){ vA = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
@@ -83,44 +79,21 @@ export class RainParticles {
         uniform vec3 uColor; uniform float uOpacity; varying float vA;
         void main(){ gl_FragColor = vec4(uColor, vA * uOpacity); }`,
       transparent: true,
-      depthTest: false,
+      // The overlay pass draws into the map's own buffer, so drops hide behind mountains.
+      depthTest: true,
       depthWrite: false,
     });
     this.lines = new LineSegments(g, this.mat);
     this.lines.frustumCulled = false;
 
-    // Ground wash: the sampling grid as a mesh, alpha = rain intensity (smoothly interpolated).
-    const wg = new BufferGeometry();
-    wg.setAttribute("position", new BufferAttribute(this.washPos, 3));
-    wg.setAttribute("aK", new BufferAttribute(this.k, 1));
-    const idx: number[] = [];
-    for (let j = 0; j < GRID - 1; j++) for (let i = 0; i < GRID - 1; i++) {
-      const a = j * GRID + i, b = a + 1, c = a + GRID, d = c + 1;
-      idx.push(a, c, b, b, c, d);
-    }
-    wg.setIndex(idx);
-    this.washMat = new ShaderMaterial({
-      uniforms: { uColor: { value: new Color("#4aa3ff") }, uOpacity: { value: WASH_DARK } },
-      vertexShader: `
-        attribute float aK; varying float vK;
-        void main(){ vK = aK; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `
-        uniform vec3 uColor; uniform float uOpacity; varying float vK;
-        void main(){ gl_FragColor = vec4(uColor, smoothstep(0.0, 0.6, vK) * uOpacity); }`,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false,
-    });
-    this.wash = new Mesh(wg, this.washMat);
-    this.wash.frustumCulled = false;
-    this.wash.visible = false;
-    this.object.add(this.wash, this.lines);
+    this.object.add(this.lines);
   }
 
   setField(field: RainField | null) {
     this.field = field?.any ? field : null;
     if (!this.field) this.lines.geometry.setDrawRange(0, 0);
-    this.wash.visible = !!this.field;
+    sharedUniforms.uRain.value.w = this.field ? 1 : 0;
+    sharedUniforms.uRainTex.value = this.rainTex;
     this.h.fill(-1);
     this.gridKey = "";
   }
@@ -131,9 +104,7 @@ export class RainParticles {
 
   setTheme(light: boolean) {
     this.mat.uniforms.uColor.value.set(light ? "#1f5c96" : "#a8d6ff");
-    this.mat.uniforms.uOpacity.value = light ? 0.65 : 0.75;
-    this.washMat.uniforms.uColor.value.set(light ? "#2f7fd6" : "#4aa3ff");
-    this.washMat.uniforms.uOpacity.value = light ? WASH_LIGHT : WASH_DARK;
+    this.mat.uniforms.uOpacity.value = light ? 0.4 : 0.42;
   }
 
   update(dt: number, target: Vector3, dist: number, groundElev: GroundElev) {
@@ -144,9 +115,10 @@ export class RainParticles {
     const radius = dist * 0.8, fall = dist * FALL_FRAC, len = dist * LEN_FRAC;
     this.buildGrid(target, radius, groundElev);
     // Mean intensity over the view → drop count, so density per km² stays the same at any rain size.
-    const active = this.wet > 0 ? Math.round(Math.min(MAX, Math.max(40, FULL_VIEW_DROPS * this.wet))) : 0;
+    // Fewer drops close in, where each one is big on screen: rain should read, not curtain the view.
+    const zoomK = Math.min(1, Math.max(0.3, dist / 400));
+    const active = this.wet > 0 ? Math.round(Math.min(MAX, Math.max(30, FULL_VIEW_DROPS * this.wet * zoomK))) : 0;
     const vScale = sharedUniforms.uVScale.value, step = (SPEED_FRAC * dist * dt) / fall;
-    this.updateWash(vScale, dist);
     let v = 0;
     for (let i = 0; i < active; i++) {
       const far = Math.abs(this.x[i] - target.x) > radius * 1.2 || Math.abs(this.z[i] - target.z) > radius * 1.2;
@@ -173,13 +145,6 @@ export class RainParticles {
   }
 
   /** Sample the rain field on a coarse grid around the view (rebuilt when the view moves, or periodically). */
-  /** Re-height the wash every frame (vertical exaggeration changes with zoom). */
-  private updateWash(vScale: number, dist: number) {
-    const lift = dist * 0.002;
-    for (let n = 0; n < GRID * GRID; n++) this.washPos[n * 3 + 1] = reliefKm(this.ge[n]) * vScale + lift;
-    this.wash.geometry.attributes.position.needsUpdate = true;
-  }
-
   private buildGrid(target: Vector3, radius: number, groundElev: GroundElev) {
     const key = `${Math.round(target.x / (radius * 0.1))},${Math.round(target.z / (radius * 0.1))},${Math.round(Math.log2(radius) * 4)}`;
     if (key === this.gridKey && this.clock < this.gridAt) return;
@@ -191,17 +156,14 @@ export class RainParticles {
     let sum = 0;
     for (let j = 0; j < GRID; j++) for (let i = 0; i < GRID; i++) {
       const n = j * GRID + i, x = this.gx0 + (i + 0.5) * this.cell, z = this.gz0 + (j + 0.5) * this.cell;
-      const e = groundElev(x, z);
-      // Off the loaded map: no rain drawn there (no drops, no wash).
-      const k = e == null ? 0 : this.field!.at(x, z);
-      this.k[n] = k;
-      if (e != null) this.ge[n] = e;
-      this.washPos[n * 3] = x;
-      this.washPos[n * 3 + 2] = z;
+      // Off the loaded map: no rain there (no drops, no tint).
+      const k = groundElev(x, z) == null ? 0 : this.field!.at(x, z);
+      this.tex[n] = Math.round(k * 255);
       sum += k;
       this.cum[n] = sum;
     }
-    this.wash.geometry.attributes.aK.needsUpdate = true;
+    this.rainTex.needsUpdate = true;
+    sharedUniforms.uRain.value.set(this.gx0, this.gz0, this.cell * GRID, 1);
     this.wet = sum / (GRID * GRID);
   }
 
@@ -236,7 +198,7 @@ export class RainParticles {
   dispose() {
     this.lines.geometry.dispose();
     this.mat.dispose();
-    this.wash.geometry.dispose();
-    this.washMat.dispose();
+    this.rainTex.dispose();
+    sharedUniforms.uRain.value.w = 0;
   }
 }

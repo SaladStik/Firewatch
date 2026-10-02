@@ -5,7 +5,7 @@
  * are computed per-pixel from a hex distance field (constant pixel width at
  * any zoom, zero extra geometry). Props are instanced line segments.
  */
-import { Color, ShaderMaterial, Vector2, Vector3 } from "three";
+import { Color, DataTexture, LinearFilter, RedFormat, ShaderMaterial, Vector2, Vector3, Vector4 } from "three";
 
 
 import { HEIGHT_GLSL } from "./heights";
@@ -29,7 +29,26 @@ export const sharedUniforms = {
   /** Theme: 0 = dark (light on black), 1 = light (ink on paper). uBg = background, linear RGB. */
   uLight: { value: 0 },
   uBg: { value: new Vector3(0, 0, 0) },
+  /** Rain intensity over the view (render/RainParticles.ts): tints wet hex tops blue. */
+  uRainTex: { value: emptyRainTex() },
+  /** Rain texture placement: x0, z0, size (km), on (0/1). */
+  uRain: { value: new Vector4(0, 0, 1, 0) },
 };
+
+function emptyRainTex() {
+  const t = new DataTexture(new Uint8Array([0]), 1, 1, RedFormat);
+  t.needsUpdate = true;
+  return t;
+}
+
+/** Rain-intensity texture for the hex shader (GRID×GRID, filtered so it blends smoothly). */
+export function makeRainTexture(size: number, data: Uint8Array) {
+  const t = new DataTexture(data, size, size, RedFormat);
+  t.magFilter = LinearFilter;
+  t.minFilter = LinearFilter;
+  t.needsUpdate = true;
+  return t;
+}
 
 export function linear(hex: string): Vector3 {
   const c = new Color(hex);
@@ -157,6 +176,8 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
       uniform float uSize;
       uniform vec3 uCam;
       uniform vec3 uTarget;
+      uniform sampler2D uRainTex;
+      uniform vec4 uRain;
       varying vec3 vW;
       varying vec3 vLine;
       varying vec4 vStyle;
@@ -207,14 +228,22 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
         vec3 p = uCam + dir * t;
         float r = length(vW.xz - p.xz);
         float R = max(uSize * 1.5, L * 0.06);
-        float above = step(p.y + uSize * 0.05, vW.y);
-        return step(0.0, t) * step(t, L - uSize * 2.0) * above * (1.0 - smoothstep(R * 0.6, R, r));
+        // Soft edges on every side, so the see-through zone never reads as a box.
+        float above = smoothstep(p.y - uSize * 0.5, p.y + uSize * 2.0, vW.y);
+        float along = smoothstep(0.0, L * 0.08, t) * (1.0 - smoothstep(L - uSize * 8.0, L - uSize * 2.0, t));
+        return along * above * (1.0 - smoothstep(R * 0.45, R, r));
       }
 
       float segDist(vec2 p, vec2 a, vec2 b, out float t) {
         vec2 ab = b - a;
         t = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
         return length(p - a - ab * t);
+      }
+      float rainAt(vec2 xz) {
+        if (uRain.w < 0.5) return 0.0;
+        vec2 uv = (xz - uRain.xy) / uRain.z;
+        if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 0.0;
+        return smoothstep(0.02, 0.6, texture2D(uRainTex, uv).r);
       }
       void main() {
         float xray = occluder();
@@ -262,6 +291,9 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
                     : vLine * (fill * 0.3 * vShade * solid + line);
           if (top) col *= 1.0 + vStyle.y * pulseWave * 1.1;
           col += vLine * vHL * (top ? 0.35 : 0.15);
+          // Rain: wet ground under rain reads blue (follows the terrain, hidden by what's in front).
+          float wetK = rainAt(vW.xz) * solid; // not on see-through (x-ray) terrain
+          if (top) col = mix(col, vec3(0.16, 0.36, 0.7) * (0.4 + vStyle.x), wetK * 0.3);
           gl_FragColor = vec4(col * vFade, 1.0);
         } else {
           // LIGHT — cartographic: soft tinted land, darker walls for depth, ink outlines.
@@ -280,6 +312,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           col = mix(face, ink, clamp(line * 1.1 * strength, 0.0, 1.0));
           col = mix(col, ink, pat * 0.12 * strength * solid);
           col = mix(col, hue * 0.5, vHL * (top ? 0.25 : 0.12));
+          if (top) col = mix(col, vec3(0.42, 0.62, 0.88), rainAt(vW.xz) * solid * 0.25);
           gl_FragColor = vec4(mix(uBg, col, vFade), 1.0);
         }
       }
