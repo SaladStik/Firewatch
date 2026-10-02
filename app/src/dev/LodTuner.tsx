@@ -15,7 +15,7 @@ import { isFireflyDevEnabled } from "../mascot/firefly/script";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
 
-const KEY = "embergrid.lodTuning";
+const KEY = "emberwatch.lodTuning";
 
 interface Tuning {
   minDist: number[];
@@ -77,7 +77,7 @@ function LodTuner({ engine }: { engine: () => { scene: { zoomBy: (f: number) => 
   const [t, setT] = useState<Tuning>(snapshot);
   const [toast, setToast] = useState("");
   const stats = useStore(app, (s) => s.stats);
-  const pos = useDrag("embergrid.lodTuner.pos", { x: 360, y: 60 });
+  const pos = useDrag("emberwatch.lodTuner.pos", { x: 360, y: 60 });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
