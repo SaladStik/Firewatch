@@ -185,7 +185,7 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
         }}
         extra={
           <>
-            <BarButton onClick={() => (selected ? setSelectedId(null) : onBack())}>BACK</BarButton>
+            <BarButton onClick={() => (selected ? setSelectedId(null) : onBack())}>Back</BarButton>
           </>
         }
       />

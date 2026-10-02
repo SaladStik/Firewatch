@@ -21,6 +21,7 @@ export function Explore({ engine }: { engine: Engine | null }) {
     <Panel
       className="flex max-h-full w-[240px] flex-col"
       title="Explore"
+      bearing="SW"
       tour="explore"
       right={
         <div className="flex gap-1">
@@ -71,11 +72,11 @@ function Regions({ engine }: { engine: Engine | null }) {
         );
       })}
       <div className="flex gap-1 border-t border-line px-3 pt-2 pb-1">
-        <button onClick={() => engine?.setFocus(regions.filter((r) => loaded.includes(r.id)).map((r) => r.id))} className="flex-1 border border-line py-1 text-[10px] tracking-widest text-ink-dim hover:border-line-strong hover:text-ink">
-          FOCUS ALL
+        <button onClick={() => engine?.setFocus(regions.filter((r) => loaded.includes(r.id)).map((r) => r.id))} className="flex-1 border border-line py-1 text-[10px] tracking-wide text-ink-dim hover:border-line-strong hover:text-ink">
+          Focus all
         </button>
-        <button onClick={() => { engine?.scene.resetView(); }} className="flex-1 border border-line py-1 text-[10px] tracking-widest text-ink-dim hover:border-line-strong hover:text-ink">
-          FIT FOCUS
+        <button onClick={() => { engine?.scene.resetView(); }} className="flex-1 border border-line py-1 text-[10px] tracking-wide text-ink-dim hover:border-line-strong hover:text-ink">
+          Fit focus
         </button>
       </div>
       <p className="px-3 pt-1 pb-1.5 text-[10px] leading-snug text-ink-mute">Click a greyed province on the map to bring it into focus.</p>

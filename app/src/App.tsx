@@ -38,7 +38,7 @@ export default function App() {
       <div className="pointer-events-none absolute inset-0 z-10 flex flex-col">
         <AppBar engine={engine} screen={screen} onScreen={setScreen} center={<LodReadout />} />
         <div className="flex min-h-0 flex-1 flex-col justify-between p-4">
-          <div className="flex min-h-0 flex-1 items-center justify-between gap-4 py-4">
+          <div className="flex min-h-0 flex-1 items-start justify-between gap-4 py-3">
             <div className="hidden max-h-full min-h-0 gap-2 md:flex">
               <div className="flex flex-col gap-2">
                 <ErrorBoundary name="LayerDock"><LayerDock engine={engine} /></ErrorBoundary>

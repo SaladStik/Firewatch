@@ -6,26 +6,28 @@
 @import "@fontsource/lato/700.css";
 
 /*
- * EMBER//GRID design tokens — black + phosphor green, outlined surfaces,
- * orange/red reserved strictly for fire risk.
+ * Firewatch — government situation-map tokens (Alberta Forestry & Parks / Canada.ca).
+ * Forest green chrome, paper panels, orange/red reserved for fire danger.
  */
 @theme {
+  --font-sans: "Lato", "Noto Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --color-void: #010403;
-  --color-panel: rgb(2 10 6 / 0.72);
-  --color-line: rgb(46 234 124 / 0.22);
-  --color-line-strong: rgb(46 234 124 / 0.55);
-  --color-phos: #2eea7c;
-  --color-phos-dim: #1d8f55;
-  --color-phos-glow: #7dffb4;
-  --color-ink: #d6ffe6;
-  --color-ink-dim: #7fae93;
-  --color-ink-mute: #4b6d5a;
-  --color-risk-elev: #e8d44a;
-  --color-risk-high: #ff9a1f;
-  --color-risk-ext: #ff6a1a;
-  --color-fire: #ff2a2a;
-  --color-water: #1ec8d8;
+  --color-void: #e8ece6;
+  --color-panel: rgb(255 255 255 / 0.96);
+  --color-line: #d0d7d0;
+  --color-line-strong: #7a8b80;
+  --color-phos: #007a3d;
+  --color-phos-dim: #2d6b4a;
+  --color-phos-glow: #0b5c32;
+  --color-ink: #1c2b22;
+  --color-ink-dim: #3d4f45;
+  --color-ink-mute: #6b7a72;
+  --color-risk-elev: #8a6d00;
+  --color-risk-high: #b35300;
+  --color-risk-ext: #a8390f;
+  --color-fire: #af3c43;
+  --color-water: #0b6e80;
+  --color-chrome: #0d3b2c;
 }
 
 html,
@@ -35,56 +37,71 @@ body,
   margin: 0;
   background: var(--color-void);
   color: var(--color-ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
-::selection {
-  background: rgb(46 234 124 / 0.3);
+.tabular-nums,
+.font-mono {
+  font-family: var(--font-mono);
 }
 
-/* Outlined panel with corner brackets. */
+::selection {
+  background: rgb(0 122 61 / 0.22);
+}
+
 .panel {
   position: relative;
   background: var(--color-panel);
   border: 1px solid var(--color-line);
-  backdrop-filter: blur(6px);
-}
-.panel::before,
-.panel::after {
-  content: "";
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  border-color: var(--color-phos);
-  pointer-events: none;
-}
-.panel::before {
-  top: -1px;
-  left: -1px;
-  border-top: 1px solid;
-  border-left: 1px solid;
-}
-.panel::after {
-  bottom: -1px;
-  right: -1px;
-  border-bottom: 1px solid;
-  border-right: 1px solid;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgb(16 24 32 / 0.12), 0 1px 2px rgb(16 24 32 / 0.06);
 }
 
 .label-xs {
   font-size: 10px;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
+  font-weight: 700;
   color: var(--color-ink-mute);
 }
 
-.glow-text {
-  text-shadow: 0 0 12px rgb(46 234 124 / 0.55);
+.compass-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--color-phos);
+  border-radius: 999px;
+  color: var(--color-phos);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
 }
 
-/* Map labels (positioned from three.js each frame). */
+.app-chrome {
+  background: var(--color-chrome);
+  color: #f3f7f4;
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.2);
+}
+.app-chrome .text-ink { color: #f3f7f4; }
+.app-chrome .text-ink-dim { color: #c5d4cb; }
+.app-chrome .text-ink-mute { color: #8aa394; }
+.app-chrome .text-phos { color: #9de0b8; }
+.app-chrome .border-line { border-color: rgb(255 255 255 / 0.18); }
+.app-chrome .border-line-strong { border-color: rgb(255 255 255 / 0.4); }
+.app-chrome .bg-panel { background: rgb(255 255 255 / 0.08); }
+.app-chrome .bg-void { background: var(--color-chrome); }
+
+.glow-text {
+  text-shadow: none;
+}
+
 .map-label {
   position: absolute;
   z-index: 2;
@@ -94,13 +111,14 @@ body,
   align-items: center;
   gap: 6px;
   font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--color-ink);
   white-space: nowrap;
-  padding: 2px 6px 2px 4px;
-  background: rgb(1 6 4 / 0.82);
-  border: 1px solid rgb(46 234 124 / 0.18);
+  padding: 2px 7px 2px 5px;
+  background: rgb(255 255 255 / 0.92);
+  border: 1px solid #b8c2b8;
+  border-radius: 3px;
   pointer-events: auto;
   cursor: pointer;
   translate: -4px -50%;
@@ -113,18 +131,12 @@ body,
   width: 7px;
   height: 7px;
   border: 1px solid var(--color-phos);
-  transform: rotate(45deg);
-  background: #000;
+  border-radius: 50%;
+  background: #fff;
 }
 
-/* Screen texture: scanlines + vignette (pure CSS, no GPU cost to the scene). */
 .screen-fx {
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  background:
-    repeating-linear-gradient(0deg, rgb(0 0 0 / 0.07) 0 1px, transparent 1px 3px),
-    radial-gradient(ellipse at center, transparent 55%, rgb(0 0 0 / 0.65) 100%);
+  display: none;
 }
 
 .scroll-thin {
@@ -163,7 +175,6 @@ body,
   display: none !important;
 }
 
-
 .map-label-landmark {
   font-size: 10px;
   color: var(--color-ink-dim);
@@ -174,70 +185,50 @@ body,
   transform: none;
 }
 
-/*
- * Light theme — corporate / government styling (Canada.ca-inspired):
- * white surfaces, navy accent, Lato, plain bordered panels, no glow or scanlines.
- */
-:root[data-theme="light"] {
-  --color-void: #f4f6f8;
-  --color-panel: rgb(255 255 255 / 0.96);
-  --color-line: #d5dbe1;
-  --color-line-strong: #8a98a6;
-  --color-phos: #26374a;
-  --color-phos-dim: #4f6b85;
-  --color-phos-glow: #1c578a;
-  --color-ink: #1b2733;
-  --color-ink-dim: #3e4b57;
-  --color-ink-mute: #6b7783;
-  --color-risk-elev: #8a6d00;
-  --color-risk-high: #b35300;
-  --color-risk-ext: #a8390f;
-  --color-fire: #af3c43;
-  --color-water: #0b6e80;
-}
-:root[data-theme="light"] body,
-:root[data-theme="light"] #root {
-  font-family: "Lato", "Noto Sans", system-ui, sans-serif;
-}
-:root[data-theme="light"] .tabular-nums,
-:root[data-theme="light"] .font-mono {
-  font-family: var(--font-mono);
-}
-:root[data-theme="light"] .panel {
-  border-radius: 4px;
-  backdrop-filter: none;
-  box-shadow: 0 1px 3px rgb(16 24 32 / 0.12), 0 1px 2px rgb(16 24 32 / 0.06);
-}
-:root[data-theme="light"] .panel::before,
-:root[data-theme="light"] .panel::after,
-:root[data-theme="light"] .screen-fx {
-  display: none;
-}
-:root[data-theme="light"] .glow-text {
-  text-shadow: none;
-}
-:root[data-theme="light"] .label-xs {
-  letter-spacing: 0.08em;
-  font-weight: 700;
-}
-:root[data-theme="light"] .map-label {
-  background: rgb(255 255 255 / 0.92);
-  border-color: #b8c2cc;
-  color: #1b2733;
-  border-radius: 3px;
-}
-:root[data-theme="light"] .map-label-dot {
-  border-color: #26374a;
-  background: #fff;
-}
-:root[data-theme="light"] [class*="drop-shadow"] {
-  filter: none;
-}
-
 .map-label-dim {
   opacity: 0.55;
 }
 .map-label,
 .map-label * {
   user-select: none;
+}
+
+/*
+ * Night ops — charcoal, muted forest accent, no scanlines.
+ */
+:root[data-theme="dark"] {
+  --color-void: #1a211c;
+  --color-panel: rgb(24 32 28 / 0.92);
+  --color-line: #3a4a40;
+  --color-line-strong: #6a7d70;
+  --color-phos: #5fbf7a;
+  --color-phos-dim: #3d8a55;
+  --color-phos-glow: #8ed9a4;
+  --color-ink: #e6eee8;
+  --color-ink-dim: #a3b3a8;
+  --color-ink-mute: #7a887f;
+  --color-risk-elev: #e0c04a;
+  --color-risk-high: #e08a2a;
+  --color-risk-ext: #d45a20;
+  --color-fire: #e05454;
+  --color-water: #6eb3c8;
+  --color-chrome: #121814;
+}
+:root[data-theme="dark"] .app-chrome {
+  background: var(--color-chrome);
+}
+:root[data-theme="dark"] .panel {
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.28);
+}
+:root[data-theme="dark"] .map-label {
+  background: rgb(18 24 20 / 0.9);
+  border-color: #3a4a40;
+  color: #e6eee8;
+}
+:root[data-theme="dark"] .map-label-dot {
+  background: #121814;
+}
+:root[data-theme="dark"] ::selection {
+  background: rgb(95 191 122 / 0.3);
 }

@@ -30,7 +30,7 @@ import { WindParticles } from "./WindParticles";
 export interface SceneEvents {
   onHover?: (n: HexNodeInfo | null) => void;
   onSelect?: (n: HexNodeInfo | null) => void;
-  onStats?: (s: WorldStats & { dist: number; fps: number; vScale: number }) => void;
+  onStats?: (s: WorldStats & { dist: number; fps: number; vScale: number; heading: number }) => void;
 }
 
 export interface Beacon {
@@ -79,11 +79,11 @@ export class Scene {
   private lastCam = new Float32Array(16);
   private viewW = 1;
   private viewH = 1;
-  private gridColor = { value: new Vector3(0.02, 0.16, 0.08) };
-  private borderMat = new LineBasicMaterial({ color: new Color("#1d8f55") });
-  private borderMatDim = new LineBasicMaterial({ color: new Color("#3a4a42") });
-  private bloomWanted = true;
-  private light = false;
+  private gridColor = { value: new Vector3(0.77, 0.8, 0.77) };
+  private borderMat = new LineBasicMaterial({ color: new Color("#1c3d2e") });
+  private borderMatDim = new LineBasicMaterial({ color: new Color("#9aa89e") });
+  private bloomWanted = false;
+  private light = true;
   private home = { x: 0, z: 0, dist: 1500 };
   /** Far enough out to reach the national level and see all of Canada. */
   private maxDist = 9000;
@@ -97,7 +97,7 @@ export class Scene {
     this.client = client;
     this.renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(this.maxPixelRatio);
-    this.renderer.setClearColor(new Color("#010403"));
+    this.renderer.setClearColor(new Color("#e8ece6"));
 
     this.camera = new PerspectiveCamera(34, 1, 0.5, 20000);
     this.camera.position.set(this.home.x, this.home.dist * 0.62, this.home.z + this.home.dist * 0.79);
@@ -118,7 +118,9 @@ export class Scene {
     this.controls.target.set(this.home.x, 0, this.home.z);
 
     this.world = new HexWorld(client);
-    this.world.onStats = (s) => this.events.onStats?.({ ...s, dist: this.distance, fps: this.fps, vScale: sharedUniforms.uVScale.value });
+    this.world.onStats = (s) => this.events.onStats?.({
+      ...s, dist: this.distance, fps: this.fps, vScale: sharedUniforms.uVScale.value, heading: this.heading,
+    });
     this.scene.add(this.world.root);
     this.scene.add(this.makeGround());
     this.beaconMat = this.makeBeaconMaterial();
@@ -131,6 +133,7 @@ export class Scene {
     this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new Vector2(256, 256), 0.8, 0.4, 0.42);
+    this.bloom.enabled = false;
     this.composer.addPass(this.bloom);
     const overlayPass = new RenderPass(this.overlayScene, this.camera);
     overlayPass.clear = false;
@@ -146,6 +149,13 @@ export class Scene {
 
   get distance() {
     return this.camera.position.distanceTo(this.controls.target);
+  }
+
+  /** Degrees clockwise from north (camera south of target → 0, looking north). */
+  get heading() {
+    const dx = this.camera.position.x - this.controls.target.x;
+    const dz = this.camera.position.z - this.controls.target.z;
+    return Math.atan2(dx, dz) * (180 / Math.PI);
   }
 
   // ------------------------------------------------------------ setup helpers
@@ -510,17 +520,17 @@ export class Scene {
     this.bloom.enabled = on && !this.light;
   }
 
-  /** Dark = emissive lines on black. Light = the same map as ink on paper (government style). */
+  /** Dark = night ops. Light = cartographic land-cover map (government style). */
   setTheme(theme: "dark" | "light") {
     this.light = theme === "light";
-    const bg = new Color(this.light ? "#f4f6f8" : "#010403");
+    const bg = new Color(this.light ? "#e8ece6" : "#1a211c");
     this.renderer.setClearColor(bg);
     sharedUniforms.uLight.value = this.light ? 1 : 0;
     sharedUniforms.uBg.value.set(bg.r, bg.g, bg.b);
-    const grid = new Color(this.light ? "#c9d1d9" : "#062914");
+    const grid = new Color(this.light ? "#c5cdc4" : "#2a332d");
     this.gridColor.value.set(grid.r, grid.g, grid.b);
-    this.borderMat.color.set(this.light ? "#26374a" : "#1d8f55");
-    this.borderMatDim.color.set(this.light ? "#9aa7b3" : "#3a4a42");
+    this.borderMat.color.set(this.light ? "#1c3d2e" : "#7a9a86");
+    this.borderMatDim.color.set(this.light ? "#9aa89e" : "#4a554e");
     this.beaconMat.blending = this.light ? NormalBlending : AdditiveBlending;
     this.beaconMat.needsUpdate = true;
     this.wind.setTheme(this.light);

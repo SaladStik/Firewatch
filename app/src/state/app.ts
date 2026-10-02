@@ -34,7 +34,7 @@ function initialTheme(): Theme {
     const t = localStorage.getItem("embergrid.theme");
     if (t === "dark" || t === "light") return t;
   } catch { /* storage unavailable */ }
-  return "dark";
+  return "light";
 }
 
 /** A community label, tagged with the workspace region it belongs to. */
@@ -52,7 +52,7 @@ export interface AppState {
   labelMode: LabelMode;
   /** progress 0..1 for the loading bar. */
   boot: { stage: string; done: boolean; error?: string; progress?: number };
-  stats: (WorldStats & { dist: number; fps: number; vScale: number }) | null;
+  stats: (WorldStats & { dist: number; fps: number; vScale: number; heading: number }) | null;
   hover: HexNodeInfo | null;
   selected: HexNodeInfo | null;
   selectedSample: PointSample | null;
@@ -84,7 +84,7 @@ export const app = createStore<AppState>({
   hover: null,
   selected: null,
   selectedSample: null,
-  layers: { risk: true, fires: true, spread: true, beacons: true, wind: true, rain: true, bloom: true },
+  layers: { risk: true, fires: true, spread: true, beacons: true, wind: true, rain: true, bloom: false },
   hotspots: [],
   perimeters: [],
   weather: [],
