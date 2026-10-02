@@ -130,6 +130,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
       attribute vec2 aMeta;   // born time, seed
       attribute float aFace;  // 0 = top, 1 = side
       attribute float aSide;  // -1 = top; 0..5 = which wall (instanced)
+      attribute vec2 aFloor;  // walls: neighbour's elevation (km) + lift on that side; x < 0 = unknown (down to 0)
       attribute vec2 aUV;
 
       varying vec3 vLine;
@@ -159,7 +160,10 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
         }
         vec3 w;
         w.xz = aPos.xy + P.xz * uSize * uGap * mix(0.35, 1.0, s);
-        w.y = P.y * top * s;
+        // A wall only spans down to the neighbour's top on that side (it would otherwise run on
+        // below the surface and show through the hairline gaps between hexes).
+        float floorY = aSide >= 0.0 && aFloor.x >= 0.0 ? min(hexTop(aFloor.x, aFloor.y), top) : 0.0;
+        w.y = mix(floorY, top, P.y) * s;
         vLine = aLine.rgb * aLine.a;
         vEdges = aEdges;
         vStyle = aStyle;

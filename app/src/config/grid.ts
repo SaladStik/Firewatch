@@ -44,11 +44,11 @@ export const GRID = {
   hysteresis: 0.03,
   levels: [
     // National view (all of Canada).
-    { size: 22, minDist: 4329, gap: 1, terrace: 250, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
-    { size: 7.0, minDist: 995, gap: 1, terrace: 150, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
-    { size: 2.2, minDist: 480, gap: 1, terrace: 100, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
-    { size: 0.7, minDist: 184, gap: 1, terrace: 50, majorityLandClass: false, decorations: false, buildingMinHeight: 80, landmarks: true },
-    { size: 0.22, minDist: 34, terrace: 20, majorityLandClass: false, decorations: true, buildingMinHeight: 12, landmarks: true },
+    { size: 22, minDist: 7968, gap: 1, terrace: 250, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
+    { size: 7.0, minDist: 2066, gap: 1, terrace: 150, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
+    { size: 2.2, minDist: 688, gap: 1, terrace: 100, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
+    { size: 0.7, minDist: 229, gap: 1, terrace: 50, majorityLandClass: false, decorations: false, buildingMinHeight: 80, landmarks: true },
+    { size: 0.22, minDist: 57, terrace: 20, majorityLandClass: false, decorations: true, buildingMinHeight: 12, landmarks: true },
     { size: 0.075, minDist: 0, terrace: 10, majorityLandClass: false, decorations: true, buildingMinHeight: 12, landmarks: true },
   ] satisfies GridLevel[],
 };

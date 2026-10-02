@@ -323,7 +323,7 @@ export class ChunkMesh {
     }
     const m = list.length / 2;
     const g = this.wallsGeo;
-    if (m > this.wallCap || !g.getAttribute("aSide")) {
+    if (m > this.wallCap || !g.getAttribute("aSide") || !g.getAttribute("aFloor")) {
       this.wallCap = Math.ceil(m * 1.25) + 8;
       const cap = this.wallCap;
       g.setAttribute("aPos", new InstancedBufferAttribute(new Float32Array(cap * 3), 3));
@@ -332,6 +332,7 @@ export class ChunkMesh {
       g.setAttribute("aEdges", new InstancedBufferAttribute(new Float32Array(cap * 2), 2));
       g.setAttribute("aStyle", new InstancedBufferAttribute(new Float32Array(cap * 4), 4));
       g.setAttribute("aSide", new InstancedBufferAttribute(new Float32Array(cap), 1));
+      g.setAttribute("aFloor", new InstancedBufferAttribute(new Float32Array(cap * 2), 2));
     }
     const copy = (name: string, src: Float32Array, n: number) => {
       const attr = g.getAttribute(name) as InstancedBufferAttribute, dst = attr.array as Float32Array;
@@ -344,8 +345,28 @@ export class ChunkMesh {
     copy("aEdges", this.aEdges.array as Float32Array, 2);
     copy("aStyle", style, 4);
     const side = g.getAttribute("aSide") as InstancedBufferAttribute, sd = side.array as Float32Array;
-    for (let j = 0; j < m; j++) sd[j] = list[j * 2 + 1];
+    const flo = g.getAttribute("aFloor") as InstancedBufferAttribute, fd = flo.array as Float32Array;
+    for (let j = 0; j < m; j++) {
+      const i = list[j * 2], k = list[j * 2 + 1];
+      sd[j] = k;
+      // The neighbour on side k (same order as the worker's contour bits), if it's in this chunk.
+      const ang = (Math.PI / 3) * k;
+      const nb = this.indexAt(d.x[i] + Math.cos(ang) * SQRT3 * size, d.z[i] + Math.sin(ang) * SQRT3 * size, size);
+      if (nb >= 0) {
+        fd[j * 2] = d.elev[nb] / 1000;
+        fd[j * 2 + 1] = style[nb * 4 + 2];
+      } else if (!(d.contours[i] & (1 << k))) {
+        // Neighbour in another chunk and no terrain step here: the wall only exists because this
+        // hex is raised, so it covers just the raise (down to its own un-raised top).
+        fd[j * 2] = d.elev[i] / 1000;
+        fd[j * 2 + 1] = 0;
+      } else {
+        fd[j * 2] = -1; // a real step at the chunk edge (cliff / coast): down to the ground
+        fd[j * 2 + 1] = 0;
+      }
+    }
     side.needsUpdate = true;
+    flo.needsUpdate = true;
     g.instanceCount = m;
   }
 
