@@ -151,6 +151,12 @@ export class Scene {
     return this.camera.position.distanceTo(this.controls.target);
   }
 
+  /** Ground kilometres per CSS pixel at the view target (for the map scale bar). */
+  get kmPerPx() {
+    const h = this.renderer.domElement.clientHeight || 1;
+    return (this.distance * 2 * Math.tan((this.camera.fov * Math.PI) / 360)) / h;
+  }
+
   /** Degrees clockwise from north (camera south of target → 0, looking north). */
   get heading() {
     const dx = this.camera.position.x - this.controls.target.x;
