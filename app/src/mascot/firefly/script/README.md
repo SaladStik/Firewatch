@@ -38,17 +38,19 @@ await run.done;                       // or run.stop() to cancel
 
 | Section | Controls |
 |---|---|
-| **Record** | **● Record** / **■ Stop recording**. **Capture pauses**: idle gaps between your actions (> 0.3 s) are recorded as `wait` steps. |
+| **Record** | **Every action you do in the panel is added to the script as a step**, recording or not. **● Record** additionally keeps the idle gaps between your actions (> 0.3 s) as `wait` steps (with **capture pauses** on). Starting a recording keeps the steps you already have; use **Clear** to start over. |
 | **Move** | **Fly to…** (click a point), **Look at…** (click), **Look ahead**, **Show at…** (click), **Hide**, **Start point…** (where he appears when the script starts) |
 | **Mood** | Pick a mood and press **Set**. |
 | **Emote** | hop · spin · shake · nod · flutter |
 | **Say** | Type a line and press **Say**. The text is also the caption for spotlights. |
 | **Spotlight** | **Spotlight…** (drag a box), **▭ box** / **◯ ellipse**, **wait for click**, **Clear spotlight** |
+| **Task** (hands-on) | **Task on element…**: click a real button or field in the app. A button becomes a *click* task, a field becomes a *type* task. **Task on area…**: drag any box (e.g. part of the map), as a *click* or *type* task. The text box sets what they must type (empty = anything, confirmed with Enter). See [Tasks](#tasks-hands-on-tutorials). |
+| **Resize him** | Pick a **new size**, a **duration** (seconds) and an **easing** (`linear`, `easeIn`, `easeOut`, `easeInOut`, `back` = slight overshoot), then **Resize ›**. He tweens to it live and a `size` step is added. |
 | **Wait** | Add a fixed wait (seconds). |
-| **Script list** | Every step, in order. Edit wait seconds, say text, spotlight captions, the fly "thru" flag and the spotlight "click" flag inline. **▶** = play from this step. **↑ ↓** reorder, **✕** delete. |
+| **Script list** | Every step, in order. Edit inline: wait seconds, say text, spotlight captions and "click" flag, the fly "thru" flag, task action / text to type / caption, and size % / seconds / easing. **▶** = play from this step. **↑ ↓** reorder, **✕** delete. |
 | **Run-through** | **▶ Play** (whole script), **Step ›** (run one step at a time; the cursor shows which step is next), **Reset**, **Smooth**, **Clear** |
 | **Share** | **Copy JSON**, **Import…** (paste a script and **Load**) |
-| **Playback scale** | **Size** (fraction of the screen's short side) and **Speed** (screen diagonals per second) |
+| **Script defaults** | **Starting size** (fraction of the screen's short side, where every play starts before any `size` steps) and **Speed** (screen diagonals per second) |
 
 **Notes:**
 - When you pick a point or drag a spotlight, the panel fades out of the way, so you can reach anything underneath it. Press **Esc** to cancel a pick.
@@ -118,6 +120,51 @@ Elements larger than ~45% of the screen (e.g. the map canvas) are treated as bac
 
 ---
 
+## Tasks (hands-on tutorials)
+
+A task step makes the viewer actually **use the app** before the tour continues:
+1. the screen dims except the highlighted area, and the firefly flies beside it and points his lantern at it, like a spotlight;
+2. he says the step's text (or a default, e.g. *"Type “calgary” here."*), and a chip under the area spells out what to do;
+3. **everything outside the area is blocked**, but the area itself is the real, live UI: buttons click, fields type, the map pans;
+4. it completes when the viewer **clicks inside the area** (`action: "click"`) or **types into a field inside it** (`action: "type"`). With `expect`, the field must contain that text (case-insensitive, checked as they type). Without it, any text confirmed with Enter counts;
+5. on success the edge flashes green with *"✓ Nice!"* and he does a little hop. The chip always has **skip ›**, so nobody gets stuck.
+
+```ts
+{ type: "task", action: "click", area: { selector: '[data-tour="nav"] > button:nth-of-type(1)', ex0: -0.1, ey0: -0.1, ex1: 1.1, ey1: 1.1, vx0: 0.95, vy0: 0.86, vx1: 0.98, vy1: 0.9 },
+  text: "Zoom in with this." }
+{ type: "task", action: "type", expect: "calgary", area: { /* the search field */ }, text: "Search for Calgary." }
+```
+
+Tasks picked with **Task on element…** are anchored to that element itself, so they keep tracking it when its panel resizes or reflows. The app only observes clicks and typing (it never blocks the real events), so the app reacts exactly as it normally would.
+
+## Resizing him mid-script
+
+A `size` step tweens him from his current size to `size` (fraction of the screen's short side) over `seconds` (default 0.6) with `ease` (default `easeInOut`). Everything after it uses the new size: spotlights and tasks keep him clear of the area at his current size. Playing or stepping from the middle of a script restores the size he'd have at that point. `seconds: 0` jumps instantly.
+
+```ts
+{ type: "size", size: 0.2, seconds: 0.8, ease: "back" }
+```
+
+---
+
+## Making a script permanent
+
+The recorder keeps your working script in `localStorage` only. To ship it:
+1. **Copy JSON** in the panel;
+2. save it in the repo, e.g. `src/mascot/firefly/scripts/onboarding.json`;
+3. play it from code:
+
+```ts
+import onboarding from "./mascot/firefly/scripts/onboarding.json";
+import { playScript, type FireflyScript } from "./mascot/firefly/script";
+
+playScript(onboarding as FireflyScript);   // e.g. on first visit, or from a "Show me around" button
+```
+
+Every step type, including tasks and size changes, is plain JSON in that file. To edit a shipped script later, use **Import…** to paste it back into the recorder, change it, then copy it out again.
+
+---
+
 ## Script format
 
 ```ts
@@ -142,6 +189,8 @@ interface FireflyScript {
 | `show` | `at?: Anchor` | — |
 | `hide` | — | — |
 | `spotlight` | `area: Area \| null`, `shape?: "rect" \| "ellipse"`, `text?`, `click?` (default true) | the viewer's click (if `click`) |
+| `task` | `area: Area`, `action: "click" \| "type"`, `expect?` (text to type), `shape?`, `text?` | the viewer doing it (or **skip**) |
+| `size` | `size` (fraction of the short side), `seconds?` (0.6), `ease?: "linear" \| "easeIn" \| "easeOut" \| "easeInOut" \| "back"` | the tween |
 
 Scripts are plain JSON, so you can hand-write or edit them. See `DEMO_TOUR` in `src/mascot/preview/main.tsx` for a hand-written example.
 
@@ -159,7 +208,7 @@ Scripts are plain JSON, so you can hand-write or edit them. See `DEMO_TOUR` in `
 ```ts
 import {
   playScript, getStage, runScript, execStep, prepareAt, smoothScript, describeStep,
-  anchorAt, areaFromBox, resolveAnchor, resolveArea, mountFireflyDev, isFireflyDevEnabled,
+  anchorAt, areaFromBox, areaForElement, resolveAnchor, resolveArea, mountFireflyDev, isFireflyDevEnabled,
   type FireflyScript, type ScriptStep, type Anchor, type Area,
 } from "./mascot/firefly/script";
 ```
@@ -167,12 +216,13 @@ import {
 | Function | Description |
 |---|---|
 | `playScript(script, { hideAtEnd?, onStep? })` | Play on the shared stage. Returns `{ done, stop }`. Hides him at the end by default. |
-| `getStage()` | The shared overlay (created on first use). Has `controller`, `setVisible`, `setSize`, `setConfig`, `setSpotlight`, `play(script, { from })`, `stop()`. |
+| `getStage()` | The shared overlay (created on first use). Has `controller`, `setVisible`, `setSize`, `tweenSize(size, seconds, ease)`, `setConfig`, `setSpotlight`, `waitForTask(step)`, `play(script, { from })`, `stop()`. |
 | `runScript(ctl, script, hooks, from?)` | Run on any `FireflyController` (e.g. your own instance). |
 | `execStep(ctl, step, { speed }, hooks)` | Run a single step. |
 | `prepareAt(ctl, script, i, hooks)` | Put him in the state he'd be in just before step `i`. |
 | `smoothScript(script)` | Returns a tidied copy. |
 | `anchorAt(x, y)` / `areaFromBox(x0, y0, x1, y1)` | Build resolution-agnostic anchors and areas from screen coordinates. |
+| `areaForElement(el, pad?)` | An area that *is* an element (plus padding), anchored to it so it follows the element (used for tasks). |
 | `resolveAnchor(a)` / `resolveArea(a)` | Back to screen coordinates, right now. |
 | `mountFireflyDev()` | Mount the recorder on a page. A no-op unless dev or `?fireflydev`. Already called in `src/main.tsx` and the preview page. |
 
@@ -187,9 +237,9 @@ script/
   types.ts        FireflyScript, ScriptStep, Anchor, Area
   anchors.ts      element/viewport anchoring, selector generation, area fitting
   player.ts       execStep, runScript, prepareAt, smoothScript, spotlight placement
-  stage.tsx       shared overlay: mascot, spotlight (dim + beam + click-through), playScript
+  stage.tsx       shared overlay: mascot, spotlight (dim + beam + click-through), tasks, size tweens, playScript
   DevOverlay.tsx  the recorder panel (draggable), mountFireflyDev
   index.ts        exports
 ```
 
-The stage and recorder render into their own fixed layers at the very top of the page. They're marked `data-firefly-ui`, so they never become anchor targets themselves. The stage is click-through except while a spotlight waits for a click.
+The stage and recorder render into their own fixed layers at the very top of the page. They're marked `data-firefly-ui`, so they never become anchor targets themselves. The stage is click-through except while a spotlight waits for a click, or a task blocks everything outside its area.
