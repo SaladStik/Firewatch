@@ -48,7 +48,22 @@ export type ScriptStep =
    * say `text` and (if `click`, default true) wait for the viewer to click through.
    * `area: null` clears a persistent spotlight.
    */
-  | { type: "spotlight"; area: Area | null; shape?: "rect" | "ellipse"; text?: string; click?: boolean };
+  | { type: "spotlight"; area: Area | null; shape?: "rect" | "ellipse"; text?: string; click?: boolean }
+  /**
+   * Hands-on task: spotlight `area` and wait until the viewer actually DOES something there
+   * in the real app — `click` inside it, or `type` into a field inside it (`expect` = text
+   * that must be typed, case-insensitive; empty = anything, confirmed with Enter).
+   * Everything outside the area is blocked meanwhile; the viewer can always skip.
+   */
+  | { type: "task"; area: Area; action: TaskAction; expect?: string; shape?: "rect" | "ellipse"; text?: string }
+  /** Tween the mascot to `size` (fraction of the viewport's short side) over `seconds` with `ease`. */
+  | { type: "size"; size: number; seconds?: number; ease?: Ease };
+
+export type TaskAction = "click" | "type";
+
+/** Easing curves for tweens (size changes). `back` overshoots slightly, then settles. */
+export const EASES = ["linear", "easeIn", "easeOut", "easeInOut", "back"] as const;
+export type Ease = (typeof EASES)[number];
 
 export interface FireflyScript {
   version: 1;

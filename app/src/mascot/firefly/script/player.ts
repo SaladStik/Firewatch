@@ -4,7 +4,7 @@
 import { EMOTE_DURATION, type FireflyController } from "../controller";
 import { MOODS, type MoodName } from "../moods";
 import { resolveAnchor, resolveArea, viewportDiagonal } from "./anchors";
-import type { Area, FireflyScript, ScriptStep } from "./types";
+import type { Area, Ease, FireflyScript, ScriptStep, TaskAction } from "./types";
 
 export interface PlayHooks {
   /** Show / hide the mascot (the stage implements this). */
@@ -13,9 +13,15 @@ export interface PlayHooks {
   onStep?: (index: number, step: ScriptStep) => void;
   signal?: AbortSignal;
   /** Spotlight overlay (the stage implements these). */
-  setSpotlight?: (s: { area: Area; shape: "rect" | "ellipse" } | null) => void;
+  setSpotlight?: (s: { area: Area; shape: "rect" | "ellipse"; task?: { action: TaskAction; expect?: string } } | null) => void;
   /** Resolves when the viewer clicks through. */
   waitForClick?: (signal?: AbortSignal) => Promise<void>;
+  /** Resolves when the viewer completes a task step ("done") or skips it ("skipped"). */
+  waitForTask?: (step: Extract<ScriptStep, { type: "task" }>, signal?: AbortSignal) => Promise<"done" | "skipped">;
+  /** Tween the mascot size (fraction of the viewport's short side); resolves when it lands. */
+  tweenSize?: (size: number, seconds: number, ease: Ease, signal?: AbortSignal) => Promise<void>;
+  /** Set the size instantly (used when starting mid-script). */
+  setSize?: (size: number) => void;
   /** Current mascot size in px (to keep him clear of the highlighted area). */
   sizePx?: () => number;
 }
@@ -97,6 +103,33 @@ export async function execStep(
       }
       return;
     }
+    case "size": {
+      const secs = step.seconds ?? 0.6;
+      if (hooks.tweenSize) await hooks.tweenSize(step.size, secs, step.ease ?? "easeInOut", signal);
+      else hooks.setSize?.(step.size);
+      return;
+    }
+    case "task": {
+      const shape = step.shape ?? "rect";
+      hooks.setSpotlight?.({ area: step.area, shape, task: { action: step.action, expect: step.expect } });
+      const box = resolveArea(step.area);
+      const spot = besideBox(box, hooks.sizePx?.() ?? 100);
+      await Promise.race([
+        ctl.flyTo(spot.x, spot.y, { speed: defaults.speed * viewportDiagonal() }),
+        new Promise<void>((d) => signal?.addEventListener("abort", () => d(), { once: true })),
+      ]);
+      const ask = step.text ?? (step.action === "type" ? (step.expect ? `Type “${step.expect}” here.` : "Type something here.") : "Click here.");
+      ctl.say(ask, sayDuration(ask), { hold: true });
+      // Without a stage (no task support) fall back to click-to-continue.
+      const result = hooks.waitForTask ? await hooks.waitForTask(step, signal) : (await hooks.waitForClick?.(signal), "done" as const);
+      hooks.setSpotlight?.(null);
+      ctl.clearSpeech();
+      if (result === "done" && !signal?.aborted) {
+        ctl.play("hop"); // a little cheer (no mood change: that would leak into later steps)
+        await sleep(EMOTE_DURATION.hop, signal);
+      }
+      return;
+    }
   }
 }
 
@@ -125,7 +158,9 @@ export function prepareAt(ctl: FireflyController, script: FireflyScript, index: 
   let at = resolveAnchor(script.start);
   let mood: MoodName = "idle";
   let visible = true;
+  let size = script.size;
   for (const s of script.steps.slice(0, index)) {
+    if (s.type === "size") size = s.size;
     if (s.type === "fly") at = resolveAnchor(s.to);
     if (s.type === "show") { visible = true; if (s.at) at = resolveAnchor(s.at); }
     if (s.type === "hide") visible = false;
@@ -137,6 +172,7 @@ export function prepareAt(ctl: FireflyController, script: FireflyScript, index: 
   ctl.teleport(at.x, at.y);
   ctl.lookAt(null);
   hooks.setSpotlight?.(null);
+  hooks.setSize?.(size);
   hooks.setVisible?.(visible);
 }
 
@@ -192,6 +228,8 @@ export function describeStep(s: ScriptStep): string {
     case "wait": return `Wait ${s.seconds}s`;
     case "show": return s.at ? `Show at ${where(s.at)}` : "Show";
     case "hide": return "Hide";
+    case "size": return `Size → ${Math.round(s.size * 100)}% over ${s.seconds ?? 0.6}s (${s.ease ?? "easeInOut"})`;
+    case "task": return `Task: ${s.action}${s.action === "type" && s.expect ? ` “${s.expect}”` : ""}${s.area.selector ? " on " + shortSel(s.area.selector) : ""}${s.text ? ` · “${s.text}”` : ""}`;
     case "spotlight": return s.area ? `Spotlight ${s.shape ?? "rect"}${s.area.selector ? " on " + shortSel(s.area.selector) : ""}${s.text ? ` · “${s.text}”` : ""}` : "Clear spotlight";
   }
 }
