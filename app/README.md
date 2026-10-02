@@ -6,7 +6,7 @@ Wildfire risk intelligence on a 3D hex grid, built entirely on open data. It cov
 npm install
 npm run dev          # http://localhost:5173
 npm run build        # static site in dist/ (deploy anywhere; set BASE=/sub/path/ for sub-path hosting)
-npm run server       # optional shared data server (http://localhost:8787); use it with VITE_DATA_SERVER=http://localhost:8787 npm run dev
+npm run server       # optional shared data server (http://localhost:8787); use it with VITE_DATA_SERVER=http://localhost:8787 npm run dev (see RUNBOOK.md)
 npm test             # unit tests for the risk math (node:test via tsx)
 npm run bake -- alberta       # terrain + land-cover raster for a region
 npm run bake:pbf -- alberta   # OSM (Geofabrik extract): every road, river, stream, rail line, town, building ≥4 storeys
@@ -67,7 +67,18 @@ By default every visitor's browser fetches the live data above itself. Running `
 - Every visitor sees the same data, and the Open-Meteo quota is spent once rather than once per browser.
 - If a source fails or rate-limits, the server keeps serving the last good copy and waits 5 minutes before retrying.
 - The server computes FWI seeding with the same code as the browser (`src/data/fwiSeed.ts`).
-- It also serves the built site from `dist/` when one exists.
+- **Many devices at once:**
+  - Each data set is serialised and gzipped once per refresh, not per request.
+  - Every response carries an ETag, so a device that already has the latest copy gets an empty 304.
+  - Stale data is served instantly while one background refresh runs.
+  - Simultaneous requests share one upstream fetch.
+  - Upstream calls are queued: one Open-Meteo request and two hotspot-archive queries at a time. However many devices connect, the sources see the same traffic.
+  - Perimeter outlines are rounded to about 1 m, which is a third smaller to send.
+  - Only known province and fire ids are accepted, and old fire histories are dropped, so memory stays bounded.
+  - Load test: 300 devices booting at once (5,100 requests) all succeeded, with each data set fetched from its source once.
+- **Addresses:**
+  - In dev, the page calls its own `/api`, and Vite forwards that to `VITE_DATA_SERVER`. Phones and other computers on the network only need to reach the dev server (`npm run dev -- --host`).
+  - In a build, the page calls `<VITE_DATA_SERVER>/api`. Use `same-origin` when the data server also serves the built site from `dist/`, which it does whenever a build exists.
 
 API endpoints:
 - `/api/health`
