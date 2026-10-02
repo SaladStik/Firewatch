@@ -1,6 +1,6 @@
 /** Bottom strip: headline numbers + strongest hotspots (click to fly). */
 import { useMemo } from "react";
-import { isPerimeterActive, simulatedHotspots } from "../data/hazards";
+import { isPerimeterActive, SIM_WEATHER_BOOST, simulatedHotspots } from "../data/hazards";
 import { useFocusIndices } from "./region";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
@@ -20,6 +20,7 @@ export function FireFeed({ engine }: { engine: Engine | null }) {
   const perimeters = useStore(app, (s) => s.perimeters);
   const weather = useStore(app, (s) => s.weather);
   const sim = useStore(app, (s) => s.simulation);
+  const day = useStore(app, (s) => s.forecastDay);
   const regions = useStore(app, (s) => s.regions);
   const focus = useFocusIndices();
 
@@ -35,7 +36,7 @@ export function FireFeed({ engine }: { engine: Engine | null }) {
   const active = focusPer.filter((p) => isPerimeterActive(p)).length;
   const burnedHa = focusPer.reduce((a, p) => a + p.areaHa, 0);
   const wxCells = weather.flatMap((w) => w.cells);
-  const wxMax = wxCells.length ? Math.max(...wxCells.map((c) => c.risk)) * (sim ? 1.35 : 1) : 0;
+  const wxMax = wxCells.length ? Math.max(...wxCells.map((c) => c.days[day]?.risk ?? 0)) * (sim ? SIM_WEATHER_BOOST : 1) : 0;
 
   return (
     <div data-tour="fire-feed" className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-stretch">
@@ -44,7 +45,7 @@ export function FireFeed({ engine }: { engine: Engine | null }) {
         <Metric label="Elsewhere 24h" value={elsewhere} color="var(--color-ink-dim)" />
         <Metric label="Active perim." value={active} color="var(--color-risk-ext)" />
         <Metric label={`Burned ${new Date().getFullYear()}`} value={`${Math.round(burnedHa / 1000)}k ha`} color="var(--color-risk-high)" />
-        <Metric label="Peak wx risk" value={Math.round(Math.min(1, wxMax) * 100)} color="var(--color-risk-elev)" />
+        <Metric label={day === 0 ? "Peak wx risk" : `Peak wx risk +${day}d`} value={Math.round(Math.min(1, wxMax) * 100)} color="var(--color-risk-elev)" />
       </div>
       <div className="scroll-thin hidden min-w-0 flex-1 gap-1 overflow-x-auto px-2 py-1.5 lg:flex">
         {top.length === 0 && <div className="self-center px-2 text-[11px] text-ink-mute">No satellite hotspots in the last 24h.</div>}

@@ -1,6 +1,7 @@
 /** App-wide UI state (not persisted, apart from the theme). */
 import { initialFocus, REGIONS, WORKSPACE, type Region } from "../config/regions";
 import type { Hotspot, Perimeter } from "../data/cwfis";
+import type { SpreadEllipse } from "../data/fireSpread";
 import type { WeatherGrid } from "../data/openMeteo";
 import type { Place } from "../data/places";
 import type { WorldStats } from "../render/HexWorld";
@@ -11,7 +12,9 @@ import { createStore } from "./store";
 export interface Layers {
   risk: boolean;
   fires: boolean;
+  spread: boolean;
   beacons: boolean;
+  wind: boolean;
   bloom: boolean;
 }
 
@@ -57,8 +60,12 @@ export interface AppState {
   weather: WeatherGrid[];
   dataStatus: { cwfis: "loading" | "ok" | "error"; weather: "loading" | "ok" | "error"; at?: string };
   simulation: boolean;
+  /** Forecast slider: 0 = today, 1..7 = days ahead. Fires stay as observed now. */
+  forecastDay: number;
   /** Sectors flagged for patrol this session. */
   flagged: string[];
+  /** Projected fire spread ellipses for the selected day (scenario model). */
+  spread: SpreadEllipse[];
 }
 
 export const app = createStore<AppState>({
@@ -73,13 +80,15 @@ export const app = createStore<AppState>({
   hover: null,
   selected: null,
   selectedSample: null,
-  layers: { risk: true, fires: true, beacons: true, bloom: true },
+  layers: { risk: true, fires: true, spread: true, beacons: true, wind: true, bloom: true },
   hotspots: [],
   perimeters: [],
   weather: [],
   dataStatus: { cwfis: "loading", weather: "loading" },
   simulation: false,
+  forecastDay: 0,
   flagged: [],
+  spread: [],
 });
 
 export const regionIndex = (id: string) => app.get().regions.findIndex((r) => r.id === id);

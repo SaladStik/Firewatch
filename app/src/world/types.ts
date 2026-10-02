@@ -2,6 +2,7 @@
  * Data contracts between the main thread, the world worker and the renderer.
  * Everything that crosses the worker boundary is plain data / typed arrays.
  */
+import type { SpreadEllipse } from "../data/fireSpread";
 import type { LandClass } from "../geo/landClass";
 import type { NodeStatus } from "../hex/nodeTypes";
 import type { Landmark } from "../hex/overlayStyles";
@@ -36,10 +37,13 @@ export interface ChunkData {
 
 /** Hazard data after projection into world km. Sent to the worker. */
 export interface HazardSnapshot {
-  hotspots: { x: number; z: number; frp: number; fwi: number }[];
+  /** dx/dz/stretch: the day's downwind direction at the hotspot (see world/spread.ts). */
+  hotspots: { x: number; z: number; frp: number; fwi: number; dx: number; dz: number; stretch: number }[];
   perimeters: { active: boolean; minX: number; maxX: number; minZ: number; maxZ: number; rings: number[][] }[];
   /** Regular lat/lng grids of weather risk (0..1), one per region. */
   weather: { lat0: number; lng0: number; step: number; nLat: number; nLng: number; risk: number[] }[];
+  /** Projected fire spread ellipses for the selected day (empty when the layer is off). */
+  spread: SpreadEllipse[];
 }
 
 export interface TerrainMeta {

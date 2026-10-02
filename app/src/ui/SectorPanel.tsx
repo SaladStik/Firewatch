@@ -1,12 +1,15 @@
 /** Details for the selected hex + actions. */
 import { Crosshair, Flag, X } from "lucide-react";
 import { GRID } from "../config/grid";
-import { weatherAt } from "../data/openMeteo";
+import { PAST_DAYS, weatherAt } from "../data/openMeteo";
 import { NODE_STATUSES, NODE_TYPES, NodeStatus } from "../hex/nodeTypes";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
+import { compass, dayLabel } from "./weatherFormat";
 import { HexIcon, KV, Panel, SegBar } from "./primitives";
+
+const fx = (v: number, d = 0) => (Number.isFinite(v) ? v.toFixed(d) : "–");
 
 function riskColor(r: number) {
   return r >= 0.8 ? "var(--color-risk-ext)" : r >= 0.6 ? "var(--color-risk-high)" : r >= 0.4 ? "var(--color-risk-elev)" : "var(--color-phos)";
@@ -17,11 +20,13 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
   const sample = useStore(app, (s) => s.selectedSample);
   const weather = useStore(app, (s) => s.weather);
   const flagged = useStore(app, (s) => s.flagged);
+  const day = useStore(app, (s) => s.forecastDay);
   const regionName = useStore(app, (s) => s.regions[n?.region ?? 0]?.name);
   if (!n) return null;
   const type = NODE_TYPES[n.land];
   const status = NODE_STATUSES[n.status];
-  const wx = weatherAt(weather, n.lat, n.lng);
+  const cell = weatherAt(weather, n.lat, n.lng);
+  const wx = cell?.days[day];
   const statusColor = status.line ?? type.line;
   const isFlagged = flagged.includes(n.key);
   const cellM = GRID.levels[n.level].size * Math.sqrt(3) * 1000;
@@ -67,10 +72,13 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
         />
         {wx && (
           <>
-            <div className="mt-2 mb-1 label-xs">Weather · Open-Meteo</div>
-            <KV k="Temp / RH" v={`${wx.temp.toFixed(0)}°C / ${wx.rh.toFixed(0)}%`} />
-            <KV k="Wind" v={`${wx.wind.toFixed(0)} km/h`} />
-            <KV k="Rain (72h)" v={`${wx.rain3d.toFixed(1)} mm`} />
+            <div className="mt-2 mb-1 label-xs">Weather · Open-Meteo · {dayLabel(day, weather[0]?.dates)}</div>
+            {day === 0 && cell?.now && <KV k="Live now" v={`${fx(cell.now.temp)}°C / ${fx(cell.now.rh)}% · ${fx(cell.now.wind)} km/h`} />}
+            <KV k="Max temp / min RH" v={`${fx(wx.temp)}°C / ${fx(wx.rh)}%`} />
+            <KV k="Wind" v={`${fx(wx.wind)} km/h${Number.isFinite(wx.windFrom) ? ` from ${compass(wx.windFrom)} (${Math.round(wx.windFrom)}°)` : ""}`} />
+            <KV k="Rain (day)" v={`${fx(wx.rainMm, 1)} mm`} />
+            <KV k="Days since rain" v={wx.daysSinceRain > PAST_DAYS ? `${PAST_DAYS}+` : String(wx.daysSinceRain)} />
+            <KV k="Fosberg FFWI" v={fx(wx.ffwi, 1)} />
           </>
         )}
       </div>

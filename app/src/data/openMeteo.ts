@@ -1,16 +1,39 @@
 /**
  * Open-Meteo (open-meteo.com) — free weather API, CORS enabled, no key.
- * Samples a 1° lat/lng grid over the region bbox and derives a simple
- * hot-dry-windy risk score. Not an official index — see `weatherRisk()`.
+ * Samples a 1.5° lat/lng grid over the region bbox: today + a 7-day daily
+ * forecast, live current conditions (display only) and two weeks of rain history
+ * (for days-since-rain). Each day's peak is scored with the Fosberg FFWI × a
+ * dryness factor (data/fosberg.ts).
  */
-export interface WeatherCell {
-  lat: number;
-  lng: number;
+import { daysSinceRain, fireWeatherRisk, fosbergFFWI, FULLY_DRY_DAYS } from "./fosberg";
+
+/** Days after today on the forecast slider (day 0 = today). */
+export const FORECAST_DAYS = 7;
+/** Rain history for days-since-rain; dryness saturates at FULLY_DRY_DAYS, so more is wasted quota. */
+export const PAST_DAYS = FULLY_DRY_DAYS;
+
+/**
+ * One cell on one day. Each day uses the daily peak (max temperature, min
+ * humidity, max wind, dominant direction), so today compares like with like.
+ */
+export interface DayWeather {
   temp: number; // °C
   rh: number; // %
   wind: number; // km/h
-  rain3d: number; // mm, last 3 days
+  windFrom: number; // degrees, direction the wind blows FROM (0 = north)
+  rainMm: number; // that day's total
+  daysSinceRain: number;
+  ffwi: number; // Fosberg 0..100
   risk: number; // 0..1
+}
+
+export interface WeatherCell {
+  lat: number;
+  lng: number;
+  /** Index 0 = today, 1..FORECAST_DAYS = upcoming days. */
+  days: DayWeather[];
+  /** Live conditions right now (display only; risk uses the daily peaks). */
+  now: { temp: number; rh: number; wind: number; windFrom: number };
 }
 
 export interface WeatherGrid {
@@ -20,16 +43,32 @@ export interface WeatherGrid {
   nLat: number;
   nLng: number;
   cells: WeatherCell[];
+  /** Local ISO date per day index (0 = today). */
+  dates: string[];
   fetchedAt: string;
 }
 
-/** Hot + dry + windy, damped by recent rain. Tweak freely. */
-export function weatherRisk(temp: number, rh: number, wind: number, rain3d: number): number {
-  const heat = Math.min(1, Math.max(0, (temp - 5) / 25));
-  const dry = Math.min(1, Math.max(0, (80 - rh) / 60));
-  const windy = Math.min(1, wind / 40);
-  const base = 0.4 * dry + 0.35 * heat + 0.25 * windy;
-  return Math.min(1, base * Math.exp(-rain3d / 8));
+type Num = number | null;
+
+interface Row {
+  current: { temperature_2m: Num; relative_humidity_2m: Num; wind_speed_10m: Num; wind_direction_10m: Num };
+  daily: {
+    time: string[];
+    temperature_2m_max: Num[];
+    relative_humidity_2m_min: Num[];
+    wind_speed_10m_max: Num[];
+    wind_direction_10m_dominant: Num[];
+    precipitation_sum: Num[];
+  };
+}
+
+/** Missing API value → NaN (scores as 0, renders as "–"). */
+const num = (v: Num | undefined) => v ?? NaN;
+
+function scoreDay(tempIn: Num | undefined, rhIn: Num | undefined, windIn: Num | undefined, windFromIn: Num | undefined, rainMm: number, dry: number): DayWeather {
+  const temp = num(tempIn), rh = num(rhIn), wind = num(windIn), windFrom = num(windFromIn);
+  const ffwi = fosbergFFWI(temp, rh, wind);
+  return { temp, rh, wind, windFrom, rainMm, daysSinceRain: dry, ffwi, risk: fireWeatherRisk(ffwi, dry) };
 }
 
 export async function fetchWeatherGrid(bbox: [number, number, number, number], signal?: AbortSignal): Promise<WeatherGrid> {
@@ -46,23 +85,27 @@ export async function fetchWeatherGrid(bbox: [number, number, number, number], s
   }
   const p = new URLSearchParams({
     latitude: lats.join(","), longitude: lngs.join(","),
-    current: "temperature_2m,relative_humidity_2m,wind_speed_10m",
-    daily: "precipitation_sum", past_days: "3", forecast_days: "1", timezone: "UTC",
+    current: "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m",
+    daily: "temperature_2m_max,relative_humidity_2m_min,wind_speed_10m_max,wind_direction_10m_dominant,precipitation_sum",
+    past_days: String(PAST_DAYS), forecast_days: String(FORECAST_DAYS + 1), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
   const res = await fetch(`https://api.open-meteo.com/v1/forecast?${p}`, { signal });
   if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
   const json = await res.json();
-  const rows = Array.isArray(json) ? json : [json];
-  const cells = rows.map((r: {
-    latitude: number; longitude: number;
-    current: { temperature_2m: number; relative_humidity_2m: number; wind_speed_10m: number };
-    daily: { precipitation_sum: (number | null)[] };
-  }, k: number) => {
-    const rain3d = (r.daily?.precipitation_sum ?? []).slice(0, 3).reduce<number>((a, b) => a + (b ?? 0), 0);
-    const temp = r.current.temperature_2m, rh = r.current.relative_humidity_2m, wind = r.current.wind_speed_10m;
-    return { lat: lats[k], lng: lngs[k], temp, rh, wind, rain3d, risk: weatherRisk(temp, rh, wind, rain3d) };
+  const rows: Row[] = Array.isArray(json) ? json : [json];
+  const cells = rows.map((r, k): WeatherCell => {
+    const c = r.current, d = r.daily, rain = d.precipitation_sum;
+    const days: DayWeather[] = [];
+    // Day 0 = today: its rain total includes the forecast for the rest of today.
+    for (let n = 0; n <= FORECAST_DAYS; n++) {
+      const i = PAST_DAYS + n;
+      days.push(scoreDay(d.temperature_2m_max[i], d.relative_humidity_2m_min[i], d.wind_speed_10m_max[i], d.wind_direction_10m_dominant[i], rain[i] ?? 0, daysSinceRain(rain, i)));
+    }
+    const now = { temp: num(c.temperature_2m), rh: num(c.relative_humidity_2m), wind: num(c.wind_speed_10m), windFrom: num(c.wind_direction_10m) };
+    return { lat: lats[k], lng: lngs[k], days, now };
   });
-  return { lat0, lng0, step, nLat, nLng, cells, fetchedAt: new Date().toISOString() };
+  const dates = (rows[0]?.daily.time ?? []).slice(PAST_DAYS, PAST_DAYS + FORECAST_DAYS + 1);
+  return { lat0, lng0, step, nLat, nLng, cells, dates, fetchedAt: new Date().toISOString() };
 }
 
 export function weatherAt(grids: WeatherGrid[], lat: number, lng: number): WeatherCell | null {

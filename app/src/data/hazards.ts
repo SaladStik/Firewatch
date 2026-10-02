@@ -3,19 +3,27 @@
  * Add a new source: fetch it, then push into hotspots/perimeters/weather here.
  */
 import { project } from "../geo/projection";
+import { downwind } from "../world/spread";
 import type { HazardSnapshot } from "../world/types";
 import type { Hotspot, Perimeter } from "./cwfis";
-import type { WeatherGrid } from "./openMeteo";
+import type { SpreadEllipse } from "./fireSpread";
+import { weatherAt, type WeatherGrid } from "./openMeteo";
 
 export interface HazardInputs {
   hotspots: Hotspot[];
   perimeters: Perimeter[];
   weather: WeatherGrid[];
+  /** Forecast day index into each cell's `days` (0 = today). */
+  day: number;
   /** Demo scenario: multiplies weather risk (1 = real data). */
   weatherBoost: number;
+  /** Projected spread ellipses (data/fireSpread.ts); computed by the engine. */
+  spread: SpreadEllipse[];
 }
 
 const ACTIVE_PERIMETER_DAYS = 5;
+/** Demo scenario: heatwave multiplier on weather risk. */
+export const SIM_WEATHER_BOOST = 1.35;
 
 export function isPerimeterActive(p: Perimeter, now = Date.now()) {
   return now - Date.parse(p.lastDate) < ACTIVE_PERIMETER_DAYS * 86_400_000;
@@ -24,7 +32,12 @@ export function isPerimeterActive(p: Perimeter, now = Date.now()) {
 export function buildSnapshot(inp: HazardInputs): HazardSnapshot {
   const now = Date.now();
   return {
-    hotspots: inp.hotspots.map((h) => ({ ...project(h.lat, h.lng), frp: h.frp, fwi: h.fwi })),
+    hotspots: inp.hotspots.map((h) => {
+      // Nearest weather cell; outside every grid or missing wind → calm (plain circle).
+      const wx = weatherAt(inp.weather, h.lat, h.lng)?.days[inp.day];
+      const calm = !wx || !Number.isFinite(wx.windFrom) || !Number.isFinite(wx.wind);
+      return { ...project(h.lat, h.lng), frp: h.frp, fwi: h.fwi, ...downwind(calm ? 0 : wx.windFrom, calm ? 0 : wx.wind) };
+    }),
     perimeters: inp.perimeters.map((p) => {
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
       const rings = p.rings.map((ring) => {
@@ -41,8 +54,9 @@ export function buildSnapshot(inp: HazardInputs): HazardSnapshot {
     }),
     weather: inp.weather.map((w) => ({
       lat0: w.lat0, lng0: w.lng0, step: w.step, nLat: w.nLat, nLng: w.nLng,
-      risk: w.cells.map((c) => Math.min(1, c.risk * inp.weatherBoost)),
+      risk: w.cells.map((c) => Math.min(1, (c.days[inp.day]?.risk ?? 0) * inp.weatherBoost)),
     })),
+    spread: inp.spread,
   };
 }
 

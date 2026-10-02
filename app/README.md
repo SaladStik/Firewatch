@@ -6,6 +6,7 @@ Wildfire risk intelligence on a 3D hex grid, built entirely on open data. It cov
 npm install
 npm run dev          # http://localhost:5173
 npm run build        # static site in dist/ (deploy anywhere; set BASE=/sub/path/ for sub-path hosting)
+npm test             # unit tests for the risk math (node:test via tsx)
 npm run bake -- alberta       # terrain + land-cover raster for a region
 npm run bake:pbf -- alberta   # OSM (Geofabrik extract): every road, river, stream, rail line, town, building ≥4 storeys
 npm run bake:all              # terrain for every province and territory
@@ -22,11 +23,14 @@ The baked files for every region ship in `public/data/<region>/`, so you only ne
   - **Places:** search every community and click one to fly there.
   - It also sets label density. **Auto** (the default) shows major cities from afar and adds smaller towns as you zoom in; All / Some / Major / Off are fixed settings.
 - The **Light / Dark** button switches between the dark theme and a government-style light theme.
+- The **Forecast** bar switches the map between today and each of the next 7 days, and lists the communities most at risk that day (one per weather cell). Fires stay as observed now.
+- The **Wind** layer animates thin streamlines drifting with the selected day's wind (interpolated between the weather grid points): faster and longer in stronger wind, fewer as you zoom in, and never glowing (`data/wind.ts`, `render/WindParticles.ts`).
+- The **Projected spread** layer (violet hexes) shows where each active fire could reach by the selected forecast day, and the strip above the forecast bar lists communities inside that area. It is a simplified **scenario**, not an official forecast (see below).
 - `?focus=ab,bc` opens with specific provinces in focus.
 
 ## Data sources
 
-All data is openly licensed and free, with no API keys. **Baked** data is downloaded once by the build scripts (`npm run bake`, `npm run bake:pbf`) and ships as static files in `public/data/<region>/`. **Live** data is fetched by the browser and refreshed every 10 minutes.
+All data is openly licensed and free, with no API keys. **Baked** data is downloaded once by the build scripts (`npm run bake`, `npm run bake:pbf`) and ships as static files in `public/data/<region>/`. **Live** data is fetched by the browser and refreshed every 10 minutes (weather at most hourly, and only for provinces in focus).
 
 ### Baked
 
@@ -46,11 +50,12 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 |---|---|---|---|
 | Satellite fire hotspots (last 24 h) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/), Natural Resources Canada ([datamart](https://cwfis.cfs.nrcan.gc.ca/datamart)); detections from MODIS/VIIRS/SLSTR satellites | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Burning hexes, beacons, hotspot list, proximity risk |
 | Fire perimeters (current season) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) M3 perimeters | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Active-perimeter and burn-scar hexes, burned-area total |
-| Weather (temperature, humidity, wind, 72 h rain) | [Open-Meteo](https://open-meteo.com/) | Data [CC BY 4.0](https://open-meteo.com/en/license); free API for non-commercial use | 1° grid, turned into the weather part of the risk score |
+| Weather (today + 7-day forecast as daily peaks: temperature, humidity, wind speed and direction; live current conditions; 14 days of rain history) | [Open-Meteo](https://open-meteo.com/) | Data [CC BY 4.0](https://open-meteo.com/en/license); free API for non-commercial use | 1.5° grid (coarser for very large provinces, ≤ ~90 points each), focused provinces only; Fosberg index per day, days since rain, wind direction for spread. Refreshed at most hourly |
 
 ### Not from a source (our own)
 
-- **Risk score:** weather risk (hot/dry/windy, damped by recent rain) × fuel load of the land type, plus a boost within 30 km of a hotspot. It lives in `world/hazardField.ts` and `data/openMeteo.ts`. It is transparent and tweakable, but it is **not** the official Canadian Fire Weather Index.
+- **Risk score:** the **Fosberg Fire Weather Index** (Fosberg 1978: temperature, humidity and wind → 0–100) × a **dryness factor** (0.6 on a day with ≥ 2 mm of rain, rising to 1.0 after 14 dry days) × the fuel load of the land type, plus a **wind-shaped boost** near hotspots: 30 km in calm air, stretched up to ~51 km downwind and shrunk to ~9 km upwind in strong wind. Every day, including today, uses its daily peak (max temperature, min humidity, max wind, dominant direction). Code: `data/fosberg.ts`, `world/spread.ts`, `world/hazardField.ts`. The dryness factor and spread shape are our own; neither is the official Canadian Fire Weather Index.
+- **Projected spread (scenario):** each active fire (CWFIS perimeter, or satellite hotspots within 3 km of each other) grows as an ellipse per forecast day. Head spread = 30 km/day × risk^1.5 (risk = Fosberg/100 × dryness, ≈3 km/day at 0.2, ≈11 at 0.5); length:breadth from wind speed (Anderson 1983, midflame ≈ 0.4 × 10 m wind, max 8); head:back ratio from length:breadth (Alexander 1985); the head points downwind and distances add up day by day. Hexes that can't burn (water, rock, snow) and existing burn scars are never marked. It ignores slope, suppression, fuel breaks and spotting. Code: `data/fireSpread.ts`.
 - **Demo scenario:** simulated ignitions and a heatwave multiplier, labelled SIMULATION wherever it's shown.
 - **Wireframe models:** tree, house and landmark shapes are drawn in code (`render/geometry.ts`).
 
@@ -84,7 +89,7 @@ src/
     HexWorld.ts           LOD switching, chunk streaming/LRU, node API, picking
     Scene.ts              camera/controls, bloom, beacons, labels
     nodeStyle.ts          type → status → override → styler resolution
-  data/                   CWFIS, Open-Meteo, hazard snapshot, places
+  data/                   CWFIS, Open-Meteo, Fosberg index, hazard snapshot, places
   engine.ts               glue between scene, data and UI state
   ui/                     React HUD (Tailwind)
 ```

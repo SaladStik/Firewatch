@@ -80,6 +80,8 @@ export const NodeStatus = {
   Burning: 4,
   Perimeter: 5,
   Burned: 6,
+  /** Inside the projected spread of an active fire (scenario model, data/fireSpread.ts). */
+  Projected: 7,
 } as const;
 export type NodeStatus = (typeof NodeStatus)[keyof typeof NodeStatus];
 
@@ -108,6 +110,7 @@ export const NODE_STATUSES: Record<NodeStatus, StatusStyle> = {
   [NodeStatus.Burning]: { id: NodeStatus.Burning, label: "Active fire", line: "#ff2a2a", fill: 0.5, emphasis: 2.6, pulse: 1, lift: 0.25, propColor: "#ff4a2a" },
   [NodeStatus.Perimeter]: { id: NodeStatus.Perimeter, label: "Active perimeter", line: "#ff4d2e", fill: 0.35, emphasis: 1.8, pulse: 0.5, lift: 0.1, propColor: "#ff6a3a" },
   [NodeStatus.Burned]: { id: NodeStatus.Burned, label: "Burn scar (season)", line: "#8a4a36", fill: 0.08, emphasis: 0.8, pulse: 0, lift: 0, propColor: "#5a3a30" },
+  [NodeStatus.Projected]: { id: NodeStatus.Projected, label: "Projected spread (scenario)", line: "#c084fc", fill: 0.16, emphasis: 1.1, pulse: 0.35, lift: 0.05, propColor: "#c084fc" },
 };
 
 /** Risk score (0..1) → status, when no direct fire observation applies. */

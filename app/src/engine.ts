@@ -5,8 +5,10 @@
  */
 import { PROJECTION, type Region } from "./config/regions";
 import { fetchHotspots, fetchPerimeters } from "./data/cwfis";
-import { buildSnapshot, simulatedHotspots } from "./data/hazards";
-import { fetchWeatherGrid, type WeatherGrid } from "./data/openMeteo";
+import { fireSources, spreadEllipses } from "./data/fireSpread";
+import { buildSnapshot, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
+import { FORECAST_DAYS, fetchWeatherGrid, type WeatherGrid } from "./data/openMeteo";
+import { WindField } from "./data/wind";
 import type { Place } from "./data/places";
 import { project, setProjection } from "./geo/projection";
 import { NodeStatus } from "./hex/nodeTypes";
@@ -21,8 +23,9 @@ const RISK_STATUSES = new Set<number>([NodeStatus.Elevated, NodeStatus.High, Nod
 const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Burned]);
 const DATA_REFRESH_MS = 10 * 60 * 1000;
 /**
- * Weather changes slowly and Open-Meteo's free tier is ~10k point-lookups/day, so: only regions
- * IN FOCUS get live weather, each refreshed at most hourly (unfocused ones still get fires + fuel risk).
+ * Weather changes slowly and Open-Meteo's free tier is ~10k point-lookups/day (a 3-week
+ * request counts as several calls per point), so: only regions IN FOCUS get live weather,
+ * each refreshed at most hourly (unfocused ones still get fires + fuel risk).
  */
 const WEATHER_TTL_MS = 60 * 60 * 1000;
 
@@ -132,11 +135,18 @@ export class Engine {
     const [hs, per, ...wx] = await Promise.allSettled([
       fetchHotspots(box), fetchPerimeters(box),
       ...loaded.filter((r) => app.get().focus.includes(r.id)).map(async (r) => {
-        const c = this.weatherCache.get(r.id);
+        const c = this.weatherCache.get(r.id) ?? readStoredWeather(r.id);
         if (c && now - c.at < WEATHER_TTL_MS) return c.grid;
-        const grid = await fetchWeatherGrid(r.bbox);
-        this.weatherCache.set(r.id, { at: now, grid });
-        return grid;
+        try {
+          const grid = await fetchWeatherGrid(r.bbox);
+          const entry = { at: now, grid };
+          this.weatherCache.set(r.id, entry);
+          storeWeather(r.id, entry);
+          return grid;
+        } catch (e) {
+          if (c) return c.grid; // a stale forecast beats a province with no weather
+          throw e;
+        }
       }),
     ]);
     const hotspots = hs.status === "fulfilled" ? await this.tagRegion(hs.value, (h) => [h.lat, h.lng]) : app.get().hotspots;
@@ -183,20 +193,39 @@ export class Engine {
   async pushHazards() {
     const s = app.get();
     const hotspots = this.allHotspots();
+    const weatherBoost = s.simulation ? SIM_WEATHER_BOOST : 1;
+    const spread = s.layers.spread ? spreadEllipses(fireSources(hotspots, s.perimeters), s.weather, s.forecastDay, weatherBoost) : [];
+    app.set({ spread });
     await this.client.setHazards(buildSnapshot({
-      hotspots, perimeters: s.perimeters, weather: s.weather, weatherBoost: s.simulation ? 1.35 : 1,
+      hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost, spread,
     }));
     await this.scene.world.refreshStatus();
+    // The open sector panel shows status/risk from click time; re-read it for the new hazards.
+    const sel = app.get().selected;
+    if (sel) app.set({ selected: this.scene.world.getNode(sel.level, sel.q, sel.r) ?? sel });
     const beacons = await Promise.all(hotspots.map(async (h) => {
       const w = project(h.lat, h.lng);
       const smp = await this.client.sample(w.x, w.z);
       return { x: w.x, z: w.z, elev: smp.elevation, simulated: h.agency === "SIMULATION" };
     }));
     this.scene.setBeacons(app.get().layers.beacons ? beacons : []);
+    this.pushWind();
+  }
+
+  /** Wind streamlines for the selected day. */
+  private pushWind() {
+    const s = app.get();
+    this.scene.setWind(s.layers.wind ? new WindField(s.weather, s.forecastDay) : null);
   }
 
   setSimulation(on: boolean) {
     app.set({ simulation: on });
+    void this.pushHazards();
+  }
+
+  /** Re-score the map with forecast weather for `day` (0 = today, 1..7 ahead). */
+  setForecastDay(day: number) {
+    app.set({ forecastDay: day });
     void this.pushHazards();
   }
 
@@ -216,7 +245,8 @@ export class Engine {
   setLayer(key: keyof Layers, on: boolean) {
     app.set((s) => ({ layers: { ...s.layers, [key]: on } }));
     this.applyLayers(app.get().layers);
-    if (key === "beacons") void this.pushHazards();
+    if (key === "beacons" || key === "spread") void this.pushHazards();
+    if (key === "wind") this.pushWind();
   }
 
   private applyLayers(l: Layers) {
@@ -263,6 +293,19 @@ export class Engine {
     this.scene?.dispose();
     this.client.dispose();
   }
+}
+
+/** Weather survives page reloads for WEATHER_TTL_MS so demos and dev reloads don't burn Open-Meteo quota. */
+const WX_KEY = (id: string) => `embergrid.wx.${id}`;
+function readStoredWeather(id: string): { at: number; grid: WeatherGrid } | undefined {
+  try {
+    const v = JSON.parse(localStorage.getItem(WX_KEY(id)) ?? "null");
+    // Ignore entries written by an older data shape.
+    return v?.grid?.cells?.[0]?.days?.length === FORECAST_DAYS + 1 && v.grid.cells[0].now ? v : undefined;
+  } catch { return undefined; }
+}
+function storeWeather(id: string, entry: { at: number; grid: WeatherGrid }) {
+  try { localStorage.setItem(WX_KEY(id), JSON.stringify(entry)); } catch { /* storage full or unavailable */ }
 }
 
 /**
