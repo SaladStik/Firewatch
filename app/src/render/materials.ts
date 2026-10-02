@@ -5,7 +5,7 @@
  * are computed per-pixel from a hex distance field (constant pixel width at
  * any zoom, zero extra geometry). Props are instanced line segments.
  */
-import { Color, DataTexture, LinearFilter, RedFormat, ShaderMaterial, Vector2, Vector3, Vector4 } from "three";
+import { Color, DataTexture, LinearFilter, RGFormat, ShaderMaterial, Vector2, Vector3, Vector4 } from "three";
 
 
 import { HEIGHT_GLSL } from "./heights";
@@ -38,14 +38,16 @@ export const sharedUniforms = {
 };
 
 function emptyRainTex() {
-  const t = new DataTexture(new Uint8Array([0]), 1, 1, RedFormat);
+  const t = new DataTexture(new Uint8Array([0, 0]), 1, 1, RGFormat);
+  t.unpackAlignment = 1;
   t.needsUpdate = true;
   return t;
 }
 
-/** Rain-intensity texture for the hex shader (GRID×GRID, filtered so it blends smoothly). */
+/** Precipitation texture for the hex shader (size×size, filtered so it blends smoothly): R = rain, G = snow. */
 export function makeRainTexture(size: number, data: Uint8Array) {
-  const t = new DataTexture(data, size, size, RedFormat);
+  const t = new DataTexture(data, size, size, RGFormat);
+  t.unpackAlignment = 1;
   t.magFilter = LinearFilter;
   t.minFilter = LinearFilter;
   t.needsUpdate = true;
@@ -268,6 +270,12 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
         if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 0.0;
         return smoothstep(0.02, 0.6, texture2D(uRainTex, uv).r);
       }
+      float snowAt(vec2 xz) {
+        if (uRain.w < 0.5) return 0.0;
+        vec2 uv = (xz - uRain.xy) / uRain.z;
+        if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 0.0;
+        return smoothstep(0.02, 0.6, texture2D(uRainTex, uv).g);
+      }
       void main() {
         float xray = occluder();
         float pulseWave = 0.5 + 0.5 * sin(uTime * 3.4 + vSeed * 6.2831);
@@ -316,6 +324,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           col += vLine * vHL * (top ? 0.22 : 0.1);
           float wetK = rainAt(vW.xz);
           if (top) col = mix(col, vec3(0.2, 0.45, 0.95) * (0.55 + 0.45 * vStyle.x), wetK * 0.55);
+          if (top) col = mix(col, vec3(0.62, 0.68, 0.75), snowAt(vW.xz) * 0.5); // snowing: a cold white wash
           gl_FragColor = vec4(debugTint(col * vFade), 1.0);
         } else {
           // LIGHT — a printed map: each land class a clear tint of its own colour on paper,
@@ -336,6 +345,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           col = mix(col, edgeInk, pat * 0.16 * solid);
           col = mix(col, face * 0.55, vHL * (top ? 0.4 : 0.15));
           if (top) col = mix(col, vec3(0.03, 0.17, 0.62), rainAt(vW.xz) * 0.5);
+          if (top) col = mix(col, vec3(0.93, 0.95, 0.98), snowAt(vW.xz) * 0.6);
           gl_FragColor = vec4(debugTint(mix(uBg, col, vFade)), 1.0);
         }
       }

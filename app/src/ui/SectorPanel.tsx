@@ -3,6 +3,7 @@ import { Crosshair, Flag, X } from "lucide-react";
 import { GRID } from "../config/grid";
 import { perimeterAt } from "../data/fireHistory";
 import { PAST_DAYS, weatherAt } from "../data/openMeteo";
+import { snowShare } from "../data/rain";
 import { NODE_STATUSES, NODE_TYPES, NodeStatus } from "../hex/nodeTypes";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
@@ -96,10 +97,10 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
           <>
             <div className="mt-2 mb-1 label-xs">Weather · Open-Meteo · {dayLabel(day, weather[0]?.dates)}</div>
             {day === 0 && cell?.now && <KV k="Live now" v={`${fx(cell.now.temp)}°C / ${fx(cell.now.rh)}% · ${fx(cell.now.wind)} km/h`} />}
-            {day === 0 && cell?.now && Number.isFinite(cell.now.rain) && cell.now.rain > 0 && <KV k="Raining now" v={`${fx(cell.now.rain, 1)} mm/h`} />}
+            {day === 0 && cell?.now && Number.isFinite(cell.now.rain) && cell.now.rain > 0 && <KV k={snowShare(cell.now.temp) >= 0.5 ? "Snowing now" : "Raining now"} v={`${fx(cell.now.rain, 1)} mm/h (water)`} />}
             <KV k="Max temp / min RH" v={`${fx(wx.temp)}°C / ${fx(wx.rh)}%`} />
             <KV k="Wind" v={`${fx(wx.wind)} km/h${Number.isFinite(wx.windFrom) ? ` from ${compass(wx.windFrom)} (${Math.round(wx.windFrom)}°)` : ""}`} />
-            <KV k="Rain (day)" v={`${fx(wx.rainMm, 1)} mm`} />
+            <KV k={snowShare(wx.temp) >= 0.5 ? "Snow (day, as water)" : "Rain (day)"} v={`${fx(wx.rainMm, 1)} mm`} />
             <KV k="Days since rain" v={wx.daysSinceRain > PAST_DAYS ? `${PAST_DAYS}+` : String(wx.daysSinceRain)} />
             <KV k="Fire danger (FWI)" v={`${fx(wx.fwi, 1)} · ${wx.danger}`} accent={wx.fwi >= 20 ? "var(--color-risk-ext)" : wx.fwi >= 10 ? "var(--color-risk-high)" : undefined} />
             <KV k="FFMC / DMC / DC" v={`${fx(wx.ffmc, 1)} / ${fx(wx.dmc, 1)} / ${fx(wx.dc)}`} />
