@@ -292,7 +292,8 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           if (top) col *= 1.0 + vStyle.y * pulseWave * 1.1;
           col += vLine * vHL * (top ? 0.35 : 0.15);
           // Rain: wet ground under rain reads blue (follows the terrain, hidden by what's in front).
-          float wetK = rainAt(vW.xz) * solid; // not on see-through (x-ray) terrain
+          // Same tint inside the x-ray zone as around it, so the zone never shows as a patch in the rain.
+          float wetK = rainAt(vW.xz);
           if (top) col = mix(col, vec3(0.16, 0.36, 0.7) * (0.4 + vStyle.x), wetK * 0.3);
           gl_FragColor = vec4(col * vFade, 1.0);
         } else {
@@ -312,7 +313,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           col = mix(face, ink, clamp(line * 1.1 * strength, 0.0, 1.0));
           col = mix(col, ink, pat * 0.12 * strength * solid);
           col = mix(col, hue * 0.5, vHL * (top ? 0.25 : 0.12));
-          if (top) col = mix(col, vec3(0.42, 0.62, 0.88), rainAt(vW.xz) * solid * 0.25);
+          if (top) col = mix(col, vec3(0.42, 0.62, 0.88), rainAt(vW.xz) * 0.25);
           gl_FragColor = vec4(mix(uBg, col, vFade), 1.0);
         }
       }
