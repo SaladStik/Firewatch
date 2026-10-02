@@ -361,7 +361,7 @@ export class Engine {
   setTheme(theme: Theme) {
     app.set({ theme });
     document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem("emberwatch.theme", theme); } catch { /* storage unavailable */ }
+    try { localStorage.setItem("firewatch.theme", theme); } catch { /* storage unavailable */ }
     this.scene?.setTheme(theme);
   }
 
@@ -425,7 +425,7 @@ export class Engine {
 }
 
 /** Weather survives page reloads for WEATHER_TTL_MS so demos and dev reloads don't burn Open-Meteo quota. */
-const WX_KEY = (id: string) => `emberwatch.wx.${id}`;
+const WX_KEY = (id: string) => `firewatch.wx.${id}`;
 function readStoredWeather(id: string): { at: number; grid: WeatherGrid } | undefined {
   try {
     const v = JSON.parse(localStorage.getItem(WX_KEY(id)) ?? "null");

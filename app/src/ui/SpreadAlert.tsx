@@ -9,7 +9,7 @@ import { useFocusIndices } from "./region";
 import { dayLabel } from "./weatherFormat";
 
 const MAX_SHOWN = 6;
-const VIOLET = "#c084fc";
+const VIOLET = "#6b3d8a";
 
 export function SpreadAlert({ engine }: { engine: Engine | null }) {
   const spread = useStore(app, (s) => s.spread);

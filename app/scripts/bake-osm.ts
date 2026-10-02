@@ -44,7 +44,7 @@ async function overpass(name: string, body: string): Promise<OsmElement[]> {
         process.stdout.write(`overpass ${name} @ ${new URL(url).host} ... `);
         const r = await fetch(url, {
           method: "POST",
-          headers: { "User-Agent": "emberwatch-bake/0.1", "Content-Type": "application/x-www-form-urlencoded" },
+          headers: { "User-Agent": "firewatch-bake/0.1", "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({ data: query }),
         });
         if (r.ok) {

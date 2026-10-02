@@ -27,7 +27,7 @@ export interface NodeType {
   label: string;
   /** Outline colour (hex). */
   line: string;
-  /** Fill strength 0..1 — how much of `line` bleeds into the face. Keep low for the outlined look. */
+  /** Fill strength 0..1 — how much of `line` tints the face. Higher reads as filled land cover. */
   fill: number;
   /** Brightness multiplier (default 0.45). Keep ordinary land dim so hazards stand out. */
   emphasis?: number;
@@ -42,33 +42,33 @@ export interface NodeType {
 }
 
 export const NODE_TYPES: Record<LandClass, NodeType> = {
-  [LandClass.None]: { id: LandClass.None, key: "none", label: "Out of bounds", line: "#0b2a1a", fill: 0, pattern: Pattern.None, fuel: 0, family: "none" },
-  [LandClass.Water]: { id: LandClass.Water, key: "water", label: "Water", line: "#1ec8d8", fill: 0.14, emphasis: 0.8, pattern: Pattern.Waves, fuel: 0, family: "water", flat: true },
+  [LandClass.None]: { id: LandClass.None, key: "none", label: "Out of bounds", line: "#d7ddd6", fill: 0, pattern: Pattern.None, fuel: 0, family: "none" },
+  [LandClass.Water]: { id: LandClass.Water, key: "water", label: "Lake / water", line: "#3a8ec8", fill: 0.88, emphasis: 1.05, pattern: Pattern.Waves, fuel: 0, family: "water", flat: true },
   [LandClass.Forest]: {
-    id: LandClass.Forest, key: "forest", label: "Forest", line: "#2bea7c", fill: 0.07, pattern: Pattern.None, fuel: 1, family: "forest",
-    props: [{ kind: "pine", count: [2, 4], scale: 1 }],
+    id: LandClass.Forest, key: "forest", label: "Forest", line: "#2a6a28", fill: 0.82, emphasis: 0.92, pattern: Pattern.None, fuel: 1, family: "forest",
+    props: [{ kind: "pine", count: [3, 6], scale: 1.15 }],
   },
   [LandClass.Shrub]: {
-    id: LandClass.Shrub, key: "shrub", label: "Shrubland", line: "#6fd86a", fill: 0.06, pattern: Pattern.Dots, fuel: 0.85, family: "open",
-    props: [{ kind: "tree", count: [0, 2], scale: 0.6 }],
+    id: LandClass.Shrub, key: "shrub", label: "Shrubland", line: "#5e8a32", fill: 0.72, pattern: Pattern.Dots, fuel: 0.85, family: "open",
+    props: [{ kind: "tree", count: [1, 3], scale: 0.7 }],
   },
-  [LandClass.Grass]: { id: LandClass.Grass, key: "grass", label: "Grassland", line: "#8fdc5a", fill: 0.05, pattern: Pattern.Dots, fuel: 0.75, family: "open" },
-  [LandClass.Crop]: { id: LandClass.Crop, key: "crop", label: "Cropland", line: "#b9d85a", fill: 0.05, pattern: Pattern.Stripes, fuel: 0.4, family: "open" },
+  [LandClass.Grass]: { id: LandClass.Grass, key: "grass", label: "Grassland", line: "#b4c44a", fill: 0.75, pattern: Pattern.Dots, fuel: 0.75, family: "open" },
+  [LandClass.Crop]: { id: LandClass.Crop, key: "crop", label: "Cropland", line: "#d2bc4e", fill: 0.72, pattern: Pattern.Stripes, fuel: 0.4, family: "open" },
   [LandClass.Urban]: {
-    id: LandClass.Urban, key: "urban", label: "Settlement", line: "#b6f7d2", fill: 0.035, emphasis: 0.5, pattern: Pattern.Grid, fuel: 0.3, family: "settlement",
+    id: LandClass.Urban, key: "urban", label: "Settlement", line: "#c4b8a6", fill: 0.48, emphasis: 0.6, pattern: Pattern.Grid, fuel: 0.3, family: "settlement",
     props: [{ kind: "house", count: [0, 2], scale: 0.9 }],
   },
   [LandClass.Rock]: {
-    id: LandClass.Rock, key: "rock", label: "Rock / bare", line: "#7f9a8c", fill: 0.06, pattern: Pattern.None, fuel: 0.05, family: "alpine",
-    props: [{ kind: "rock", count: [0, 2], scale: 1 }],
+    id: LandClass.Rock, key: "rock", label: "Mountain / rock", line: "#8e8478", fill: 0.78, emphasis: 0.85, pattern: Pattern.None, fuel: 0.05, family: "alpine",
+    props: [{ kind: "rock", count: [1, 3], scale: 1.15 }],
   },
   // Permanent snow & ice: Arctic ice caps (Ellesmere, Devon, Baffin), Rocky Mountain glaciers.
-  [LandClass.Snow]: { id: LandClass.Snow, key: "ice", label: "Ice / glacier", line: "#bfefff", fill: 0.09, emphasis: 0.6, pattern: Pattern.Ice, fuel: 0, family: "ice" },
-  [LandClass.Wetland]: { id: LandClass.Wetland, key: "wetland", label: "Wetland", line: "#3fcfa8", fill: 0.07, pattern: Pattern.Waves, fuel: 0.35, family: "water" },
-  [LandClass.River]: { id: LandClass.River, key: "river", label: "River", line: "#1ec8d8", fill: 0.16, emphasis: 0.85, pattern: Pattern.Waves, fuel: 0, family: "water" },
-  [LandClass.Road]: { id: LandClass.Road, key: "road", label: "Road", line: "#a9bdb2", fill: 0.08, emphasis: 0.55, pattern: Pattern.None, fuel: 0.05, family: "road" },
-  [LandClass.Rail]: { id: LandClass.Rail, key: "rail", label: "Railway", line: "#c9a070", fill: 0.08, emphasis: 0.6, pattern: Pattern.Stripes, fuel: 0.05, family: "rail" },
-  [LandClass.Tundra]: { id: LandClass.Tundra, key: "tundra", label: "Tundra (moss / lichen)", line: "#a6c9a0", fill: 0.05, pattern: Pattern.Dots, fuel: 0.5, family: "tundra" },
+  [LandClass.Snow]: { id: LandClass.Snow, key: "ice", label: "Ice / glacier", line: "#e4eaf0", fill: 0.7, emphasis: 0.75, pattern: Pattern.Ice, fuel: 0, family: "ice" },
+  [LandClass.Wetland]: { id: LandClass.Wetland, key: "wetland", label: "Wetland", line: "#6a9a7a", fill: 0.55, pattern: Pattern.Waves, fuel: 0.35, family: "water" },
+  [LandClass.River]: { id: LandClass.River, key: "river", label: "River", line: "#2f7fb4", fill: 0.9, emphasis: 1.1, pattern: Pattern.Waves, fuel: 0, family: "water" },
+  [LandClass.Road]: { id: LandClass.Road, key: "road", label: "Road", line: "#8a8176", fill: 0.55, emphasis: 0.65, pattern: Pattern.None, fuel: 0.05, family: "road" },
+  [LandClass.Rail]: { id: LandClass.Rail, key: "rail", label: "Railway", line: "#7a6a58", fill: 0.5, emphasis: 0.6, pattern: Pattern.Stripes, fuel: 0.05, family: "rail" },
+  [LandClass.Tundra]: { id: LandClass.Tundra, key: "tundra", label: "Tundra (moss / lichen)", line: "#b3b89a", fill: 0.48, pattern: Pattern.Dots, fuel: 0.5, family: "tundra" },
 };
 
 // ─── STATUSES ──────────────────────────────────────────────────────────────
@@ -104,13 +104,13 @@ export interface StatusStyle {
 
 export const NODE_STATUSES: Record<NodeStatus, StatusStyle> = {
   [NodeStatus.Normal]: { id: NodeStatus.Normal, label: "Nominal", pulse: 0, lift: 0 },
-  [NodeStatus.Elevated]: { id: NodeStatus.Elevated, label: "Elevated risk", line: "#e8d44a", fill: 0.03, emphasis: 0.6, pulse: 0, lift: 0 },
-  [NodeStatus.High]: { id: NodeStatus.High, label: "High risk", line: "#ff9a1f", fill: 0.06, emphasis: 0.8, pulse: 0.15, lift: 0 },
-  [NodeStatus.Extreme]: { id: NodeStatus.Extreme, label: "Extreme risk", line: "#ff6a1a", fill: 0.12, emphasis: 1.0, pulse: 0.15, lift: 0.1, propColor: "#ff9a1f" },
-  [NodeStatus.Burning]: { id: NodeStatus.Burning, label: "Active fire", line: "#ff2a2a", fill: 0.5, emphasis: 2.6, pulse: 1, lift: 0.25, propColor: "#ff4a2a" },
-  [NodeStatus.Perimeter]: { id: NodeStatus.Perimeter, label: "Active perimeter", line: "#ff4d2e", fill: 0.35, emphasis: 1.8, pulse: 0.5, lift: 0.1, propColor: "#ff6a3a" },
-  [NodeStatus.Burned]: { id: NodeStatus.Burned, label: "Burn scar (season)", line: "#8a4a36", fill: 0.08, emphasis: 0.8, pulse: 0, lift: 0, propColor: "#5a3a30" },
-  [NodeStatus.Projected]: { id: NodeStatus.Projected, label: "Projected spread (scenario)", line: "#c084fc", fill: 0.16, emphasis: 1.1, pulse: 0.35, lift: 0.05, propColor: "#c084fc" },
+  [NodeStatus.Elevated]: { id: NodeStatus.Elevated, label: "Elevated danger", line: "#d4a017", fill: 0.28, emphasis: 0.7, pulse: 0, lift: 0 },
+  [NodeStatus.High]: { id: NodeStatus.High, label: "High danger", line: "#c46a10", fill: 0.38, emphasis: 0.85, pulse: 0.08, lift: 0 },
+  [NodeStatus.Extreme]: { id: NodeStatus.Extreme, label: "Extreme danger", line: "#c44b12", fill: 0.48, emphasis: 1.0, pulse: 0.1, lift: 0.04, propColor: "#c44b12" },
+  [NodeStatus.Burning]: { id: NodeStatus.Burning, label: "Out of control", line: "#c41e3a", fill: 0.72, emphasis: 1.35, pulse: 0.35, lift: 0.08, propColor: "#c41e3a" },
+  [NodeStatus.Perimeter]: { id: NodeStatus.Perimeter, label: "Being held", line: "#e07020", fill: 0.55, emphasis: 1.15, pulse: 0.15, lift: 0.04, propColor: "#e07020" },
+  [NodeStatus.Burned]: { id: NodeStatus.Burned, label: "Burn scar (season)", line: "#6b4a36", fill: 0.4, emphasis: 0.75, pulse: 0, lift: 0, propColor: "#5a3a30" },
+  [NodeStatus.Projected]: { id: NodeStatus.Projected, label: "Projected spread (scenario)", line: "#6b3d8a", fill: 0.38, emphasis: 0.9, pulse: 0.12, lift: 0.02, propColor: "#6b3d8a" },
 };
 
 /** Risk score (0..1) → status, when no direct fire observation applies. */
@@ -124,11 +124,11 @@ export function statusForRisk(risk: number): NodeStatus {
 // ─── Unfocused regions ─────────────────────────────────────────────────────
 /** Regions not in focus keep all their data but render slightly greyed. */
 export const UNFOCUSED_STYLE = {
-  grey: "#8a948f",
+  grey: "#a8aea6",
   /** 0 = original colours, 1 = fully grey. */
-  desaturate: 0.55,
+  desaturate: 0.45,
   /** Brightness multiplier (fires still read, just quieter). */
-  emphasis: 0.6,
+  emphasis: 0.75,
 };
 
 // ─── Per-node overrides ────────────────────────────────────────────────────

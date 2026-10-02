@@ -42,14 +42,18 @@ export function ForecastBar({ engine }: { engine: Engine | null }) {
 
   return (
     <div className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-stretch">
+      <div className="flex items-center gap-2 px-3 py-1.5 lg:border-r lg:border-line">
+        <span className="compass-badge">S</span>
+        <span className="label-xs hidden sm:inline">Forecast</span>
+      </div>
       <div className="scroll-thin flex min-w-0 items-center gap-1 overflow-x-auto px-2 py-1.5 lg:border-r lg:border-line">
-        <span className="label-xs mr-1 hidden shrink-0 sm:inline">Forecast</span>
+        <span className="label-xs mr-1 hidden shrink-0 sm:inline">Day</span>
         {Array.from({ length: FORECAST_DAYS + 1 }, (_, d) => (
           <button
             key={d}
             onClick={() => engine?.setForecastDay(d)}
             aria-pressed={d === day}
-            className={`shrink-0 whitespace-nowrap border px-2 py-1 text-[10.5px] tracking-widest transition ${d === day ? "border-phos text-phos-glow" : "border-line text-ink-dim hover:border-phos"}`}
+            className={`shrink-0 whitespace-nowrap border px-2 py-1 text-[10.5px] tracking-wide transition ${d === day ? "border-phos text-phos" : "border-line text-ink-dim hover:border-phos"}`}
           >
             {dayLabel(d, dates)}
           </button>

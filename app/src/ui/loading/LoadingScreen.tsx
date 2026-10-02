@@ -1,5 +1,5 @@
 /**
- * EMBER//WATCH loading screen.
+ * FIRE//WATCH loading screen.
  *
  * A fire lookout tower draws itself as loading progresses (legs → bracing → platform → cab →
  * roof → antenna). The firefly (the standard mascot, small) flies up around the tower in a
@@ -169,7 +169,7 @@ export function LoadingScreen({ progress, stage = "loading", error = null, firef
           {firefly && <Flight shown={shown} arrived={lit} />}
         </div>
         <div className="text-[20px] font-bold tracking-[0.32em] text-ink glow-text">
-          EMBER<span className="text-phos">//</span>WATCH
+          FIRE<span className="text-phos">//</span>WATCH
         </div>
         <div className="h-[3px] w-64 overflow-hidden border border-line">
           {!error && <div ref={barRef} className="h-full bg-phos" style={{ width: 0, boxShadow: "0 0 8px var(--color-phos)" }} />}
