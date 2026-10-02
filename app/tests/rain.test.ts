@@ -1,7 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { blobDamping, blobRain, dayIntensity, nowIntensity, rainDamping, RainField } from "../src/data/rain.ts";
-import { spreadEllipses } from "../src/data/fireSpread.ts";
+import { growthSources } from "../src/data/fireSpread.ts";
+import { growthLookup, simulateGrowth } from "../src/world/fireGrowth.ts";
+import { LandClass } from "../src/geo/landClass.ts";
 import type { DayWeather, WeatherGrid } from "../src/data/openMeteo.ts";
 import { setProjection } from "../src/geo/projection.ts";
 
@@ -43,10 +45,17 @@ test("RainField: today uses live rain; forecast days use the daily total; storms
   assert.ok(dry.any && dry.at(0, 0) === 1);
 });
 
-test("a demo storm over a fire slows its projected spread", () => {
-  const src = [{ x: 0, z: 0, lat: 54.5, lng: -115, r0: 1, kind: "hotspots" as const }];
-  const wx = [grid([day(0)])];
-  const [dryE] = spreadEllipses(src, wx, 0);
-  const [wetE] = spreadEllipses(src, wx, 0, 1, () => [{ x: 0, z: 0, r: 60, intensity: 1 }]);
-  assert.ok(wetE.a < dryE.a, `${wetE.a} < ${dryE.a}`);
+test("a demo storm over a fire slows its projected growth", () => {
+  const fire = [{ x: 0, z: 0, r0: 0.5, k: 1, lat: 54.5, lng: -115, kind: "hotspots" as const }];
+  const wx = [grid([{ ...day(0), ffmc: 92, isi: 12, bui: 70 }])];
+  const dry = growthSources(fire, wx, 0)[0].days[0];
+  const wet = growthSources(fire, wx, 0, 1, () => [{ x: 0, z: 0, r: 60, intensity: 1 }])[0].days[0];
+  assert.ok(wet.factor < dry.factor * 0.3, `${wet.factor} vs ${dry.factor}`);
+  const reach = (d: typeof dry) => {
+    const look = growthLookup(simulateGrowth([{ x: 0, z: 0, r0: 0.5, k: 1, days: [d] }], 0, 0.3, () => LandClass.Forest, () => 500));
+    let far = 0;
+    for (let x = 0; x < 50; x += 0.1) if (look(x, 0) >= 0) far = x;
+    return far;
+  };
+  assert.ok(reach(wet) < reach(dry), `${reach(wet)} < ${reach(dry)}`);
 });

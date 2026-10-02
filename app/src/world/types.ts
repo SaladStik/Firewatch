@@ -2,7 +2,7 @@
  * Data contracts between the main thread, the world worker and the renderer.
  * Everything that crosses the worker boundary is plain data / typed arrays.
  */
-import type { SpreadEllipse } from "../data/fireSpread";
+import type { GrowthField, GrowthSource } from "./fireGrowth";
 import type { RainBlob } from "../data/rain";
 import type { LandClass } from "../geo/landClass";
 import type { NodeStatus } from "../hex/nodeTypes";
@@ -44,7 +44,7 @@ export interface HazardSnapshot {
   /** Regular lat/lng grids of weather risk (0..1), one per region. */
   weather: { lat0: number; lng0: number; step: number; nLat: number; nLng: number; risk: number[] }[];
   /** Projected fire spread ellipses for the selected day (empty when the layer is off). */
-  spread: SpreadEllipse[];
+  spread: GrowthField | null;
   /** Demo-scenario rain cells (real rain is already in the weather risk grid). */
   rain: RainBlob[];
 }
@@ -85,6 +85,7 @@ export type WorkerRequest =
   | { id: number; type: "chunk"; level: number; cx: number; cz: number }
   | { id: number; type: "restatus"; level: number; cx: number; cz: number }
   | { id: number; type: "hazards"; hazards: HazardSnapshot }
+  | { id: number; type: "growth"; sources: GrowthSource[]; horizon: number; size: number }
   | { id: number; type: "sample"; x: number; z: number };
 
 export type WorkerResponse =

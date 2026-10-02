@@ -7,7 +7,7 @@
  * Demo rainstorms damp the whole score under them (data/rain.ts).
  * Direct observations override: inside an active perimeter / a hotspot in the hex.
  */
-import { insideEllipse } from "../data/fireSpread";
+import { growthLookup } from "./fireGrowth";
 import { blobDamping, blobRain } from "../data/rain";
 import { unproject } from "../geo/projection";
 import { NODE_TYPES, NodeStatus, statusForRisk } from "../hex/nodeTypes";
@@ -22,6 +22,7 @@ const bucketKey = (bx: number, bz: number) => bx * 100003 + bz;
 export class HazardField {
   private buckets = new Map<number, HazardSnapshot["hotspots"]>();
   constructor(private snap: HazardSnapshot) {
+    this.spreadDay = growthLookup(snap.spread);
     for (const h of snap.hotspots) {
       const k = bucketKey(Math.floor(h.x / BUCKET_KM), Math.floor(h.z / BUCKET_KM));
       let b = this.buckets.get(k);
@@ -80,10 +81,10 @@ export class HazardField {
     return 0;
   }
 
-  /** Inside any projected spread ellipse? */
+  /** Projected to burn by the selected day (fuel-aware growth model)? */
+  private spreadDay = growthLookup(null);
   private inSpread(x: number, z: number): boolean {
-    for (const e of this.snap.spread) if (insideEllipse(e, x, z)) return true;
-    return false;
+    return this.spreadDay(x, z) >= 0;
   }
 
   evaluate(x: number, z: number, land: LandClass, hexSize: number): { status: NodeStatus; risk: number } {

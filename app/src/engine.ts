@@ -4,9 +4,10 @@
  * about all layers.
  */
 import { PROJECTION, type Region } from "./config/regions";
-import { fetchFwiStations, fetchHotspots, fetchPerimeters, type FwiStation, type Perimeter } from "./data/cwfis";
+import { fetchFwiStations, fetchHotspots, fetchPerimeters, type FwiStation, type Hotspot, type Perimeter } from "./data/cwfis";
 import { fetchFireHistory, growthCalibration, type FireGrowth, type FireHistory } from "./data/fireHistory";
-import { fireSources, spreadEllipses } from "./data/fireSpread";
+import { fireSources, growthSources } from "./data/fireSpread";
+import { growthCellSize } from "./world/fireGrowth";
 import { buildSnapshot, isPerimeterActive, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
 import { FORECAST_DAYS, fetchWeatherGrid, weatherAt, type WeatherGrid } from "./data/openMeteo";
 import { demoStorms, RainField, type RainBlob } from "./data/rain";
@@ -25,7 +26,7 @@ const RISK_STATUSES = new Set<number>([NodeStatus.Elevated, NodeStatus.High, Nod
 const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Burned]);
 const DATA_REFRESH_MS = 10 * 60 * 1000;
 /** Weather cells further than this from any CWFIS station spin up the FWI codes on their own. */
-const STATION_MAX_KM = 150;
+const STATION_MAX_KM = 400;
 /** A fire's growth history is refetched at most this often (and only when its perimeter changed). */
 const FIRE_HISTORY_TTL_MS = 60 * 60 * 1000;
 /** Hotspots closer than this share one beacon. */
@@ -140,9 +141,10 @@ export class Engine {
       Math.max(...loaded.map((r) => r.bbox[2])), Math.max(...loaded.map((r) => r.bbox[3])),
     ];
     const now = Date.now();
-    const seed = await this.fwiSeed();
-    const [hs, per, ...wx] = await Promise.allSettled([
-      fetchHotspots(box), fetchPerimeters(box),
+    // Hotspots first: their CWFIS FWI codes seed the weather cells near fires.
+    const [hs, per] = await Promise.allSettled([fetchHotspots(box), fetchPerimeters(box)]);
+    const seed = await this.fwiSeed(hs.status === "fulfilled" ? hs.value : []);
+    const wx = await Promise.allSettled([
       ...loaded.filter((r) => app.get().focus.includes(r.id)).map(async (r) => {
         const c = this.weatherCache.get(r.id) ?? readStoredWeather(r.id);
         // The map's weather list is built from weatherCache, so a reload's stored copy must go in it too.
@@ -189,15 +191,19 @@ export class Engine {
   private stations: { at: number; list: FwiStation[] } | null = null;
 
   /**
-   * Nearest CWFIS fire weather station's observed FFMC / DMC / DC (within STATION_MAX_KM),
-   * used to seed the FWI System per weather cell. Station list refreshed at most hourly.
+   * Nearest official FFMC / DMC / DC (within STATION_MAX_KM) to seed the FWI System per weather
+   * cell: CWFIS fire weather stations (observed) plus today's CWFIS hotspots (CWFIS's own FWI
+   * grids at each fire). Station list refreshed at most hourly.
    */
-  private async fwiSeed() {
+  private async fwiSeed(hotspots: Hotspot[] = []) {
     const now = Date.now();
     if (!this.stations || now - this.stations.at > WEATHER_TTL_MS) {
       try { this.stations = { at: now, list: await fetchFwiStations() }; } catch { /* keep the old list / spin up from startup values */ }
     }
-    const list = (this.stations?.list ?? []).map((s) => ({ ...s, ...project(s.lat, s.lng) }));
+    const fromHotspots = hotspots
+      .filter((h) => [h.ffmc, h.dmc, h.dc].every((v) => Number.isFinite(v)))
+      .map((h) => ({ lat: h.lat, lng: h.lng, ffmc: h.ffmc!, dmc: h.dmc!, dc: h.dc! }));
+    const list = [...(this.stations?.list ?? []), ...fromHotspots].map((s) => ({ ...s, ...project(s.lat, s.lng) }));
     return (lat: number, lng: number) => {
       const p = project(lat, lng);
       let best: (typeof list)[number] | null = null, bd = STATION_MAX_KM;
@@ -275,9 +281,12 @@ export class Engine {
     // Projected spread for every active fire (real, plus simulated ones in the demo scenario).
     // Each fire's own growth history scales how far it's projected to go (data/fireHistory.ts).
     const growth = this.fireGrowth();
-    const spread = s.layers.spread
-      ? spreadEllipses(fireSources(hotspots, s.perimeters, Date.now(), growth), s.weather, s.forecastDay, weatherBoost, (d) => storms[d] ?? [])
-      : [];
+    // Grow every active fire over the real fuel map, day by day up to the selected day (world/fireGrowth.ts).
+    let spread = null;
+    if (s.layers.spread) {
+      const src = growthSources(fireSources(hotspots, s.perimeters, Date.now(), growth), s.weather, s.forecastDay, weatherBoost, (d) => storms[d] ?? []);
+      if (src.length) spread = await this.client.growth(src, s.forecastDay, growthCellSize(src, s.forecastDay));
+    }
     app.set({ spread, fireGrowth: growth });
     this.rainBlobs = rain;
     await this.client.setHazards(buildSnapshot({
@@ -406,7 +415,7 @@ function readStoredWeather(id: string): { at: number; grid: WeatherGrid } | unde
   try {
     const v = JSON.parse(localStorage.getItem(WX_KEY(id)) ?? "null");
     // Ignore entries written by an older data shape. Past days are required (fire-growth calibration).
-    return v?.grid?.cells?.[0]?.days?.length === FORECAST_DAYS + 1 && v.grid.cells[0].now && "rain" in v.grid.cells[0].now && Number.isFinite(v.grid.cells[0].days[0]?.fwi) && v.grid.cells[0].past?.length && v.grid.pastDates?.length ? v : undefined;
+    return v?.grid?.cells?.[0]?.days?.length === FORECAST_DAYS + 1 && v.grid.cells[0].now && "rain" in v.grid.cells[0].now && Number.isFinite(v.grid.cells[0].days[0]?.fwi) && "windNoon" in v.grid.cells[0].days[0] && v.grid.cells[0].past?.length && v.grid.pastDates?.length ? v : undefined;
   } catch { return undefined; }
 }
 function storeWeather(id: string, entry: { at: number; grid: WeatherGrid }) {

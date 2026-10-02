@@ -2,7 +2,7 @@
 import { initialFocus, REGIONS, WORKSPACE, type Region } from "../config/regions";
 import type { Hotspot, Perimeter } from "../data/cwfis";
 import type { FireGrowth } from "../data/fireHistory";
-import type { SpreadEllipse } from "../data/fireSpread";
+import type { GrowthField } from "../world/fireGrowth";
 import type { WeatherGrid } from "../data/openMeteo";
 import type { Place } from "../data/places";
 import type { WorldStats } from "../render/HexWorld";
@@ -66,8 +66,8 @@ export interface AppState {
   forecastDay: number;
   /** Sectors flagged for patrol this session. */
   flagged: string[];
-  /** Projected fire spread ellipses for the selected day (scenario model). */
-  spread: SpreadEllipse[];
+  /** Projected burn by the selected day (fuel-aware growth model, world/fireGrowth.ts). */
+  spread: GrowthField | null;
   /** Per-fire growth calibration from each fire's own hotspot history, by perimeter id. */
   fireGrowth: Record<string, FireGrowth>;
 }
@@ -92,7 +92,7 @@ export const app = createStore<AppState>({
   simulation: false,
   forecastDay: 0,
   flagged: [],
-  spread: [],
+  spread: null,
   fireGrowth: {},
 });
 

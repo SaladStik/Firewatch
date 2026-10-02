@@ -23,7 +23,9 @@ export const PAST_DAYS = FULLY_DRY_DAYS;
 export interface DayWeather {
   temp: number; // °C
   rh: number; // %
-  wind: number; // km/h
+  wind: number; // km/h, the day's peak (display)
+  /** 12:00 local wind (km/h): the FWI / FBP standard input (ISI, fire shape). */
+  windNoon: number;
   windFrom: number; // degrees, direction the wind blows FROM (0 = north)
   rainMm: number; // that day's total
   daysSinceRain: number;
@@ -68,6 +70,8 @@ export interface WeatherGrid {
 type Num = number | null;
 
 interface Row {
+  /** Hourly series (local time): the FWI System's standard inputs are the 12:00 readings. */
+  hourly: { temperature_2m: Num[]; relative_humidity_2m: Num[]; wind_speed_10m: Num[] };
   current: { temperature_2m: Num; relative_humidity_2m: Num; wind_speed_10m: Num; wind_direction_10m: Num; precipitation: Num };
   daily: {
     time: string[];
@@ -82,9 +86,9 @@ interface Row {
 /** Missing API value → NaN (scores as 0, renders as "–"). */
 const num = (v: Num | undefined) => v ?? NaN;
 
-function scoreDay(tempIn: Num | undefined, rhIn: Num | undefined, windIn: Num | undefined, windFromIn: Num | undefined, rainMm: number, dry: number, f: FwiDay): DayWeather {
+function scoreDay(tempIn: Num | undefined, rhIn: Num | undefined, windIn: Num | undefined, windFromIn: Num | undefined, rainMm: number, dry: number, f: FwiDay, windNoon: number): DayWeather {
   const temp = num(tempIn), rh = num(rhIn), wind = num(windIn), windFrom = num(windFromIn);
-  return { temp, rh, wind, windFrom, rainMm, daysSinceRain: dry, ffwi: fosbergFFWI(temp, rh, wind), ...f, danger: dangerClass(f.fwi), risk: riskFromFwi(f.fwi) };
+  return { temp, rh, wind, windNoon: Number.isFinite(windNoon) ? windNoon : wind, windFrom, rainMm, daysSinceRain: dry, ffwi: fosbergFFWI(temp, rh, wind), ...f, danger: dangerClass(f.fwi), risk: riskFromFwi(f.fwi) };
 }
 
 /** Today's observed FWI codes near a point (nearest CWFIS station), or null. */
@@ -106,6 +110,7 @@ export async function fetchWeatherGrid(bbox: [number, number, number, number], s
     latitude: lats.join(","), longitude: lngs.join(","),
     current: "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation",
     daily: "temperature_2m_max,relative_humidity_2m_min,wind_speed_10m_max,wind_direction_10m_dominant,precipitation_sum",
+    hourly: "temperature_2m,relative_humidity_2m,wind_speed_10m",
     past_days: String(PAST_DAYS), forecast_days: String(FORECAST_DAYS + 1), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
   const res = await fetch(`https://api.open-meteo.com/v1/forecast?${p}`, { signal });
@@ -115,17 +120,20 @@ export async function fetchWeatherGrid(bbox: [number, number, number, number], s
   const cells = rows.map((r, k): WeatherCell => {
     const c = r.current, d = r.daily, rain = d.precipitation_sum;
     // FWI System through the whole series (past → today → forecast). Codes carry over day to day.
-    // Daily peak temperature / minimum RH / peak wind stand in for the standard noon readings.
+    // Standard inputs: 12:00 local temperature, RH and wind (hourly series), and the day's rain.
+    const h = r.hourly;
+    const noon = (i: number) => ({ t: num(h?.temperature_2m[i * 24 + 12]), rh: num(h?.relative_humidity_2m[i * 24 + 12]), ws: num(h?.wind_speed_10m[i * 24 + 12]) });
     const obs = seed?.(lats[k], lngs[k]) ?? null;
     let codes: FwiCodes = obs ? { ...STARTUP, dmc: obs.dmc, dc: obs.dc } : STARTUP; // slow codes seeded from the station
     const scored: DayWeather[] = [];
     for (let i = 0; i < PAST_DAYS + FORECAST_DAYS + 1; i++) {
       const month = Number((d.time[i] ?? "2000-07").slice(5, 7)) || 7;
-      let f = fwiDay(codes, num(d.temperature_2m_max[i]), num(d.relative_humidity_2m_min[i]), num(d.wind_speed_10m_max[i]), rain[i] ?? 0, month);
+      const n = noon(i);
+      let f = fwiDay(codes, n.t, n.rh, n.ws, rain[i] ?? 0, month);
       // Today: the station's observed codes replace our spin-up (then the forecast runs on from them).
-      if (i === PAST_DAYS && obs) f = fwiFromCodes(obs, num(d.wind_speed_10m_max[i]));
+      if (i === PAST_DAYS && obs) f = fwiFromCodes(obs, n.ws);
       codes = f;
-      scored.push(scoreDay(d.temperature_2m_max[i], d.relative_humidity_2m_min[i], d.wind_speed_10m_max[i], d.wind_direction_10m_dominant[i], rain[i] ?? 0, daysSinceRain(rain, i), f));
+      scored.push(scoreDay(d.temperature_2m_max[i], d.relative_humidity_2m_min[i], d.wind_speed_10m_max[i], d.wind_direction_10m_dominant[i], rain[i] ?? 0, daysSinceRain(rain, i), f, n.ws));
     }
     // Day 0 = today: its rain total includes the forecast for the rest of today.
     const days = scored.slice(PAST_DAYS);

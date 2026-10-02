@@ -30,6 +30,10 @@ export interface Hotspot {
   agency: string;
   /** Workspace index of the region it falls in. */
   region?: number;
+  /** FWI moisture codes CWFIS computed at this point (NaN when missing). */
+  ffmc?: number;
+  dmc?: number;
+  dc?: number;
 }
 
 export interface Perimeter {
@@ -55,6 +59,8 @@ export async function fetchHotspots(bbox: BBox, signal?: AbortSignal): Promise<H
       lat: Number(p.lat), lng: Number(p.lon), time: String(p.rep_date),
       frp: Number(p.frp ?? 0), fwi: Number(p.fwi ?? 0), hfi: Number(p.hfi ?? 0),
       fuel: String(p.fuel ?? "?"), sensor: String(p.sensor ?? "?"), agency: String(p.agency ?? "?"),
+      // CWFIS's own FWI moisture codes at the hotspot (from its interpolated FWI grids).
+      ffmc: Number(p.ffmc), dmc: Number(p.dmc), dc: Number(p.dc),
     };
   });
 }

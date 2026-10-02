@@ -13,7 +13,7 @@
  */
 import { project } from "../geo/projection";
 import type { Perimeter } from "./cwfis";
-import { headBackRatio, headKmPerDay, lengthToBreadth } from "./fireSpread";
+import { ACTIVE_BURN_MIN, fbpSpread, SEASONAL_CURING, type FuelType } from "./cffdrs";
 import type { DayWeather } from "./openMeteo";
 
 const WFS = "https://cwfis.cfs.nrcan.gc.ca/geoserver/public/ows";
@@ -103,13 +103,16 @@ export function dailyGrowth(pts: { rep_date: string; lat: number; lon: number }[
   return out;
 }
 
-/** Modelled equivalent-radius growth (km) for one day of weather: same model as the projection. */
-export function modelRadialKm(w: DayWeather): number {
-  const h = headKmPerDay(w.risk);
-  const lb = lengthToBreadth(Number.isFinite(w.wind) ? w.wind : 0);
-  const b = h / headBackRatio(lb);
+/**
+ * Modelled equivalent-radius growth (km) for one day: the same FBP spread the growth model uses
+ * (head / back rate × active burning time, FBP length-to-breadth), in `fuel` (M-1 by default,
+ * the general forest type) with seasonal grass curing for `month`.
+ */
+export function modelRadialKm(w: DayWeather, fuel: FuelType = "M-1", month = 7): number {
+  const s = fbpSpread(fuel, { ...w, wind: w.windNoon ?? w.wind }, SEASONAL_CURING[month - 1]);
+  const h = (s.ros * ACTIVE_BURN_MIN) / 1000, b = (s.bros * ACTIVE_BURN_MIN) / 1000;
   // A day's ellipse from a point: semi-axes (h+b)/2 and (h+b)/(2·lb) → equivalent radius.
-  return (h + b) / (2 * Math.sqrt(lb));
+  return (h + b) / (2 * Math.sqrt(s.lb));
 }
 
 /**
@@ -122,7 +125,7 @@ export function growthCalibration(hist: FireHistory, past: DayWeather[], pastDat
   let obs = 0, model = 0;
   for (const { date, w } of window) {
     obs += Math.max(0, byDate.get(date) ?? 0);
-    if (w) model += modelRadialKm(w);
+    if (w) model += modelRadialKm(w, "M-1", Number(date.slice(5, 7)) || 7);
   }
   const activeDays = hist.days.filter((d) => d.growthKm > 0.01).length;
   const confidence = window.length ? Math.min(1, activeDays / FULL_CONFIDENCE_DAYS) : 0;

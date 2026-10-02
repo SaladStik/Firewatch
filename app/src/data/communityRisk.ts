@@ -12,7 +12,7 @@ import { project } from "../geo/projection";
 import { downwind, SPREAD_MAX_KM, spreadInfluence } from "../world/spread";
 import type { Hotspot, Perimeter } from "./cwfis";
 import { perimeterAt, reachScale, type FireGrowth } from "./fireHistory";
-import { insideEllipse, type SpreadEllipse } from "./fireSpread";
+import { growthLookup, type GrowthField } from "../world/fireGrowth";
 import { isPerimeterActive } from "./hazards";
 import { weatherAt, type WeatherGrid } from "./openMeteo";
 import type { Place } from "./places";
@@ -38,7 +38,7 @@ interface Inputs {
   day: number;
   /** Demo-mode weather multiplier. */
   boost: number;
-  spread: SpreadEllipse[];
+  spread: GrowthField | null;
   /** Per-fire growth calibration by perimeter id. */
   growth?: Record<string, FireGrowth>;
   now?: number;
@@ -72,6 +72,7 @@ export function communityThreats(inp: Inputs): CommunityThreat[] {
   }
 
   const out: CommunityThreat[] = [];
+  const spreadDay = growthLookup(inp.spread);
   for (const place of inp.places) {
     const { x, z } = project(place.lat, place.lng);
     // Nearest fire, and the strongest wind-shaped influence of any fire on this town.
@@ -84,7 +85,7 @@ export function communityThreats(inp: Inputs): CommunityThreat[] {
       influence = Math.max(influence, spreadInfluence(vx, vz, f));
     }
     const wx = Math.min(1, (weatherAt(inp.weather, place.lat, place.lng)?.days[inp.day]?.risk ?? 0) * inp.boost);
-    const inPath = inp.spread.some((e) => insideEllipse(e, x, z));
+    const inPath = spreadDay(x, z) >= 0;
 
     let score = 0, reason = "";
     if (inPath) { score = 0.9 + 0.1 * wx; reason = "in projected path"; }
