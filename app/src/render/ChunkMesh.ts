@@ -352,8 +352,18 @@ export class ChunkMesh {
       // The neighbour on side k (same order as the worker's contour bits), if it's in this chunk.
       const ang = (Math.PI / 3) * k;
       const nb = this.indexAt(d.x[i] + Math.cos(ang) * SQRT3 * size, d.z[i] + Math.sin(ang) * SQRT3 * size, size);
-      fd[j * 2] = nb >= 0 ? d.elev[nb] / 1000 : -1;
-      fd[j * 2 + 1] = nb >= 0 ? style[nb * 4 + 2] : 0;
+      if (nb >= 0) {
+        fd[j * 2] = d.elev[nb] / 1000;
+        fd[j * 2 + 1] = style[nb * 4 + 2];
+      } else if (!(d.contours[i] & (1 << k))) {
+        // Neighbour in another chunk and no terrain step here: the wall only exists because this
+        // hex is raised, so it covers just the raise (down to its own un-raised top).
+        fd[j * 2] = d.elev[i] / 1000;
+        fd[j * 2 + 1] = 0;
+      } else {
+        fd[j * 2] = -1; // a real step at the chunk edge (cliff / coast): down to the ground
+        fd[j * 2 + 1] = 0;
+      }
     }
     side.needsUpdate = true;
     flo.needsUpdate = true;
