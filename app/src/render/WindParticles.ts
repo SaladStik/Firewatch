@@ -26,7 +26,12 @@ const GROUND_EVERY = 8;
  * How fast a stream eases toward the ground under it (1/s). Hexes are terraced, so
  * snapping to each hex's height made streams jolt up and down on screen.
  */
-const GROUND_EASE = 1.2;
+const GROUND_EASE = 0.6;
+/**
+ * Streams float over the highest ground within this fraction of camera distance, not the hex
+ * right under them: following every terraced, exaggerated mountain hex made them zig-zag.
+ */
+const FLOOR_SPREAD = 0.03;
 
 type GroundElev = (x: number, z: number) => number | null;
 
@@ -94,14 +99,23 @@ export class WindParticles {
     const seg = (dist * TRAIL_FRAC) / (TRAIL_PTS - 1);
     const vScale = sharedUniforms.uVScale.value, ease = Math.min(1, dt * GROUND_EASE);
     const y = (e: number) => reliefKm(e) * vScale + lift;
+    const sp = dist * FLOOR_SPREAD;
+    // Highest ground around a point (null off the map).
+    const floor = (x: number, z: number) => {
+      const c = groundElev(x, z);
+      if (c == null) return null;
+      let m = c;
+      for (const [ox, oz] of [[sp, 0], [-sp, 0], [0, sp], [0, -sp]]) m = Math.max(m, groundElev(x + ox, z + oz) ?? m);
+      return m;
+    };
     let v = 0; // vertices written
     for (let i = 0; i < active; i++) {
       this.age[i] += dt;
       let w = this.life[i] > 0 ? f.at(this.x[i], this.z[i]) : null;
       const far = Math.abs(this.x[i] - target.x) > radius * 1.2 || Math.abs(this.z[i] - target.z) > radius * 1.2;
-      if (!w || far || this.age[i] > this.life[i]) w = this.spawn(i, target, radius, groundElev);
+      if (!w || far || this.age[i] > this.life[i]) w = this.spawn(i, target, radius, floor);
       else if ((i + this.frame) % GROUND_EVERY === 0) {
-        const e = groundElev(this.x[i], this.z[i]);
+        const e = floor(this.x[i], this.z[i]);
         if (e == null) w = null; // drifted off the map
         else this.elevTarget[i] = e;
       }

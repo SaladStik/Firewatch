@@ -23,6 +23,8 @@ import type { HexNodeInfo } from "./world/types";
 const RISK_STATUSES = new Set<number>([NodeStatus.Elevated, NodeStatus.High, NodeStatus.Extreme]);
 const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Burned]);
 const DATA_REFRESH_MS = 10 * 60 * 1000;
+/** Hotspots closer than this share one beacon. */
+const BEACON_CLUSTER_KM = 8;
 /**
  * Weather changes slowly and Open-Meteo's free tier is ~10k point-lookups/day (a 3-week
  * request counts as several calls per point), so: only regions IN FOCUS get live weather,
@@ -214,11 +216,15 @@ export class Engine {
     // The open sector panel shows status/risk from click time; re-read it for the new hazards.
     const sel = app.get().selected;
     if (sel) app.set({ selected: this.scene.world.getNode(sel.level, sel.q, sel.r) ?? sel });
-    const beacons = await Promise.all(hotspots.map(async (h) => {
+    // One beacon per ~BEACON_CLUSTER_KM cell: beacons are additive, so a dense cluster of
+    // hotspots stacked into one blinding glow.
+    const cells = new Map<string, { x: number; z: number; simulated: boolean }>();
+    for (const h of hotspots) {
       const w = project(h.lat, h.lng);
-      const smp = await this.client.sample(w.x, w.z);
-      return { x: w.x, z: w.z, elev: smp.elevation, simulated: h.agency === "SIMULATION" };
-    }));
+      const key = `${Math.floor(w.x / BEACON_CLUSTER_KM)},${Math.floor(w.z / BEACON_CLUSTER_KM)}`;
+      if (!cells.has(key)) cells.set(key, { x: w.x, z: w.z, simulated: h.agency === "SIMULATION" });
+    }
+    const beacons = await Promise.all([...cells.values()].map(async (b) => ({ ...b, elev: (await this.client.sample(b.x, b.z)).elevation })));
     this.scene.setBeacons(app.get().layers.beacons ? beacons : []);
     this.pushWind();
     this.pushRain();
@@ -235,7 +241,8 @@ export class Engine {
   /** Rain animation for the selected day: real rain + demo storms. */
   private pushRain() {
     const s = app.get();
-    this.scene.setRain(s.layers.rain ? new RainField(s.weather, s.forecastDay, this.rainBlobs) : null);
+    // Rain drifts and leans with the same wind as the streamlines (even when the wind layer is hidden).
+    this.scene.setRain(s.layers.rain ? new RainField(s.weather, s.forecastDay, this.rainBlobs) : null, new WindField(s.weather, s.forecastDay));
   }
 
   /** Wind streamlines for the selected day (today = live wind). */

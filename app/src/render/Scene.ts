@@ -122,7 +122,7 @@ export class Scene {
     this.scene.add(this.world.root);
     this.scene.add(this.makeGround());
     this.beaconMat = this.makeBeaconMaterial();
-    this.overlayScene.add(this.rain.lines);
+    this.overlayScene.add(this.rain.object);
     this.overlayScene.add(this.wind.lines);
 
     // 4× MSAA on the composer's target — without it the post-processed image has no
@@ -243,7 +243,7 @@ export class Scene {
           vec3 c = mix(vec3(1.0, 0.18, 0.1), vec3(1.0, 0.55, 0.1), vSim);
           float a = pow(clamp(1.0 - vT, 0.0, 1.0), 1.6); // clamp: MSAA can extrapolate vT past 1 → pow(neg) = NaN
           // Dark: additive glow. Light: solid ink fading out (normal blending).
-          gl_FragColor = uLight > 0.5 ? vec4(c * 0.55, a) : vec4(c * a * 1.6, 1.0);
+          gl_FragColor = uLight > 0.5 ? vec4(c * 0.55, a) : vec4(c * a * 0.9, 1.0); // additive: kept modest so clusters don't blow out
         }`,
       transparent: true,
       blending: AdditiveBlending,
@@ -493,8 +493,9 @@ export class Scene {
   }
 
   /** Animated rain where the field says it's raining (null hides it). */
-  setRain(field: RainField | null) {
+  setRain(field: RainField | null, wind: WindField | null = null) {
     this.rain.setField(field);
+    this.rain.setWind(wind);
   }
 
   setBloom(on: boolean) {
