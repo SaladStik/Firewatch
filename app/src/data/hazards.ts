@@ -6,6 +6,7 @@ import { project } from "../geo/projection";
 import { downwind } from "../world/spread";
 import type { HazardSnapshot } from "../world/types";
 import type { Hotspot, Perimeter } from "./cwfis";
+import type { SpreadEllipse } from "./fireSpread";
 import { weatherAt, type WeatherGrid } from "./openMeteo";
 
 export interface HazardInputs {
@@ -16,6 +17,8 @@ export interface HazardInputs {
   day: number;
   /** Demo scenario: multiplies weather risk (1 = real data). */
   weatherBoost: number;
+  /** Projected spread ellipses (data/fireSpread.ts); computed by the engine. */
+  spread: SpreadEllipse[];
 }
 
 const ACTIVE_PERIMETER_DAYS = 5;
@@ -53,6 +56,7 @@ export function buildSnapshot(inp: HazardInputs): HazardSnapshot {
       lat0: w.lat0, lng0: w.lng0, step: w.step, nLat: w.nLat, nLng: w.nLng,
       risk: w.cells.map((c) => Math.min(1, (c.days[inp.day]?.risk ?? 0) * inp.weatherBoost)),
     })),
+    spread: inp.spread,
   };
 }
 

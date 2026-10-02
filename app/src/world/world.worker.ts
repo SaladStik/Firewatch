@@ -22,7 +22,7 @@ declare const self: DedicatedWorkerGlobalScope;
 
 const terrain = new TerrainStack();
 const overlays: OverlayIndex[] = [];
-let hazards = new HazardField({ hotspots: [], perimeters: [], weather: [] });
+let hazards = new HazardField({ hotspots: [], perimeters: [], weather: [], spread: [] });
 
 async function decode(blob: Blob): Promise<Uint8ClampedArray> {
   const bmp = await createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
@@ -46,7 +46,7 @@ async function addRegion(url: string, index: number, landmarks: Landmark[]): Pro
 
 /** Hazard statuses that read as one region (edges are drawn between groups). */
 function statusGroup(s: NodeStatus): number {
-  return s === 0 ? 0 : s <= 3 ? s : s <= 5 ? 4 : 5;
+  return s === 0 ? 0 : s <= 3 ? s : s <= 5 ? 4 : s === 6 ? 5 : 6;
 }
 
 const FAMILY_IDS = new Map<string, number>();

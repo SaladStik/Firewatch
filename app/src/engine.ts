@@ -5,6 +5,7 @@
  */
 import { PROJECTION, type Region } from "./config/regions";
 import { fetchHotspots, fetchPerimeters } from "./data/cwfis";
+import { fireSources, spreadEllipses } from "./data/fireSpread";
 import { buildSnapshot, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
 import { FORECAST_DAYS, fetchWeatherGrid, type WeatherGrid } from "./data/openMeteo";
 import { WindField } from "./data/wind";
@@ -168,8 +169,11 @@ export class Engine {
   async pushHazards() {
     const s = app.get();
     const hotspots = this.allHotspots();
+    const weatherBoost = s.simulation ? SIM_WEATHER_BOOST : 1;
+    const spread = s.layers.spread ? spreadEllipses(fireSources(hotspots, s.perimeters), s.weather, s.forecastDay, weatherBoost) : [];
+    app.set({ spread });
     await this.client.setHazards(buildSnapshot({
-      hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost: s.simulation ? SIM_WEATHER_BOOST : 1,
+      hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost, spread,
     }));
     await this.scene.world.refreshStatus();
     // The open sector panel shows status/risk from click time; re-read it for the new hazards.
@@ -217,7 +221,7 @@ export class Engine {
   setLayer(key: keyof Layers, on: boolean) {
     app.set((s) => ({ layers: { ...s.layers, [key]: on } }));
     this.applyLayers(app.get().layers);
-    if (key === "beacons") void this.pushHazards();
+    if (key === "beacons" || key === "spread") void this.pushHazards();
     if (key === "wind") this.pushWind();
   }
 

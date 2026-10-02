@@ -6,6 +6,7 @@
  * weatherRisk = Fosberg FFWI / 100 × days-since-rain dryness (data/fosberg.ts).
  * Direct observations override: inside an active perimeter / a hotspot in the hex.
  */
+import { insideEllipse } from "../data/fireSpread";
 import { unproject } from "../geo/projection";
 import { NODE_TYPES, NodeStatus, statusForRisk } from "../hex/nodeTypes";
 import type { LandClass } from "../geo/landClass";
@@ -74,6 +75,12 @@ export class HazardField {
     return 0;
   }
 
+  /** Inside any projected spread ellipse? */
+  private inSpread(x: number, z: number): boolean {
+    for (const e of this.snap.spread) if (insideEllipse(e, x, z)) return true;
+    return false;
+  }
+
   evaluate(x: number, z: number, land: LandClass, hexSize: number): { status: NodeStatus; risk: number } {
     const fuel = NODE_TYPES[land]?.fuel ?? 0;
     // A hotspot pixel is ~375 m; count it if it falls inside this hex.
@@ -84,6 +91,8 @@ export class HazardField {
     const spread = this.spreadAt(x, z);
     if (spread > 0) risk += 0.55 * spread * Math.max(0.3, fuel);
     risk = Math.min(1, risk);
+    // Projected spread only marks burnable ground outside existing burn scars.
+    if (perim === 0 && fuel > 0 && this.inSpread(x, z)) return { status: NodeStatus.Projected, risk };
     if (perim === 1) return { status: NodeStatus.Burned, risk: risk * 0.3 };
     return { status: fuel === 0 ? NodeStatus.Normal : statusForRisk(risk), risk };
   }

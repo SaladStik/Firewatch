@@ -9,8 +9,9 @@ import { HexIcon, Panel, Toggle } from "./primitives";
 const LAYERS: { key: keyof Layers; label: string; color?: string; hint: string }[] = [
   { key: "risk", label: "Fire risk", color: "var(--color-risk-high)", hint: "Fosberg FFWI × dryness × fuel, stretched downwind of fires" },
   { key: "fires", label: "Fires + perimeters", color: "var(--color-fire)", hint: "CWFIS satellite hotspots + M3 perimeters" },
+  { key: "spread", label: "Projected spread", color: "#c084fc", hint: "Scenario: where active fires could reach by the selected day (wind + Fosberg). Not an official forecast." },
   { key: "beacons", label: "Hotspot beacons", color: "var(--color-fire)", hint: "Vertical markers visible from any zoom" },
-  { key: "wind", label: "Wind", color: "var(--color-water)", hint: "Animated arrows: wind direction + speed for the selected day (cyan light → amber strong)" },
+  { key: "wind", label: "Wind", color: "var(--color-water)", hint: "Animated streamlines: wind direction + speed for the selected day" },
   { key: "bloom", label: "Glow", hint: "Bloom post-processing (turn off on slow devices)" },
 ];
 
@@ -31,7 +32,7 @@ export function LayerDock({ engine }: { engine: Engine | null }) {
   );
 }
 
-const LEGEND_STATUSES = [NodeStatus.Elevated, NodeStatus.High, NodeStatus.Extreme, NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Burned];
+const LEGEND_STATUSES = [NodeStatus.Elevated, NodeStatus.High, NodeStatus.Extreme, NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Projected, NodeStatus.Burned];
 const LEGEND_TYPES = [LandClass.Forest, LandClass.Grass, LandClass.Crop, LandClass.Urban, LandClass.Water, LandClass.River, LandClass.Road, LandClass.Rail, LandClass.Wetland, LandClass.Rock, LandClass.Snow];
 
 export function Legend() {
