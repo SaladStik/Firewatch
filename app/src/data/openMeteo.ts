@@ -92,7 +92,14 @@ function scoreDay(tempIn: Num | undefined, rhIn: Num | undefined, windIn: Num | 
 }
 
 /** Today's observed FWI codes near a point (nearest CWFIS station), or null. */
-export type FwiSeed = (lat: number, lng: number) => FwiCodes | null;
+/**
+ * Official FWI codes near a point, and where they come from:
+ *  - "station": CWFIS fire weather stations — used as today's codes outright;
+ *  - "fire":    only CWFIS hotspot codes nearby. Fires burn where it's driest, so these run dry
+ *               for the area around them (validated: FFMC +9, DC +126 at stations). We keep FFMC
+ *               from local weather and average the slow codes with our own spin-up.
+ */
+export type FwiSeed = (lat: number, lng: number) => { codes: FwiCodes; source: "station" | "fire" } | null;
 
 export async function fetchWeatherGrid(bbox: [number, number, number, number], signal?: AbortSignal, seed?: FwiSeed): Promise<WeatherGrid> {
   // Open-Meteo counts every point as a call: size the grid so any province is ≤ ~90 points
@@ -124,14 +131,20 @@ export async function fetchWeatherGrid(bbox: [number, number, number, number], s
     const h = r.hourly;
     const noon = (i: number) => ({ t: num(h?.temperature_2m[i * 24 + 12]), rh: num(h?.relative_humidity_2m[i * 24 + 12]), ws: num(h?.wind_speed_10m[i * 24 + 12]) });
     const obs = seed?.(lats[k], lngs[k]) ?? null;
-    let codes: FwiCodes = obs ? { ...STARTUP, dmc: obs.dmc, dc: obs.dc } : STARTUP; // slow codes seeded from the station
+    // Station seeds start the slow codes from the station (they're replaced today anyway); fire
+    // seeds start from standard values so today's own spin-up can be averaged with them.
+    let codes: FwiCodes = obs?.source === "station" ? { ...STARTUP, dmc: obs.codes.dmc, dc: obs.codes.dc } : STARTUP;
     const scored: DayWeather[] = [];
     for (let i = 0; i < PAST_DAYS + FORECAST_DAYS + 1; i++) {
       const month = Number((d.time[i] ?? "2000-07").slice(5, 7)) || 7;
       const n = noon(i);
       let f = fwiDay(codes, n.t, n.rh, n.ws, rain[i] ?? 0, month);
       // Today: the station's observed codes replace our spin-up (then the forecast runs on from them).
-      if (i === PAST_DAYS && obs) f = fwiFromCodes(obs, n.ws);
+      if (i === PAST_DAYS && obs) {
+        f = obs.source === "station"
+          ? fwiFromCodes(obs.codes, n.ws)
+          : fwiFromCodes({ ffmc: f.ffmc, dmc: (obs.codes.dmc + f.dmc) / 2, dc: (obs.codes.dc + f.dc) / 2 }, n.ws);
+      }
       codes = f;
       scored.push(scoreDay(d.temperature_2m_max[i], d.relative_humidity_2m_min[i], d.wind_speed_10m_max[i], d.wind_direction_10m_dominant[i], rain[i] ?? 0, daysSinceRain(rain, i), f, n.ws));
     }

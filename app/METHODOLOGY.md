@@ -43,9 +43,12 @@ Sources, licences and how often each is refreshed are listed in the [README](REA
   - **BUI** (Buildup Index) = DMC + DC: how much fuel is available to burn.
   - **FWI** = ISI × BUI: overall fire intensity, which is the danger rating.
 
-**How we run it.** For every weather grid cell we run the system day by day through 14 past days, today, and 7 forecast days:
-1. **Seeding.** The slow codes (DMC, DC) start from the nearest **official** values within 400 km. Those come from a CWFIS fire weather station or from CWFIS's own FWI grids at today's hotspots. Today's codes are replaced outright by those official values, and the forecast runs on from them.
-2. **No official value nearby.** The cell spins up from the standard startup values (FFMC 85, DMC 6, DC 15). FFMC settles within days; DMC and DC can read low early on, which is a known limitation (§10).
+**How we run it.** For every weather grid cell we run the system day by day through 14 past days, today, and 7 forecast days. Today's codes come from **official CWFIS values** where possible, and the forecast runs on from them. Every rule below was chosen by testing it against CWFIS (§11):
+1. **A CWFIS fire weather station within 400 km.** Today's FFMC, DMC and DC are an **inverse-distance blend of the 4 nearest stations** (weight 1/distance², so the closest dominates). This is the most accurate case.
+2. **No station, but CWFIS fire hotspots within 400 km.** CWFIS attaches its own FWI codes to each hotspot, but fires burn where it's driest, so those codes are **biased dry** for the area around them. In testing they made stations read FFMC +9, DC +126 and FWI +9 too high. So in this case:
+   - FFMC comes from local weather;
+   - DMC and DC are the **average** of the blended fire codes and our own spin-up (the two err in opposite directions).
+3. **Nothing official within 400 km.** The cell spins up from the standard startup values (FFMC 85, DMC 6, DC 15). FFMC settles within days. DMC and DC read **low**: in testing, DC was about 200 too low, because two weeks can't rebuild a season of drying (§10).
 3. **Rain.** Rain enters the system's own equations: FFMC needs more than 0.5 mm to change, DMC more than 1.5 mm, DC more than 2.8 mm. That's how rain lowers danger. We don't use a separate rain fudge factor.
 
 **Danger classes.** The common Canadian five-class rating on FWI (exact breakpoints vary a little by province):
@@ -223,7 +226,8 @@ Everything simulated is labelled **SIMULATION**. Code: `data/hazards.ts`, `data/
 
 - **Not official.** CWFIS / NRCan and provincial agencies issue the official fire danger ratings and fire behaviour forecasts. This tool reuses their standard methods on open data.
 - **Weather resolution.** Open-Meteo is sampled on a 1.5° grid (coarser for very large provinces), about 160 km. Local weather (valleys, lake effects, convective storms) is smoothed out.
-- **FWI seeding.** Where no station or hotspot is within 400 km, DMC and DC spin up from startup values over 14 days and can read low in late summer and fall. The FWI and BUI there are then underestimated.
+- **FWI seeding.** The CWFIS live station feed is mostly federal (MSC) stations. Alberta has one and southern BC none, so much of western Canada falls back on fire-hotspot codes (rule 2) or spin-up (rule 3), which are less accurate (§11). Provincial station networks would close this gap; they aren't in the open CWFIS feed.
+- **Our own weather runs damper than stations.** Open-Meteo's humidity makes our own FFMC about 6 points lower (wetter) than the stations, which is why official codes are used wherever they exist.
 - **Fuel types are inferred** from land cover (ESA WorldCover), not from the official FBP fuel grids. Forest is treated as M-1 mixedwood at 50 % conifer. Pure black-spruce stands (C-2) burn faster, and leafless deciduous stands in spring differ.
 - **No spotting, suppression or fuel breaks** beyond water, rock and ice. Roads and rivers narrower than a hex don't stop the model. Real fires jump barriers and are fought.
 - **Daily time step.** Burning is 4 h equivalent at the peak rate per day; overnight and diurnal changes are not modelled separately.
@@ -233,6 +237,36 @@ Everything simulated is labelled **SIMULATION**. Code: `data/hazards.ts`, `data/
 ---
 
 ## 11. How it's tested
+
+### Against CWFIS's published values
+
+`npm run validate:fwi` (`scripts/validate-fwi.ts`) compares our FWI System output with CWFIS's own values at every CWFIS station reporting today, plus up to 120 of today's hotspots. **Leave-one-out:** each point is seeded only from *other* points at least 25 km away, so it's never checked against itself.
+
+Results for 2 Oct 2026 (n = 552 stations + 120 hotspots; "MAE" is the average absolute difference from CWFIS):
+
+| Method | FWI MAE | FWI bias | Danger class exact | Within one class |
+|---|---|---|---|---|
+| Our weather only (standard spin-up, no CWFIS input) | 6.0 | −5.4 | 64 % | 85 % |
+| Nearest official point only | 3.7 | −1.3 | 72 % | 94 % |
+| **Blend of 4 nearest (used)** | **3.4** | −1.4 | **75 %** | **95 %** |
+| …at points with stations nearby | 2.1 | −0.6 | 79 % | 96 % |
+| …at fire points seeded from other fires | 9.3 | −4.9 | 62 % | 90 % |
+
+Away from fires, seeded only from fire hotspots (90 stations checked against hotspot seeds):
+
+| Method | FFMC bias | DC bias | FWI MAE | Class exact | Within one |
+|---|---|---|---|---|---|
+| All codes from fires | +8.8 | +126 | 10.9 | 37 % | 61 % |
+| Our weather only | −2.7 | −214 | 6.4 | 36 % | 83 % |
+| **Local FFMC, slow codes averaged (used)** | −2.7 | −44 | **5.3** | **48 %** | **88 %** |
+
+Rejected alternatives we tested:
+- FFMC from local weather everywhere: FWI MAE 5.2.
+- Stepping official FFMC through today's local rain: FWI MAE 4.6.
+
+Both were worse than the official codes, which already account for the day's weather.
+
+### Unit tests
 
 `npm test` runs the unit tests in `app/tests/`:
 - **FWI System:** matches the published reference day (Van Wagner & Pickett 1985): from startup values with T 17 °C, RH 42 %, wind 25 km/h and no rain, it gives FFMC 87.7, DMC 8.5, DC 19.0, ISI 10.9, BUI 8.5, FWI 10.1. Also checks rain response, monotonic indices and danger classes.
