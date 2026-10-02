@@ -31,7 +31,7 @@ export const LABEL_MIN_POP: Record<LabelMode, number> = { auto: -1, all: 0, some
 
 function initialTheme(): Theme {
   try {
-    const t = localStorage.getItem("embergrid.theme");
+    const t = localStorage.getItem("firewatch.theme");
     if (t === "dark" || t === "light") return t;
   } catch { /* storage unavailable */ }
   return "light";

@@ -1,9 +1,10 @@
+import './migrateStorage' // first: renamed storage keys must be in place before anything reads them
 import { createRoot } from 'react-dom/client'
 import './index.css'
 
 // Apply the saved theme before first paint (no flash).
 try {
-  document.documentElement.dataset.theme = localStorage.getItem('embergrid.theme') === 'dark' ? 'dark' : 'light'
+  document.documentElement.dataset.theme = localStorage.getItem('firewatch.theme') === 'dark' ? 'dark' : 'light'
 } catch {
   document.documentElement.dataset.theme = 'light'
 }

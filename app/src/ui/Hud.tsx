@@ -23,7 +23,7 @@ export function Brand() {
       <CompassBadge point="N" />
       <div>
         <div className="text-[15px] font-bold tracking-[0.12em] text-ink">
-          FIREWATCH
+          FIRE<span className="text-phos">//</span>WATCH
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] tracking-[0.08em] text-ink-mute">
           <span>North · {title} wildfire situation</span>

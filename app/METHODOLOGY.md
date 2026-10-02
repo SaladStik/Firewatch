@@ -1,4 +1,4 @@
-# How EMBER//GRID reaches its conclusions
+# How FIRE//WATCH reaches its conclusions
 
 This document explains every number the map shows: where the data comes from, which algorithm turns it into a risk, a projection or a warning, and where we rely on an industry standard versus a choice of our own. Code paths are relative to `app/src`.
 

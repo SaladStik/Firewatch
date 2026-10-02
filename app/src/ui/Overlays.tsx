@@ -1,4 +1,5 @@
 /** Small overlays: nav controls, north arrow, hover tooltip, boot screen. */
+import { LoadingScreen } from "./loading/LoadingScreen";
 import gsap from "gsap";
 import { Home, Minus, Plus } from "lucide-react";
 import { useEffect, useRef } from "react";
@@ -6,7 +7,7 @@ import { NODE_STATUSES, NODE_TYPES, NodeStatus } from "../hex/nodeTypes";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
-import { CompassBadge, IconButton, Swatch } from "./primitives";
+import { IconButton, Swatch } from "./primitives";
 
 export function CompassRose() {
   const heading = useStore(app, (s) => Math.round(s.stats?.heading ?? 0));
@@ -80,19 +81,8 @@ export function BootScreen() {
   }, [boot.done]);
   return (
     <div ref={ref} className="absolute inset-0 z-50 flex items-center justify-center bg-void">
-      <div className="flex flex-col items-center gap-4">
-        <CompassBadge point="N" />
-        <div className="text-[18px] font-bold tracking-[0.18em] text-ink">FIREWATCH</div>
-        <div className="text-[12px] tracking-wide text-ink-mute">Wildfire situation map</div>
-        <div className="text-[11px] tracking-wide text-ink-mute">
-          {boot.error ? <span className="text-fire">{boot.error}</span> : <>{boot.stage}…</>}
-        </div>
-        {!boot.error && (
-          <div className="h-[4px] w-64 overflow-hidden rounded-sm border border-line bg-panel">
-            <div className="h-full bg-phos transition-[width] duration-300" style={{ width: `${Math.round((boot.progress ?? 0) * 100)}%` }} />
-          </div>
-        )}
-      </div>
+      {/* FIRE//WATCH tower + firefly (ui/loading/LoadingScreen.tsx; test page: /loading.html) */}
+      <LoadingScreen progress={boot.done ? 1 : boot.progress ?? 0} stage={boot.stage} error={boot.error} />
     </div>
   );
 }

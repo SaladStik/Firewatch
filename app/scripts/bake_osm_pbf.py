@@ -154,7 +154,7 @@ def download(region_id):
 
 
 def fetch(url, tmp):
-    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "embergrid-bake/0.2"}), timeout=60) as r, open(tmp, "wb") as f:
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "firewatch-bake/0.2"}), timeout=60) as r, open(tmp, "wb") as f:
         total = int(r.headers.get("Content-Length") or 0)
         got, last = 0, 0
         while True:
