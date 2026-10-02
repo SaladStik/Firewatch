@@ -1,4 +1,5 @@
 /** Small overlays: nav controls, hover tooltip, boot screen. */
+import { LoadingScreen } from "./loading/LoadingScreen";
 import gsap from "gsap";
 import { Home, Minus, Plus } from "lucide-react";
 import { useEffect, useRef } from "react";
@@ -56,20 +57,8 @@ export function BootScreen() {
   }, [boot.done]);
   return (
     <div ref={ref} className="absolute inset-0 z-50 flex items-center justify-center bg-void">
-      <div className="flex flex-col items-center gap-5">
-        <div className="relative animate-pulse">
-          <HexIcon size={64} color="var(--color-phos)" className="drop-shadow-[0_0_14px_rgba(46,234,124,.7)]" />
-        </div>
-        <div className="text-[18px] font-bold tracking-[0.3em] text-ink glow-text">EMBER<span className="text-phos">//</span>GRID</div>
-        <div className="text-[11px] tracking-[0.2em] text-ink-mute">
-          {boot.error ? <span className="text-fire">{boot.error}</span> : <>{boot.stage.toUpperCase()}<span className="animate-pulse">_</span></>}
-        </div>
-        {!boot.error && (
-          <div className="h-[3px] w-64 overflow-hidden border border-line">
-            <div className="h-full bg-phos transition-[width] duration-300" style={{ width: `${Math.round((boot.progress ?? 0) * 100)}%`, boxShadow: "0 0 8px var(--color-phos)" }} />
-          </div>
-        )}
-      </div>
+      {/* EMBER//WATCH tower + firefly (ui/loading/LoadingScreen.tsx; test page: /loading.html) */}
+      <LoadingScreen progress={boot.done ? 1 : boot.progress ?? 0} stage={boot.stage} error={boot.error} />
     </div>
   );
 }
