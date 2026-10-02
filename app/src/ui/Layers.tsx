@@ -20,7 +20,7 @@ export function LayerDock({ engine }: { engine: Engine | null }) {
   const layers = useStore(app, (s) => s.layers);
   const sim = useStore(app, (s) => s.simulation);
   return (
-    <Panel className="w-[220px]" title="Northwest" bearing="NW" tour="layers">
+    <Panel className="w-[220px]" title="Layers" tour="layers">
       <div className="py-1.5">
         {LAYERS.filter((l) => sim || !l.demoOnly).map((l) => (
           <Toggle key={l.key} on={layers[l.key]} label={l.label} color={l.color} hint={l.hint} onChange={(v) => engine?.setLayer(l.key, v)} />
@@ -42,7 +42,7 @@ const LEGEND_TYPES = [
 
 export function Legend() {
   return (
-    <Panel className="w-[220px]" title="West" bearing="W" tour="legend">
+    <Panel className="w-[220px]" title="Legend" tour="legend">
       <div className="scroll-thin max-h-[min(200px,28vh)] overflow-y-auto">
       <div className="grid grid-cols-1 gap-y-1 px-3 py-2">
         {LEGEND_STATUSES.map((s) => (

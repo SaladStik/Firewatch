@@ -67,22 +67,6 @@ body,
   color: var(--color-ink-mute);
 }
 
-.compass-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.5rem;
-  height: 1.5rem;
-  padding: 0 0.3rem;
-  border: 1px solid var(--color-phos);
-  border-radius: 999px;
-  color: var(--color-phos);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1;
-}
 
 .app-chrome {
   background: var(--color-chrome);

@@ -21,7 +21,6 @@ export function Explore({ engine }: { engine: Engine | null }) {
     <Panel
       className="flex max-h-full w-[240px] flex-col"
       title="Explore"
-      bearing="SW"
       tour="explore"
       right={
         <div className="flex gap-1">

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { Engine } from "../engine";
 import { useStore } from "../state/store";
 import { app } from "../state/app";
-import { CompassBadge } from "./primitives";
+import { LogoMark } from "./primitives";
 import { useFocusRegions } from "./region";
 
 function Dot({ state }: { state: "loading" | "ok" | "error" }) {
@@ -20,7 +20,7 @@ export function Brand() {
   const at = ds.at ? new Date(ds.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--";
   return (
     <div className="pointer-events-auto flex items-center gap-3" data-tour="brand">
-      <CompassBadge point="N" />
+      <LogoMark />
       <div>
         <div className="text-[15px] font-bold tracking-[0.12em] text-ink">
           FIRE<span className="text-phos">//</span>WATCH

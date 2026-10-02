@@ -1,19 +1,15 @@
 import type { ReactNode } from "react";
-import type { CompassPoint } from "./weatherFormat";
-import { COMPASS_NAMES } from "./weatherFormat";
 
 export function Panel({
   children,
   className = "",
   title,
-  bearing,
   right,
   tour,
 }: {
   children: ReactNode;
   className?: string;
   title?: string;
-  bearing?: CompassPoint;
   right?: ReactNode;
   tour?: string;
 }) {
@@ -22,7 +18,6 @@ export function Panel({
       {title && (
         <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
           <span className="flex min-w-0 items-center gap-2">
-            {bearing ? <CompassBadge point={bearing} /> : null}
             <span className="label-xs truncate">{title}</span>
           </span>
           {right}
@@ -33,11 +28,13 @@ export function Panel({
   );
 }
 
-export function CompassBadge({ point }: { point: CompassPoint }) {
+/** The FIRE//WATCH mark — the same hexagon + flame as the favicon (public/favicon.svg). */
+export function LogoMark({ size = 34 }: { size?: number }) {
   return (
-    <span className="compass-badge" title={COMPASS_NAMES[point]} aria-label={COMPASS_NAMES[point]}>
-      {point}
-    </span>
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-label="FIRE//WATCH" role="img">
+      <path d="M12 2 20.66 7v10L12 22 3.34 17V7z" fill="none" stroke="#2eea7c" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M12 8c1.8 2 2.6 3.4 2.6 4.8a2.6 2.6 0 0 1-5.2 0c0-.9.4-1.8 1.2-2.6.1 1 .6 1.5 1.1 1.6-.4-1.3-.2-2.5.3-3.8z" fill="#ff6a1a" />
+    </svg>
   );
 }
 

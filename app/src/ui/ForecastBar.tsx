@@ -43,7 +43,6 @@ export function ForecastBar({ engine }: { engine: Engine | null }) {
   return (
     <div className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-stretch">
       <div className="flex items-center gap-2 px-3 py-1.5 lg:border-r lg:border-line">
-        <span className="compass-badge">S</span>
         <span className="label-xs hidden sm:inline">Forecast</span>
       </div>
       <div className="scroll-thin flex min-w-0 items-center gap-1 overflow-x-auto px-2 py-1.5 lg:border-r lg:border-line">

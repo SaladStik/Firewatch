@@ -44,8 +44,7 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
     <Panel
       className="w-[280px]"
       tour="sector"
-      bearing="NE"
-      title="Northeast"
+      title={`Sector ${n.q},${n.r}`}
       right={
         <button onClick={() => engine?.scene.select(null)} className="text-ink-mute hover:text-phos" aria-label="Close">
           <X size={13} />

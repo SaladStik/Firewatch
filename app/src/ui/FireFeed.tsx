@@ -41,7 +41,6 @@ export function FireFeed({ engine }: { engine: Engine | null }) {
   return (
     <div data-tour="fire-feed" className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-stretch">
       <div className="flex items-center gap-2 border-r border-line px-3">
-        <span className="compass-badge">S</span>
         <span className="label-xs hidden sm:inline">Situation</span>
       </div>
       <div className="flex divide-x divide-line border-r border-line">
