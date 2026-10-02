@@ -16,12 +16,36 @@ function facingName(heading: number) {
   return POINTS[Math.round(facing / 45) % 8];
 }
 
-export function CompassRose() {
-  const heading = useStore(app, (s) => Math.round(s.stats?.heading ?? 0));
+/**
+ * North arrow. Reads the camera heading every frame and rotates the dial directly (no React
+ * re-renders), eased along the shortest way round so it glides instead of stepping. Fixed size:
+ * the facing label changes text, never the panel's width.
+ */
+export function CompassRose({ engine }: { engine: Engine | null }) {
+  const dial = useRef<SVGSVGElement>(null);
+  const label = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    let raf = 0, shown = engine?.scene.heading ?? 0, last = performance.now(), name = "";
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const target = engine?.scene?.heading;
+      if (target !== undefined) {
+        const d = ((target - shown + 540) % 360) - 180; // shortest way round
+        shown += d * Math.min(1, dt * 12);
+        if (dial.current) dial.current.style.transform = `rotate(${shown.toFixed(2)}deg)`;
+        const n = facingName(target);
+        if (n !== name && label.current) { name = n; label.current.textContent = n; }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [engine]);
   return (
-    <div className="panel pointer-events-none flex flex-col items-center gap-1 px-2 py-2" title="North" data-tour="compass">
+    <div className="panel pointer-events-none flex w-[84px] flex-col items-center gap-1 px-2 py-2" title="Compass" data-tour="compass">
       <div className="relative h-14 w-14">
-        <svg viewBox="0 0 64 64" className="h-14 w-14" style={{ transform: `rotate(${heading}deg)` }} aria-hidden>
+        <svg ref={dial} viewBox="0 0 64 64" className="h-14 w-14" style={{ willChange: "transform" }} aria-hidden>
           <circle cx="32" cy="32" r="30" fill="var(--color-panel)" stroke="var(--color-line)" strokeWidth="1.5" />
           <path d="M32 8 L37 32 L32 28 L27 32 Z" fill="var(--color-fire)" />
           <path d="M32 56 L27 32 L32 36 L37 32 Z" fill="var(--color-ink-mute)" />
@@ -32,7 +56,7 @@ export function CompassRose() {
           <circle cx="32" cy="32" r="2.5" fill="var(--color-ink)" />
         </svg>
       </div>
-      <span className="label-xs">{facingName(heading)}</span>
+      <span ref={label} className="label-xs block w-full truncate text-center">North</span>
     </div>
   );
 }
@@ -40,7 +64,7 @@ export function CompassRose() {
 export function NavControls({ engine }: { engine: Engine | null }) {
   return (
     <div className="pointer-events-auto flex flex-col items-end gap-1" data-tour="nav">
-      <CompassRose />
+      <CompassRose engine={engine} />
       <div className="flex flex-col gap-1">
         <IconButton title="Zoom in" onClick={() => engine?.scene.zoomBy(0.5)}><Plus size={15} /></IconButton>
         <IconButton title="Zoom out" onClick={() => engine?.scene.zoomBy(2)}><Minus size={15} /></IconButton>
