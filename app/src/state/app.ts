@@ -1,6 +1,7 @@
 /** App-wide UI state (not persisted, apart from the theme). */
 import { initialFocus, REGIONS, WORKSPACE, type Region } from "../config/regions";
 import type { Hotspot, Perimeter } from "../data/cwfis";
+import type { FireGrowth } from "../data/fireHistory";
 import type { SpreadEllipse } from "../data/fireSpread";
 import type { WeatherGrid } from "../data/openMeteo";
 import type { Place } from "../data/places";
@@ -67,6 +68,8 @@ export interface AppState {
   flagged: string[];
   /** Projected fire spread ellipses for the selected day (scenario model). */
   spread: SpreadEllipse[];
+  /** Per-fire growth calibration from each fire's own hotspot history, by perimeter id. */
+  fireGrowth: Record<string, FireGrowth>;
 }
 
 export const app = createStore<AppState>({
@@ -90,6 +93,7 @@ export const app = createStore<AppState>({
   forecastDay: 0,
   flagged: [],
   spread: [],
+  fireGrowth: {},
 });
 
 export const regionIndex = (id: string) => app.get().regions.findIndex((r) => r.id === id);

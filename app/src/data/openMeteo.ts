@@ -33,6 +33,8 @@ export interface WeatherCell {
   lng: number;
   /** Index 0 = today, 1..FORECAST_DAYS = upcoming days. */
   days: DayWeather[];
+  /** The PAST_DAYS days before today, oldest first (scored the same way; used to calibrate fire growth). */
+  past: DayWeather[];
   /** Live conditions right now (display only; risk uses the daily peaks). */
   now: { temp: number; rh: number; wind: number; windFrom: number; /** mm in the last hour */ rain: number };
 }
@@ -46,6 +48,8 @@ export interface WeatherGrid {
   cells: WeatherCell[];
   /** Local ISO date per day index (0 = today). */
   dates: string[];
+  /** Local ISO dates of `past`, oldest first. */
+  pastDates: string[];
   fetchedAt: string;
 }
 
@@ -103,11 +107,16 @@ export async function fetchWeatherGrid(bbox: [number, number, number, number], s
       const i = PAST_DAYS + n;
       days.push(scoreDay(d.temperature_2m_max[i], d.relative_humidity_2m_min[i], d.wind_speed_10m_max[i], d.wind_direction_10m_dominant[i], rain[i] ?? 0, daysSinceRain(rain, i)));
     }
+    const past: DayWeather[] = [];
+    for (let i = 0; i < PAST_DAYS; i++) {
+      past.push(scoreDay(d.temperature_2m_max[i], d.relative_humidity_2m_min[i], d.wind_speed_10m_max[i], d.wind_direction_10m_dominant[i], rain[i] ?? 0, daysSinceRain(rain, i)));
+    }
     const now = { temp: num(c.temperature_2m), rh: num(c.relative_humidity_2m), wind: num(c.wind_speed_10m), windFrom: num(c.wind_direction_10m), rain: num(c.precipitation) };
-    return { lat: lats[k], lng: lngs[k], days, now };
+    return { lat: lats[k], lng: lngs[k], days, past, now };
   });
-  const dates = (rows[0]?.daily.time ?? []).slice(PAST_DAYS, PAST_DAYS + FORECAST_DAYS + 1);
-  return { lat0, lng0, step, nLat, nLng, cells, dates, fetchedAt: new Date().toISOString() };
+  const time = rows[0]?.daily.time ?? [];
+  const dates = time.slice(PAST_DAYS, PAST_DAYS + FORECAST_DAYS + 1);
+  return { lat0, lng0, step, nLat, nLng, cells, dates, pastDates: time.slice(0, PAST_DAYS), fetchedAt: new Date().toISOString() };
 }
 
 export function weatherAt(grids: WeatherGrid[], lat: number, lng: number): WeatherCell | null {

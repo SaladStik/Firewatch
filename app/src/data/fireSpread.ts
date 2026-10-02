@@ -34,6 +34,10 @@ export interface FireSource {
   /** Current fire radius (km). */
   r0: number;
   kind: "perimeter" | "hotspots";
+  /** Growth calibration from this fire's own history (data/fireHistory.ts); 1 = model as is. */
+  k: number;
+  /** Perimeter id, when the source is a mapped perimeter. */
+  id?: string;
 }
 
 /** Plain data: crosses into the worker inside the HazardSnapshot. */
@@ -72,13 +76,13 @@ export function headKmPerDay(risk: number): number {
 }
 
 /** Active perimeters, plus hotspot clusters that aren't already inside one. */
-export function fireSources(hotspots: Pick<Hotspot, "lat" | "lng">[], perimeters: Perimeter[], now = Date.now()): FireSource[] {
+export function fireSources(hotspots: Pick<Hotspot, "lat" | "lng">[], perimeters: Perimeter[], now = Date.now(), growth: Record<string, { k: number }> = {}): FireSource[] {
   const out: FireSource[] = [];
   for (const p of perimeters) {
     const ring = p.rings[0];
     if (!ring?.length || !isPerimeterActive(p, now)) continue;
     const lng = ring.reduce((s, c) => s + c[0], 0) / ring.length, lat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
-    out.push({ ...project(lat, lng), lat, lng, r0: Math.sqrt(p.areaHa / 100 / Math.PI), kind: "perimeter" });
+    out.push({ ...project(lat, lng), lat, lng, r0: Math.sqrt(p.areaHa / 100 / Math.PI), kind: "perimeter", id: p.id, k: growth[p.id]?.k ?? 1 });
   }
   const perims = [...out];
   const pts = hotspots
@@ -99,7 +103,7 @@ export function fireSources(hotspots: Pick<Hotspot, "lat" | "lng">[], perimeters
     const mean = (k: "x" | "z" | "lat" | "lng") => g.reduce((s, p) => s + p[k], 0) / g.length;
     const x = mean("x"), z = mean("z");
     const r0 = Math.max(MIN_R0_KM, ...g.map((p) => Math.hypot(p.x - x, p.z - z)));
-    out.push({ x, z, lat: mean("lat"), lng: mean("lng"), r0, kind: "hotspots" });
+    out.push({ x, z, lat: mean("lat"), lng: mean("lng"), r0, kind: "hotspots", k: 1 }); // new fires: no history yet
   }
   return out;
 }
@@ -119,7 +123,7 @@ export function spreadEllipses(sources: FireSource[], weather: WeatherGrid[], da
       if (!w) break;
       const kmh = Number.isFinite(w.wind) ? w.wind : 0;
       const wet = rainOn ? blobDamping(blobRain(rainOn(d), s.x, s.z)) : 1;
-      const h = headKmPerDay(Math.min(1, w.risk * boost * wet));
+      const h = headKmPerDay(Math.min(1, w.risk * boost * wet)) * (s.k ?? 1);
       const lb = lengthToBreadth(kmh);
       head += h;
       back += h / headBackRatio(lb);
