@@ -20,6 +20,7 @@ const MAX_SHOWN = 6;
 export function ForecastBar({ engine }: { engine: Engine | null }) {
   const day = useStore(app, (s) => s.forecastDay);
   const weather = useStore(app, (s) => s.weather);
+  const status = useStore(app, (s) => s.dataStatus);
   const places = useStore(app, (s) => s.places);
   const sim = useStore(app, (s) => s.simulation);
   const hotspots = useStore(app, (s) => s.hotspots);
@@ -37,7 +38,18 @@ export function ForecastBar({ engine }: { engine: Engine | null }) {
     });
   }, [places, weather, day, focus, sim, hotspots, perimeters, regions, spread, growth]);
 
-  if (!weather.length) return null;
+  if (!weather.length) {
+    // Keep the bar (and the layout) in place and say why there's no forecast, instead of vanishing.
+    if (status.weather === "loading") return null;
+    return (
+      <div className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-center gap-3 px-3 py-1.5 text-[10.5px]">
+        <span className="label-xs">Forecast</span>
+        <span className="text-ink-mute">
+          Weather unavailable{status.weatherError ? ` · ${status.weatherError}` : ""}. Fire data still loads; the forecast returns on its own (checked every 10 min).
+        </span>
+      </div>
+    );
+  }
   const dates = weather[0].dates;
 
   return (

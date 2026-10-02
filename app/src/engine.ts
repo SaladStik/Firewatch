@@ -183,6 +183,7 @@ export class Engine {
       dataStatus: {
         cwfis: hs.status === "fulfilled" && per.status === "fulfilled" ? "ok" : "error",
         weather: wx.every((w) => w.status === "fulfilled") ? "ok" : "error",
+        weatherError: wx.map((w) => (w.status === "rejected" ? String((w.reason as Error)?.message ?? w.reason) : "")).find(Boolean),
         at: new Date().toISOString(),
       },
     });

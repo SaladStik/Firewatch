@@ -60,7 +60,7 @@ export interface AppState {
   hotspots: Hotspot[];
   perimeters: Perimeter[];
   weather: WeatherGrid[];
-  dataStatus: { cwfis: "loading" | "ok" | "error"; weather: "loading" | "ok" | "error"; at?: string };
+  dataStatus: { cwfis: "loading" | "ok" | "error"; weather: "loading" | "ok" | "error"; at?: string; /** Why weather failed (shown in the forecast bar). */ weatherError?: string };
   simulation: boolean;
   /** Forecast slider: 0 = today, 1..7 = days ahead. Fires stay as observed now. */
   forecastDay: number;
