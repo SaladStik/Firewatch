@@ -9,7 +9,7 @@ import { HexIcon, Panel, Toggle } from "./primitives";
 const LAYERS: { key: keyof Layers; label: string; color?: string; hint: string; demoOnly?: boolean }[] = [
   { key: "risk", label: "Fire risk", color: "var(--color-risk-high)", hint: "Fosberg FFWI × dryness × fuel, stretched downwind of fires" },
   { key: "fires", label: "Fires + perimeters", color: "var(--color-fire)", hint: "CWFIS satellite hotspots + M3 perimeters" },
-  { key: "spread", label: "Projected spread", color: "#c084fc", hint: "Demo scenario only: where fires could reach by the selected day (wind + Fosberg + rain). Not an official forecast.", demoOnly: true },
+  { key: "spread", label: "Projected spread", color: "#c084fc", hint: "Scenario model: where active fires could reach by the selected day (wind + Fosberg + rain). Not an official forecast." },
   { key: "beacons", label: "Hotspot beacons", color: "var(--color-fire)", hint: "Vertical markers visible from any zoom" },
   { key: "wind", label: "Wind", color: "var(--color-water)", hint: "Animated streamlines: live wind today, forecast peak wind on later days (Open-Meteo)" },
   { key: "rain", label: "Rain", color: "#8ec8ff", hint: "Animated rain: live precipitation today, forecast daily totals on later days. Rain lowers fire risk and slows spread." },
@@ -27,7 +27,7 @@ export function LayerDock({ engine }: { engine: Engine | null }) {
         ))}
       </div>
       <div className="border-t border-line py-1.5">
-        <Toggle on={sim} label="Demo scenario" color="var(--color-risk-high)" hint="Simulated ignitions, a heatwave and a rainstorm drifting with the wind, plus projected fire spread for every fire. Clearly flagged." onChange={(v) => engine?.setSimulation(v)} />
+        <Toggle on={sim} label="Demo scenario" color="var(--color-risk-high)" hint="Simulated ignitions, a heatwave and a rainstorm drifting with the wind. Clearly flagged." onChange={(v) => engine?.setSimulation(v)} />
       </div>
     </Panel>
   );
