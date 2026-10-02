@@ -8,10 +8,10 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { createRoot } from "react-dom/client";
 import { EMOTE_DURATION, type EmoteName } from "../controller";
 import { MOOD_NAMES, MOODS, type MoodName } from "../moods";
-import { anchorAt, areaFromBox, viewportAnchor } from "./anchors";
+import { anchorAt, areaForElement, areaFromBox, viewportAnchor } from "./anchors";
 import { describeStep, execStep, prepareAt, sayDuration, smoothScript } from "./player";
 import { getStage } from "./stage";
-import { EMPTY_SCRIPT, type FireflyScript, type ScriptStep } from "./types";
+import { EASES, EMPTY_SCRIPT, type Ease, type FireflyScript, type ScriptStep, type TaskAction } from "./types";
 
 const EMOTES = Object.keys(EMOTE_DURATION) as EmoteName[];
 const STORAGE = "firefly.dev.script";
@@ -38,7 +38,10 @@ export function mountFireflyDev() {
   createRoot(host).render(<DevOverlay />);
 }
 
-type Pick = null | "fly" | "look" | "show" | "start" | "spot";
+type Pick = null | "fly" | "look" | "show" | "start" | "spot" | "task" | "taskel";
+
+/** What counts as "the thing to click / type in" when picking a task element. */
+const INTERACTIVE = "input, textarea, select, button, a, [role=button], [data-tour], label";
 
 function loadSaved(): FireflyScript {
   try {
@@ -65,6 +68,11 @@ function DevOverlay() {
   const [toast, setToast] = useState("");
   const [shape, setShape] = useState<"rect" | "ellipse">("rect");
   const [spotClick, setSpotClick] = useState(true);
+  const [taskAction, setTaskAction] = useState<TaskAction>("click");
+  const [expect, setExpect] = useState("");
+  const [sizeTo, setSizeTo] = useState(0.16);
+  const [sizeSecs, setSizeSecs] = useState(0.8);
+  const [sizeEase, setSizeEase] = useState<Ease>("easeInOut");
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   /** Step-through cursor: the next step "Step ›" will run. */
   const [cursor, setCursor] = useState(0);
@@ -96,15 +104,16 @@ function DevOverlay() {
 
   const flash = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 1600); };
 
-  /** Do an action live; when recording, append it (with the idle gap before it as a wait). */
+  /**
+   * Do an action live AND append it to the script (every panel action becomes a step, so the
+   * copied JSON always has everything). While recording, the idle gap before it is kept as a wait.
+   */
   const act = (step: ScriptStep) => {
-    if (recording) {
-      const gap = (performance.now() - idleSince.current) / 1000;
-      setScript((s) => ({
-        ...s,
-        steps: [...s.steps, ...(timing && gap > 0.3 && step.type !== "wait" ? [{ type: "wait" as const, seconds: Math.round(gap * 10) / 10 }] : []), step],
-      }));
-    }
+    const gap = (performance.now() - idleSince.current) / 1000;
+    setScript((s) => ({
+      ...s,
+      steps: [...s.steps, ...(recording && timing && gap > 0.3 && step.type !== "wait" ? [{ type: "wait" as const, seconds: Math.round(gap * 10) / 10 }] : []), step],
+    }));
     const started = performance.now();
     idleSince.current = Infinity; // busy until the step finishes
     void execStep(ctl, step, script, stage.hooks()).then(() => {
@@ -112,14 +121,14 @@ function DevOverlay() {
     });
   };
 
+  /** Start capturing pauses. Keeps existing steps (use Clear to start over); an empty script starts where he is. */
   const startRecording = () => {
     stage.stop();
     stage.setVisible(true);
-    const start = viewportAnchor(ctl.pose.x, ctl.pose.y);
-    setScript((s) => ({ ...s, start, steps: [] }));
+    if (!script.steps.length) setScript((s) => ({ ...s, start: viewportAnchor(ctl.pose.x, ctl.pose.y), size: stage.get().size }));
     idleSince.current = performance.now();
     setRecording(true);
-    flash("Recording — actions are captured");
+    flash("Recording: pauses between actions are kept as waits");
   };
 
   const play = (from = 0) => {
@@ -167,20 +176,42 @@ function DevOverlay() {
   const finishSpot = () => {
     if (!drag) return;
     const { x0, y0, x1, y1 } = drag;
+    const kind = pick;
     setDrag(null);
     setPick(null);
     if (Math.abs(x1 - x0) < 8 || Math.abs(y1 - y0) < 8) { flash("Drag a box around the thing to highlight"); return; }
-    act({ type: "spotlight", area: areaFromBox(x0, y0, x1, y1), shape, text: text.trim() || undefined, click: spotClick || undefined });
+    const area = areaFromBox(x0, y0, x1, y1);
+    if (kind === "task") act(taskStep(area, taskAction));
+    else act({ type: "spotlight", area, shape, text: text.trim() || undefined, click: spotClick || undefined });
+  };
+
+  /** A hands-on task step from the panel's settings (Say text = what the firefly says). */
+  const taskStep = (area: ReturnType<typeof areaFromBox>, action: TaskAction): ScriptStep => ({
+    type: "task", area, action, shape,
+    expect: action === "type" && expect.trim() ? expect.trim() : undefined,
+    text: text.trim() || undefined,
+  });
+
+  /** Task on a real element: highlight the clicked button / field (fields become "type" tasks). */
+  const pickTaskElement = (x: number, y: number) => {
+    const hit = document.elementsFromPoint(x, y).find((e) => !e.closest("[data-firefly-ui]"));
+    const el = hit?.closest(INTERACTIVE) ?? hit;
+    if (!el) { flash("Nothing to highlight there"); return; }
+    const isField = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
+    const action: TaskAction = isField ? "type" : "click";
+    act(taskStep(areaForElement(el), action));
+    flash(isField ? "Type task added: viewer must type here" : "Click task added: viewer must click here");
   };
 
   const onPick = (e: React.MouseEvent) => {
-    if (pick === "spot") return; // handled by drag
+    if (pick === "spot" || pick === "task") return; // handled by drag
     const a = anchorAt(e.clientX, e.clientY);
     const kind = pick;
     setPick(null);
     if (kind === "fly") act({ type: "fly", to: a });
     if (kind === "look") act({ type: "look", at: a });
     if (kind === "show") act({ type: "show", at: a });
+    if (kind === "taskel") { pickTaskElement(e.clientX, e.clientY); return; }
     if (kind === "start") { setScript((s) => ({ ...s, start: viewportAnchor(e.clientX, e.clientY) })); ctl.teleport(e.clientX, e.clientY); }
   };
 
@@ -208,17 +239,17 @@ function DevOverlay() {
         <div
           data-firefly-ui
           onClick={onPick}
-          onPointerDown={pick === "spot" ? (e) => {
+          onPointerDown={pick === "spot" || pick === "task" ? (e) => {
             // Keep receiving the drag even if the pointer crosses other UI.
             e.currentTarget.setPointerCapture(e.pointerId);
             setDrag({ x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY });
           } : undefined}
-          onPointerMove={pick === "spot" && drag ? (e) => setDrag({ ...drag, x1: e.clientX, y1: e.clientY }) : undefined}
-          onPointerUp={pick === "spot" ? finishSpot : undefined}
+          onPointerMove={(pick === "spot" || pick === "task") && drag ? (e) => setDrag({ ...drag, x1: e.clientX, y1: e.clientY }) : undefined}
+          onPointerUp={pick === "spot" || pick === "task" ? finishSpot : undefined}
           style={S.pickLayer}
         >
           <div style={S.pickHint}>
-            {pick === "spot" ? "Drag a box around what to highlight" : `Click to ${pick === "fly" ? "fly here" : pick === "look" ? "look here" : pick === "show" ? "appear here" : "set the start point"}`} · Esc to cancel
+            {pick === "spot" || pick === "task" ? "Drag a box around what to highlight" : pick === "taskel" ? "Click the button / field the viewer must use" : `Click to ${pick === "fly" ? "fly here" : pick === "look" ? "look here" : pick === "show" ? "appear here" : "set the start point"}`} · Esc to cancel
           </div>
           {drag && (
             <div
@@ -245,6 +276,9 @@ function DevOverlay() {
               : <B onClick={startRecording}>● Record</B>}
             <label style={S.check}><input type="checkbox" checked={timing} onChange={(e) => setTiming(e.target.checked)} /> capture pauses</label>
           </Row>
+          <div style={{ fontSize: 10, color: "#5d7f90", marginTop: -2, marginBottom: 4 }}>
+            Every action below is added to the script. Record also keeps the pauses between them. Copy JSON to save it.
+          </div>
 
           <Label>Move</Label>
           <Row>
@@ -287,6 +321,37 @@ function DevOverlay() {
           </Row>
           <div style={{ fontSize: 10, color: "#5d7f90", marginTop: -2, marginBottom: 4 }}>Uses the Say text as the caption.</div>
 
+          <Label>Task (hands-on: viewer must do it)</Label>
+          <Row>
+            <B on={pick === "taskel"} onClick={() => setPick("taskel")}>Task on element…</B>
+            <B on={pick === "task"} onClick={() => setPick("task")}>Task on area…</B>
+          </Row>
+          <Row>
+            <span style={{ fontSize: 11, color: "#7fa2b2" }}>Area task:</span>
+            <B on={taskAction === "click"} onClick={() => setTaskAction("click")}>click</B>
+            <B on={taskAction === "type"} onClick={() => setTaskAction("type")}>type</B>
+          </Row>
+          <Row>
+            <input value={expect} onChange={(e) => setExpect(e.target.value)} placeholder="text they must type (empty = anything + Enter)" style={{ ...S.input, flex: 1 }} />
+          </Row>
+          <div style={{ fontSize: 10, color: "#5d7f90", marginTop: -2, marginBottom: 4 }}>
+            Element: click a real button (click task) or field (type task). Area: drag any box, e.g. part of the map. The Say text is what he says; shape uses ▭ / ◯ above. Viewers can always skip.
+          </div>
+
+          <Label>Resize him (adds a Size step)</Label>
+          <Slider label="New size (of screen's short side)" value={sizeTo} min={0.05} max={0.3} step={0.005} fmt={(v) => `${Math.round(v * 100)}%`} set={setSizeTo} />
+          <Row>
+            <input type="number" min={0} step={0.1} value={sizeSecs} onChange={(e) => setSizeSecs(Math.max(0, +e.target.value))} style={{ ...S.input, width: 56 }} />
+            <span style={{ fontSize: 11, color: "#7fa2b2" }}>sec</span>
+            <select value={sizeEase} onChange={(e) => setSizeEase(e.target.value as Ease)} style={S.input}>
+              {EASES.map((e) => <option key={e} value={e}>{e}</option>)}
+            </select>
+            <B onClick={() => act({ type: "size", size: sizeTo, seconds: sizeSecs, ease: sizeEase })}>Resize ›</B>
+          </Row>
+          <div style={{ fontSize: 10, color: "#5d7f90", marginTop: -2, marginBottom: 4 }}>
+            He tweens from his current size to the new one over the seconds you set, with that easing (back = slight overshoot). Edit any Size step in the list below.
+          </div>
+
           <Label>Wait</Label>
           <Row>
             <input type="number" min={0.1} step={0.1} value={wait} onChange={(e) => setWait(+e.target.value)} style={{ ...S.input, width: 64 }} />
@@ -310,6 +375,26 @@ function DevOverlay() {
                       {s.shape === "ellipse" ? "◯" : "▭"} Spot{" "}
                       <input value={s.text ?? ""} placeholder="caption" onChange={(e) => edit(i, { text: e.target.value || undefined })} style={{ ...S.input, width: "52%", padding: "1px 3px" }} />{" "}
                       <label title="Wait for the viewer to click"><input type="checkbox" checked={s.click !== false} onChange={(e) => edit(i, { click: e.target.checked ? undefined : false })} /> click</label>
+                    </>
+                  ) : s.type === "task" ? (
+                    <>
+                      {s.action === "type" ? "⌨" : "☝"} Task{" "}
+                      <select value={s.action} onChange={(e) => edit(i, { action: e.target.value as TaskAction })} style={{ ...S.input, padding: "1px 2px" }}>
+                        <option value="click">click</option>
+                        <option value="type">type</option>
+                      </select>{" "}
+                      {s.action === "type" && (
+                        <input value={s.expect ?? ""} placeholder="any" title="Text they must type (empty = anything + Enter)" onChange={(e) => edit(i, { expect: e.target.value || undefined })} style={{ ...S.input, width: "24%", padding: "1px 3px" }} />
+                      )}{" "}
+                      <input value={s.text ?? ""} placeholder="what he says" onChange={(e) => edit(i, { text: e.target.value || undefined })} style={{ ...S.input, width: s.action === "type" ? "30%" : "50%", padding: "1px 3px" }} />
+                    </>
+                  ) : s.type === "size" ? (
+                    <>
+                      Size <input type="number" min={5} max={30} step={0.5} value={Math.round(s.size * 1000) / 10} onChange={(e) => edit(i, { size: +e.target.value / 100 })} style={{ ...S.input, width: 46, padding: "1px 3px" }} />%{" "}
+                      <input type="number" min={0} step={0.1} value={s.seconds ?? 0.6} onChange={(e) => edit(i, { seconds: Math.max(0, +e.target.value) })} style={{ ...S.input, width: 42, padding: "1px 3px" }} />s{" "}
+                      <select value={s.ease ?? "easeInOut"} onChange={(e) => edit(i, { ease: e.target.value as Ease })} style={{ ...S.input, padding: "1px 2px" }}>
+                        {EASES.map((e) => <option key={e} value={e}>{e}</option>)}
+                      </select>
                     </>
                   ) : s.type === "fly" ? (
                     <>{describeStep({ ...s, pass: false })} <label title="Fly through without stopping"><input type="checkbox" checked={!!s.pass} onChange={(e) => edit(i, { pass: e.target.checked || undefined })} /> thru</label></>
@@ -343,8 +428,8 @@ function DevOverlay() {
             </div>
           )}
 
-          <Label>Playback scale (resolution-agnostic)</Label>
-          <Slider label="Size (of screen's short side)" value={script.size} min={0.05} max={0.25} step={0.005} fmt={(v) => `${Math.round(v * 100)}%`}
+          <Label>Script defaults (resolution-agnostic)</Label>
+          <Slider label="Starting size (of screen's short side)" value={script.size} min={0.05} max={0.25} step={0.005} fmt={(v) => `${Math.round(v * 100)}%`}
             set={(v) => { setScript((s) => ({ ...s, size: v })); stage.setSize(v); }} />
           <Slider label="Speed (screen diagonals / s)" value={script.speed} min={0.1} max={1.5} step={0.05} fmt={(v) => v.toFixed(2)}
             set={(v) => setScript((s) => ({ ...s, speed: v }))} />

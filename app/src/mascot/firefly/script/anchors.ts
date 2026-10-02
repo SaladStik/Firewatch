@@ -132,4 +132,19 @@ export function areaFromBox(x0: number, y0: number, x1: number, y1: number): Are
   };
 }
 
+/**
+ * Area that IS a given element (plus `pad` px around it), anchored to that element itself,
+ * so it tracks the element even when its container resizes or reflows (task targets).
+ */
+export function areaForElement(el: Element, pad = 4): Area {
+  const r = el.getBoundingClientRect();
+  const sel = selectorFor(el);
+  if (!sel || r.width <= 0 || r.height <= 0) return areaFromBox(r.left - pad, r.top - pad, r.right + pad, r.bottom + pad);
+  const px = pad / r.width, py = pad / r.height;
+  return {
+    selector: sel, ex0: round(-px), ey0: round(-py), ex1: round(1 + px), ey1: round(1 + py),
+    vx0: round((r.left - pad) / vw()), vy0: round((r.top - pad) / vh()), vx1: round((r.right + pad) / vw()), vy1: round((r.bottom + pad) / vh()),
+  };
+}
+
 const round = (v: number) => Math.round(v * 10000) / 10000;

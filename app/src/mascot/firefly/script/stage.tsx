@@ -1,7 +1,8 @@
 /**
  * The Firefly stage: one fixed, click-through overlay layer (created on first use)
  * that hosts a single shared mascot on ANY page. Scripts play here, including
- * tutorial spotlights (dimmed screen + lantern beam + click to continue).
+ * tutorial spotlights (dimmed screen + lantern beam + click to continue) and hands-on
+ * tasks (the viewer must click / type in the highlighted part of the real app).
  *
  *   import { playScript } from "./mascot/firefly/script";
  *   const run = playScript(MY_TOUR);   // run.done resolves at the end; run.stop() cancels
@@ -14,9 +15,12 @@ import { FireflyAgent } from "../FireflyAgent";
 import type { FireflyConfig } from "../types";
 import { resolveArea, viewportMin } from "./anchors";
 import { runScript } from "./player";
-import type { Area, FireflyScript, ScriptStep } from "./types";
+import type { Area, Ease, FireflyScript, ScriptStep, TaskAction } from "./types";
 
-interface Spotlight { area: Area; shape: "rect" | "ellipse" }
+interface Spotlight { area: Area; shape: "rect" | "ellipse"; task?: { action: TaskAction; expect?: string } }
+type TaskStep = Extract<ScriptStep, { type: "task" }>;
+/** How long the "done" flash shows before a completed task moves on (s). */
+const TASK_DONE_FLASH_S = 0.55;
 
 interface StageState {
   visible: boolean;
@@ -26,6 +30,9 @@ interface StageState {
   spotlight: Spotlight | null;
   /** Waiting for the viewer to click through. */
   awaitingClick: boolean;
+  /** A task is waiting for the viewer; `taskDone` = just completed (success flash). */
+  awaitingTask: boolean;
+  taskDone: boolean;
 }
 
 /** FireflyAgent's SVG frame (see Firefly.tsx VIEW): width 210 units, body centre 92 units from the top. */
@@ -33,10 +40,11 @@ const VIEW_W = 210, CENTRE_FROM_TOP = 92;
 
 class Stage {
   readonly controller = new FireflyController({ x: innerWidth / 2, y: innerHeight / 2 });
-  private state: StageState = { visible: false, size: 0.11, config: DEFAULT_CONFIG, spotlight: null, awaitingClick: false };
+  private state: StageState = { visible: false, size: 0.11, config: DEFAULT_CONFIG, spotlight: null, awaitingClick: false, awaitingTask: false, taskDone: false };
   private listeners = new Set<() => void>();
   private current: AbortController | null = null;
   private clickResolve: (() => void) | null = null;
+  private skipResolve: (() => void) | null = null;
   private aim = 0;
 
   constructor() {
@@ -75,7 +83,32 @@ class Stage {
   }
 
   setVisible(visible: boolean) { this.set({ visible }); }
-  setSize(size: number) { this.set({ size }); }
+  setSize(size: number) {
+    this.sizeTween?.();
+    this.set({ size });
+  }
+
+  private sizeTween: (() => void) | null = null;
+  /** Animate the size to `size` over `seconds`; resolves when it lands (an abort snaps it there). */
+  tweenSize(size: number, seconds: number, ease: Ease, signal?: AbortSignal) {
+    this.sizeTween?.();
+    const from = this.state.size;
+    return new Promise<void>((done) => {
+      if (seconds <= 0 || Math.abs(size - from) < 1e-4) { this.set({ size }); done(); return; }
+      const t0 = performance.now();
+      let raf = 0;
+      const end = () => { cancelAnimationFrame(raf); this.sizeTween = null; this.set({ size }); done(); };
+      const frame = () => {
+        const u = Math.min(1, (performance.now() - t0) / (seconds * 1000));
+        this.set({ size: from + (size - from) * EASE_FN[ease](u) });
+        if (u < 1) raf = requestAnimationFrame(frame);
+        else end();
+      };
+      this.sizeTween = end;
+      signal?.addEventListener("abort", end, { once: true });
+      raf = requestAnimationFrame(frame);
+    });
+  }
   setConfig(config: FireflyConfig) { this.set({ config }); }
   setSpotlight(spotlight: Spotlight | null) { this.set({ spotlight }); }
 
@@ -98,6 +131,64 @@ class Stage {
     });
   }
   clickThrough = () => this.clickResolve?.();
+
+  /**
+   * Resolves when the viewer does the task in the real app: a click inside the area, or
+   * typing the expected text into a field inside it (anything + Enter when no text is set).
+   * Events are only observed (capture phase), never blocked, so the app reacts normally.
+   */
+  waitForTask(step: TaskStep, signal?: AbortSignal) {
+    return new Promise<"done" | "skipped">((done) => {
+      const inBox = (x: number, y: number, pad: number) => {
+        const b = resolveArea(step.area);
+        return x >= b.x0 - pad && x <= b.x1 + pad && y >= b.y0 - pad && y <= b.y1 + pad;
+      };
+      const fieldInBox = (t: EventTarget | null): t is HTMLInputElement | HTMLTextAreaElement => {
+        if (!(t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement)) return false;
+        // The anchored element itself (or a field inside it) always counts, wherever it moved.
+        const anchored = step.area.selector ? safeQuery(step.area.selector) : null;
+        if (anchored && (anchored === t || anchored.contains(t))) return true;
+        const r = t.getBoundingClientRect();
+        return inBox(r.left + r.width / 2, r.top + r.height / 2, 12);
+      };
+      const want = step.expect?.trim().toLowerCase() ?? "";
+      const typedOk = (v: string) => (want ? v.trim().toLowerCase().includes(want) : v.trim().length > 0);
+      const ours = (t: EventTarget | null) => t instanceof Element && !!t.closest("[data-firefly-ui]");
+      let over = false;
+      const finish = (r: "done" | "skipped") => {
+        if (over) return;
+        over = true;
+        removeEventListener("click", onClick, true);
+        removeEventListener("input", onInput, true);
+        removeEventListener("keydown", onKey, true);
+        this.skipResolve = null;
+        if (r === "skipped" || signal?.aborted) {
+          this.set({ awaitingTask: false, taskDone: false });
+          done("skipped");
+          return;
+        }
+        this.set({ awaitingTask: false, taskDone: true });
+        setTimeout(() => { this.set({ taskDone: false }); done("done"); }, TASK_DONE_FLASH_S * 1000);
+      };
+      // Let the app handle the click first, then move on.
+      const onClick = (e: MouseEvent) => {
+        if (step.action === "click" && !ours(e.target) && inBox(e.clientX, e.clientY, 4)) setTimeout(() => finish("done"), 0);
+      };
+      const onInput = (e: Event) => {
+        if (step.action === "type" && want && fieldInBox(e.target) && typedOk(e.target.value)) finish("done");
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (step.action === "type" && e.key === "Enter" && fieldInBox(e.target) && typedOk(e.target.value)) finish("done");
+      };
+      addEventListener("click", onClick, true);
+      addEventListener("input", onInput, true);
+      addEventListener("keydown", onKey, true);
+      signal?.addEventListener("abort", () => finish("skipped"), { once: true });
+      this.skipResolve = () => finish("skipped");
+      this.set({ awaitingTask: true, taskDone: false });
+    });
+  }
+  skipTask = () => this.skipResolve?.();
 
   /** Mascot size in px right now. */
   sizePx() { return Math.round(this.state.size * viewportMin()); }
@@ -128,6 +219,9 @@ class Stage {
       setVisible: (v) => this.setVisible(v),
       setSpotlight: (s) => this.setSpotlight(s),
       waitForClick: (sig) => this.waitForClick(sig),
+      waitForTask: (step, sig) => this.waitForTask(step, sig),
+      tweenSize: (size, secs, ease, sig) => this.tweenSize(size, secs, ease, sig),
+      setSize: (size) => this.setSize(size),
       sizePx: () => this.sizePx(),
     }, opts.from ?? 0).then(() => {
       if (this.current === ac) this.current = null;
@@ -152,6 +246,9 @@ class Stage {
       setVisible: (v: boolean) => this.setVisible(v),
       setSpotlight: (s: Spotlight | null) => this.setSpotlight(s),
       waitForClick: (sig?: AbortSignal) => this.waitForClick(sig),
+      waitForTask: (step: TaskStep, sig?: AbortSignal) => this.waitForTask(step, sig),
+      tweenSize: (size: number, secs: number, ease: Ease, sig?: AbortSignal) => this.tweenSize(size, secs, ease, sig),
+      setSize: (size: number) => this.setSize(size),
       sizePx: () => this.sizePx(),
     };
   }
@@ -188,20 +285,22 @@ function StageView({ stage }: { stage: Stage }) {
   }, []);
   return (
     <>
-      {s.spotlight && <SpotlightView stage={stage} spot={s.spotlight} awaiting={s.awaitingClick} />}
+      {s.spotlight && <SpotlightView stage={stage} spot={s.spotlight} awaiting={s.awaitingClick} task={s.awaitingTask} done={s.taskDone} />}
       {s.visible && <FireflyAgent controller={stage.controller} config={s.config} size={stage.sizePx()} />}
     </>
   );
 }
 
 /** Dimmed screen with a cut-out, glowing edge, lantern beam and click-to-continue. */
-function SpotlightView({ stage, spot, awaiting }: { stage: Stage; spot: Spotlight; awaiting: boolean }) {
+function SpotlightView({ stage, spot, awaiting, task, done }: { stage: Stage; spot: Spotlight; awaiting: boolean; task: boolean; done: boolean }) {
   const b = resolveArea(spot.area);
   const pad = 8;
   const x0 = b.x0 - pad, y0 = b.y0 - pad, x1 = b.x1 + pad, y1 = b.y1 + pad;
   const w = x1 - x0, h = y1 - y0, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   const pal = stage.get().config.palette;
-  const light = pal.lantern.startsWith("#") ? pal.lantern : "#ffe86a";
+  const lantern = pal.lantern.startsWith("#") ? pal.lantern : "#ffe86a";
+  const light = done ? "#5cff9d" : lantern;
+  const isTask = !!spot.task;
 
   // Beam: from the lantern to the two sides of the area (perpendicular to the beam).
   const L = stage.lanternPx();
@@ -216,8 +315,8 @@ function SpotlightView({ stage, spot, awaiting }: { stage: Stage; spot: Spotligh
 
   return (
     <div
-      onClick={awaiting ? stage.clickThrough : undefined}
-      style={{ position: "fixed", inset: 0, pointerEvents: awaiting ? "auto" : "none", cursor: awaiting ? "pointer" : "default", animation: "ffSpotIn .35s ease-out" }}
+      onClick={awaiting && !isTask ? stage.clickThrough : undefined}
+      style={{ position: "fixed", inset: 0, pointerEvents: awaiting && !isTask ? "auto" : "none", cursor: awaiting && !isTask ? "pointer" : "default", animation: "ffSpotIn .35s ease-out" }}
     >
       <style>{"@keyframes ffSpotIn{from{opacity:0}to{opacity:1}} @keyframes ffNudge{0%,100%{transform:translateX(0)}50%{transform:translateX(4px)}}"}</style>
       <svg width="100%" height="100%" style={{ position: "absolute", inset: 0 }}>
@@ -239,7 +338,31 @@ function SpotlightView({ stage, spot, awaiting }: { stage: Stage; spot: Spotligh
         <polygon points={beam} fill="url(#ff-beam)" style={{ mixBlendMode: "screen" }} />
         <g fill="none" stroke={light} strokeWidth={2} filter="url(#ff-spot-glow)">{hole}</g>
       </svg>
-      {awaiting && (
+      {/* Task: block everything except the highlighted area, which stays fully usable. */}
+      {isTask && (task || done) && (
+        <>
+          <div style={{ ...blocker, left: 0, top: 0, width: "100%", height: Math.max(0, y0) }} />
+          <div style={{ ...blocker, left: 0, top: y1, width: "100%", bottom: 0 }} />
+          <div style={{ ...blocker, left: 0, top: y0, width: Math.max(0, x0), height: h }} />
+          <div style={{ ...blocker, left: x1, top: y0, right: 0, height: h }} />
+          <div
+            style={{
+              position: "absolute", left: Math.min(innerWidth - 300, Math.max(10, cx - 110)), top: y1 + 46 > innerHeight ? Math.max(8, y0 - 40) : y1 + 14,
+              display: "flex", alignItems: "center", gap: 10, padding: "5px 6px 5px 12px", borderRadius: 999, fontSize: 12, pointerEvents: "auto",
+              fontFamily: "'JetBrains Mono', ui-monospace, monospace", color: "#04121c", background: light, boxShadow: `0 0 16px -4px ${light}`,
+              animation: done ? undefined : "ffNudge 1.2s ease-in-out infinite",
+            }}
+          >
+            {done ? "\u2713 Nice!" : spot.task!.action === "click" ? "Click the highlighted area" : spot.task!.expect ? `Type \u201c${spot.task!.expect}\u201d` : "Type here, then press Enter"}
+            {!done && (
+              <button onClick={stage.skipTask} style={{ border: "none", borderRadius: 999, padding: "2px 8px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", background: "rgba(4,18,28,.18)", color: "#04121c" }}>
+                skip &rsaquo;
+              </button>
+            )}
+          </div>
+        </>
+      )}
+      {awaiting && !isTask && (
         <div
           style={{
             position: "absolute", left: Math.min(innerWidth - 150, Math.max(10, cx - 70)), top: Math.min(innerHeight - 40, y1 + 14),
@@ -253,5 +376,19 @@ function SpotlightView({ stage, spot, awaiting }: { stage: Stage; spot: Spotligh
     </div>
   );
 }
+
+/** Easing curves (0..1 → 0..1) for size tweens. */
+const EASE_FN: Record<Ease, (u: number) => number> = {
+  linear: (u) => u,
+  easeIn: (u) => u * u * u,
+  easeOut: (u) => 1 - (1 - u) ** 3,
+  easeInOut: (u) => (u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2),
+  back: (u) => 1 + 2.7 * (u - 1) ** 3 + 1.7 * (u - 1) ** 2,
+};
+
+const safeQuery = (sel: string) => { try { return document.querySelector(sel); } catch { return null; } };
+
+/** Invisible click-catcher outside a task's highlighted area. */
+const blocker: React.CSSProperties = { position: "absolute", pointerEvents: "auto", background: "transparent" };
 
 export type { Stage };
