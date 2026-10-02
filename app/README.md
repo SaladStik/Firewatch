@@ -23,6 +23,7 @@ The baked files for all three provinces ship in `public/data/`, so you only need
 - The **Light / Dark** button switches between the dark theme and a government-style light theme.
 - The **Forecast** bar switches the map between today and each of the next 7 days, and lists the communities most at risk that day (one per weather cell). Fires stay as observed now.
 - The **Wind** layer animates thin streamlines drifting with the selected day's wind (interpolated between the weather grid points): faster and longer in stronger wind, fewer as you zoom in, and never glowing (`data/wind.ts`, `render/WindParticles.ts`).
+- The **Projected spread** layer (violet hexes) shows where each active fire could reach by the selected forecast day, and the strip above the forecast bar lists communities inside that area. It is a simplified **scenario**, not an official forecast (see below).
 - `?focus=ab,bc` opens with specific provinces in focus.
 
 ## Data sources
@@ -51,6 +52,7 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 ### Not from a source (our own)
 
 - **Risk score:** the **Fosberg Fire Weather Index** (Fosberg 1978: temperature, humidity and wind → 0–100) × a **dryness factor** (0.6 on a day with ≥ 2 mm of rain, rising to 1.0 after 14 dry days) × the fuel load of the land type, plus a **wind-shaped boost** near hotspots: 30 km in calm air, stretched up to ~51 km downwind and shrunk to ~9 km upwind in strong wind. Every day, including today, uses its daily peak (max temperature, min humidity, max wind, dominant direction). Code: `data/fosberg.ts`, `world/spread.ts`, `world/hazardField.ts`. The dryness factor and spread shape are our own; neither is the official Canadian Fire Weather Index.
+- **Projected spread (scenario):** each active fire (CWFIS perimeter, or satellite hotspots within 3 km of each other) grows as an ellipse per forecast day. Head spread = 30 km/day × risk^1.5 (risk = Fosberg/100 × dryness, ≈3 km/day at 0.2, ≈11 at 0.5); length:breadth from wind speed (Anderson 1983, midflame ≈ 0.4 × 10 m wind, max 8); head:back ratio from length:breadth (Alexander 1985); the head points downwind and distances add up day by day. Hexes that can't burn (water, rock, snow) and existing burn scars are never marked. It ignores slope, suppression, fuel breaks and spotting. Code: `data/fireSpread.ts`.
 - **Demo scenario:** simulated ignitions and a heatwave multiplier, labelled SIMULATION wherever it's shown.
 - **Wireframe models:** tree, house and landmark shapes are drawn in code (`render/geometry.ts`).
 
