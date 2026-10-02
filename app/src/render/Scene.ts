@@ -19,7 +19,8 @@ import type { WorldClient } from "../world/WorldClient";
 import type { HexNodeInfo, TerrainMeta } from "../world/types";
 import { HexWorld, type WorldStats } from "./HexWorld";
 import { sharedUniforms } from "./materials";
-import { WindArrows, type WindArrow } from "./WindArrows";
+import type { WindField } from "../data/wind";
+import { WindParticles } from "./WindParticles";
 
 export interface SceneEvents {
   onHover?: (n: HexNodeInfo | null) => void;
@@ -53,7 +54,9 @@ export class Scene {
   private fps = 60;
   private beacons: LineSegments | null = null;
   private beaconMat: ShaderMaterial;
-  private wind = new WindArrows();
+  private wind = new WindParticles();
+  /** Drawn after bloom, so nothing in it glows (wind streamlines). */
+  private overlayScene = new ThreeScene();
   private labels: { place: Place; region: number; el: HTMLDivElement; pos: Vector3; elevM: number; width: number }[] = [];
   private labelMinPop = 0;
   private focus = new Set<number>([0]);
@@ -104,12 +107,15 @@ export class Scene {
     this.scene.add(this.world.root);
     this.scene.add(this.makeGround());
     this.beaconMat = this.makeBeaconMaterial();
-    this.scene.add(this.wind.mesh);
+    this.overlayScene.add(this.wind.lines);
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new Vector2(256, 256), 0.8, 0.4, 0.42);
     this.composer.addPass(this.bloom);
+    const overlayPass = new RenderPass(this.overlayScene, this.camera);
+    overlayPass.clear = false;
+    this.composer.addPass(overlayPass);
     this.composer.addPass(new OutputPass());
 
     this.bindInput();
@@ -301,7 +307,10 @@ export class Scene {
     sharedUniforms.uCam.value.copy(this.camera.position);
     sharedUniforms.uTarget.value.copy(t);
     (this.beaconMat.uniforms.uH.value as number) = Math.max(3, dist * 0.09);
-    this.wind.update(dist);
+    this.wind.update(dt, t, dist, (x, z) => {
+      const n = this.world.nodeAt(x, z);
+      return n && this.world.topY(n);
+    });
 
     if (this.pointerDirty) {
       this.pointerDirty = false;
@@ -436,9 +445,9 @@ export class Scene {
     this.scene.add(this.beacons);
   }
 
-  /** Animated wind arrows (empty list hides them). */
-  setWind(list: WindArrow[]) {
-    this.wind.set(list);
+  /** Animated wind streamlines (null hides them). */
+  setWind(field: WindField | null) {
+    this.wind.setField(field);
   }
 
   setBloom(on: boolean) {

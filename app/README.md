@@ -22,7 +22,7 @@ The baked files for all three provinces ship in `public/data/`, so you only need
   - It also sets label density. **Auto** (the default) shows major cities from afar and adds smaller towns as you zoom in; All / Some / Major / Off are fixed settings.
 - The **Light / Dark** button switches between the dark theme and a government-style light theme.
 - The **Forecast** bar switches the map between today and each of the next 7 days, and lists the communities most at risk that day (one per weather cell). Fires stay as observed now.
-- The **Wind** layer animates arrows streaming downwind over each weather cell for the selected day: faster and longer in stronger wind, cyan (light) → white → amber (strong). They fade out when you zoom in past the data's ~1.5° resolution (`render/WindArrows.ts`).
+- The **Wind** layer animates thin streamlines drifting with the selected day's wind (interpolated between the weather grid points): faster and longer in stronger wind, fewer as you zoom in, and never glowing (`data/wind.ts`, `render/WindParticles.ts`).
 - `?focus=ab,bc` opens with specific provinces in focus.
 
 ## Data sources
