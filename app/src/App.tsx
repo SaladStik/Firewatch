@@ -10,6 +10,7 @@ import { LayerDock, Legend } from "./ui/Layers";
 import { BootScreen, HoverTip, NavControls } from "./ui/Overlays";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { SectorPanel } from "./ui/SectorPanel";
+import { SpreadAlert } from "./ui/SpreadAlert";
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -52,6 +53,7 @@ export default function App() {
           <div className="flex items-end justify-between gap-4">
             <div className="w-9" />
             <div className="flex min-w-0 flex-col items-center gap-2">
+              <ErrorBoundary name="SpreadAlert"><SpreadAlert engine={engine} /></ErrorBoundary>
               <ErrorBoundary name="ForecastBar"><ForecastBar engine={engine} /></ErrorBoundary>
               <ErrorBoundary name="FireFeed"><FireFeed engine={engine} /></ErrorBoundary>
             </div>
