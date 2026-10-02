@@ -136,6 +136,8 @@ export class Engine {
       fetchHotspots(box), fetchPerimeters(box),
       ...loaded.filter((r) => app.get().focus.includes(r.id)).map(async (r) => {
         const c = this.weatherCache.get(r.id) ?? readStoredWeather(r.id);
+        // The map's weather list is built from weatherCache, so a reload's stored copy must go in it too.
+        if (c) this.weatherCache.set(r.id, c);
         if (c && now - c.at < WEATHER_TTL_MS) return c.grid;
         try {
           const grid = await fetchWeatherGrid(r.bbox);
