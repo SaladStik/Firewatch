@@ -6,13 +6,16 @@ import gsap from "gsap";
 import {
   AdditiveBlending, BufferAttribute, MOUSE, NormalBlending, BufferGeometry, Color, LineBasicMaterial, LineSegments, Mesh,
   PerspectiveCamera, PlaneGeometry, Raycaster, Scene as ThreeScene, ShaderMaterial, Vector2, Vector3, WebGLRenderer,
+  WebGLRenderTarget,
+  HalfFloatType,
 } from "three";
 import { MapControls } from "three/addons/controls/MapControls.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-import { BASE_ELEVATION_M, GRID, verticalScale } from "../config/grid";
+import { BASE_ELEVATION_M, GRID, RELIEF_EXPONENT, verticalScale } from "../config/grid";
+import { reliefKm } from "./heights";
 import { project } from "../geo/projection";
 import type { Place } from "../data/places";
 import type { WorldClient } from "../world/WorldClient";
@@ -57,7 +60,7 @@ export class Scene {
   private wind = new WindParticles();
   /** Drawn after bloom, so nothing in it glows (wind streamlines). */
   private overlayScene = new ThreeScene();
-  private labels: { place: Place; region: number; el: HTMLDivElement; pos: Vector3; elevM: number; width: number }[] = [];
+  private labels: { place: Place; region: number; el: HTMLDivElement; pos: Vector3; elevM: number; width: number; shown: boolean }[] = [];
   private labelMinPop = 0;
   private focus = new Set<number>([0]);
   private regionMetas = new Map<number, TerrainMeta>();
@@ -65,13 +68,22 @@ export class Scene {
   private client: WorldClient;
   private ro: ResizeObserver;
   private disposed = false;
+  /** Always render at full native resolution (capped at 2× on HiDPI). Profiling showed the map is
+   *  CPU/draw-call bound, not fill bound — rendering at lower resolution only made it grainy. */
+  private maxPixelRatio = Math.min(window.devicePixelRatio, 2);
+  /** Labels only re-layout when the camera, focus or label mode changes. */
+  private labelsDirty = true;
+  private lastCam = new Float32Array(16);
+  private viewW = 1;
+  private viewH = 1;
   private gridColor = { value: new Vector3(0.02, 0.16, 0.08) };
   private borderMat = new LineBasicMaterial({ color: new Color("#1d8f55") });
   private borderMatDim = new LineBasicMaterial({ color: new Color("#3a4a42") });
   private bloomWanted = true;
   private light = false;
   private home = { x: 0, z: 0, dist: 1500 };
-  private maxDist = 4200;
+  /** Far enough out to reach the national level and see all of Canada. */
+  private maxDist = 9000;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -81,11 +93,11 @@ export class Scene {
   ) {
     this.client = client;
     this.renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(this.maxPixelRatio);
     this.renderer.setClearColor(new Color("#010403"));
 
     this.camera = new PerspectiveCamera(34, 1, 0.5, 20000);
-    this.camera.position.set(this.home.x, this.home.dist * 0.83, this.home.z + this.home.dist * 0.73);
+    this.camera.position.set(this.home.x, this.home.dist * 0.62, this.home.z + this.home.dist * 0.79);
 
     this.controls = new MapControls(this.camera, canvas);
     this.controls.enableDamping = true;
@@ -109,7 +121,10 @@ export class Scene {
     this.beaconMat = this.makeBeaconMaterial();
     this.overlayScene.add(this.wind.lines);
 
-    this.composer = new EffectComposer(this.renderer);
+    // 4× MSAA on the composer's target — without it the post-processed image has no
+    // antialiasing at all and hex edges / thin roads shimmer.
+    const rt = new WebGLRenderTarget(1, 1, { type: HalfFloatType, samples: 4 });
+    this.composer = new EffectComposer(this.renderer, rt);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new Vector2(256, 256), 0.8, 0.4, 0.42);
     this.composer.addPass(this.bloom);
@@ -175,6 +190,7 @@ export class Scene {
   /** Regions in focus render at full strength; home view fits them. */
   setFocus(indices: number[]) {
     this.focus = new Set(indices);
+    this.labelsDirty = true;
     this.world.setFocus(indices);
     this.applyFocusVisuals();
   }
@@ -199,6 +215,7 @@ export class Scene {
 
   setLabelMinPop(minPop: number) {
     this.labelMinPop = minPop;
+    this.labelsDirty = true;
   }
 
   private makeBeaconMaterial() {
@@ -210,7 +227,7 @@ export class Scene {
         varying float vT; varying float vSim;
         void main(){
           vec3 p = position;
-          float base = max(0.0, (aElev - ${(BASE_ELEVATION_M / 1000).toFixed(3)}) * uVScale);
+          float base = pow(max(0.0, aElev - ${(BASE_ELEVATION_M / 1000).toFixed(3)}), ${RELIEF_EXPONENT.toFixed(3)}) * uVScale;
           p.y = base + aT * uH * (0.85 + 0.15 * sin(uTime * 3.0 + position.x));
           vT = aT; vSim = aSim;
           gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
@@ -220,7 +237,7 @@ export class Scene {
         varying float vT; varying float vSim;
         void main(){
           vec3 c = mix(vec3(1.0, 0.18, 0.1), vec3(1.0, 0.55, 0.1), vSim);
-          float a = pow(1.0 - vT, 1.6);
+          float a = pow(clamp(1.0 - vT, 0.0, 1.0), 1.6); // clamp: MSAA can extrapolate vT past 1 → pow(neg) = NaN
           // Dark: additive glow. Light: solid ink fading out (normal blending).
           gl_FragColor = uLight > 0.5 ? vec4(c * 0.55, a) : vec4(c * a * 1.6, 1.0);
         }`,
@@ -241,12 +258,16 @@ export class Scene {
       };
       this.overlay.appendChild(el);
       const w = project(place.lat, place.lng);
-      const label = { place, region, el, pos: new Vector3(w.x, 0, w.z), elevM: 700, width: 26 + place.name.length * 7 };
+      const label = { place, region, el, pos: new Vector3(w.x, 0, w.z), elevM: 700, width: 26 + place.name.length * 7, shown: true };
       this.labels.push(label);
-      client.sample(w.x, w.z).then((s) => (label.elevM = s.elevation));
+      client.sample(w.x, w.z).then((s) => {
+        label.elevM = s.elevation;
+        this.labelsDirty = true;
+      });
     }
     // Biggest first (focused regions ahead of greyed ones): they win when labels would overlap.
     this.labels.sort((a, b) => b.place.pop - a.place.pop);
+    this.labelsDirty = true;
   }
 
   private bindInput() {
@@ -275,6 +296,9 @@ export class Scene {
   private resize() {
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     if (!w || !h) return;
+    this.viewW = w;
+    this.viewH = h;
+    this.labelsDirty = true;
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
     this.bloom.resolution.set(w / 2, h / 2);
@@ -295,13 +319,16 @@ export class Scene {
     this.controls.update();
     const dist = this.distance;
     sharedUniforms.uVScale.value = verticalScale(dist);
+    this.world.fitBounds(sharedUniforms.uVScale.value);
+    sharedUniforms.uPxPerKm.value = (this.renderer.domElement.height) / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
     sharedUniforms.uBScale.value = Math.min(3, Math.max(1.5, sharedUniforms.uVScale.value * 0.5));
     this.camera.near = Math.max(0.05, dist * 0.02);
     this.camera.far = dist * 12 + 3000;
     this.camera.updateProjectionMatrix();
 
     const t = this.controls.target;
-    this.world.update(t.x, t.z, dist);
+    this.camera.updateMatrixWorld();
+    this.world.update(t.x, t.z, dist, this.camera);
     this.followTerrain();
     this.keepCameraAboveTerrain();
     sharedUniforms.uCam.value.copy(this.camera.position);
@@ -319,6 +346,7 @@ export class Scene {
       this.events.onHover?.(node);
     }
     this.updateLabels(dist);
+    this.world.cullDetail(this.camera.position, sharedUniforms.uPxPerKm.value);
     this.composer.render();
   };
 
@@ -351,7 +379,14 @@ export class Scene {
    * label that would overlap one already placed waits until you zoom in (declutter).
    */
   private updateLabels(dist: number) {
-    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    // Skip the whole pass when nothing that affects label layout has changed (10k+ labels).
+    const m = this.camera.matrixWorld.elements;
+    let moved = this.labelsDirty;
+    for (let i = 0; i < 16 && !moved; i++) moved = Math.abs(m[i] - this.lastCam[i]) > 1e-4;
+    if (!moved) return;
+    this.lastCam.set(m);
+    this.labelsDirty = false;
+    const w = this.viewW, h = this.viewH;
     const focus = sharedUniforms.uFocus.value, radius = sharedUniforms.uRadius.value;
     const v = new Vector3();
     const placed: [number, number, number, number][] = [];
@@ -359,20 +394,24 @@ export class Scene {
     const minPop = this.labelMinPop >= 0 ? this.labelMinPop : dist > 120 ? 50_000 : dist > 40 ? 5_000 : 0;
     for (const l of this.labels) {
       const inRange = Math.hypot(l.pos.x - focus.x, l.pos.z - focus.y) < radius * 0.85;
-      const hidden = l.place.landmark ? dist > 45 || minPop === Infinity : l.place.pop < minPop;
-      if (!inRange || hidden) { l.el.style.display = "none"; continue; }
-      l.pos.y = Math.max(0, ((l.elevM - BASE_ELEVATION_M) / 1000) * sharedUniforms.uVScale.value) + dist * 0.01;
+      // Only provinces in focus are labelled, so each one's places stay readable.
+      const hidden = !this.focus.has(l.region) || (l.place.landmark ? dist > 45 || minPop === Infinity : l.place.pop < minPop);
+      if (!inRange || hidden) { hide(l); continue; }
+      l.pos.y = reliefKm(l.elevM) * sharedUniforms.uVScale.value + dist * 0.01;
       v.copy(l.pos).project(this.camera);
       const sx = ((v.x + 1) / 2) * w, sy = ((1 - v.y) / 2) * h;
-      if (v.z > 1 || sx < -50 || sx > w + 50 || sy < -20 || sy > h + 20) { l.el.style.display = "none"; continue; }
+      if (v.z > 1 || sx < -50 || sx > w + 50 || sy < -20 || sy > h + 20) { hide(l); continue; }
       const box: [number, number, number, number] = [sx - 4, sy - 10, sx + l.width, sy + 10];
       if (placed.some((p) => box[0] < p[2] && box[2] > p[0] && box[1] < p[3] && box[3] > p[1])) {
-        l.el.style.display = "none";
+        hide(l);
         continue;
       }
       placed.push(box);
-      l.el.style.display = "";
-      l.el.style.transform = `translate(${sx}px, ${sy}px)`;
+      if (!l.shown) {
+        l.shown = true;
+        l.el.style.display = "";
+      }
+      l.el.style.transform = `translate(${sx | 0}px, ${sy | 0}px)`;
     }
   }
 
@@ -388,7 +427,7 @@ export class Scene {
     const t = this.controls.target;
     const offset = this.camera.position.clone().sub(t).normalize();
     // Keep the view tilted even if the user was looking straight down.
-    if (offset.y > 0.92) offset.set(0, 0.8, 0.6).normalize();
+    if (offset.y > 0.92) offset.set(0, 0.62, 0.79).normalize();
     const state = { x: t.x, z: t.z, d: this.distance };
     gsap.to(state, {
       x, z, d: dist, duration, ease: "power3.inOut", overwrite: true,
@@ -480,4 +519,11 @@ export class Scene {
     this.composer.dispose();
     this.renderer.dispose();
   }
+}
+
+/** Hide a label only if it isn't already hidden (avoids thousands of style writes per frame). */
+function hide(l: { el: HTMLElement; shown: boolean }) {
+  if (!l.shown) return;
+  l.shown = false;
+  l.el.style.display = "none";
 }

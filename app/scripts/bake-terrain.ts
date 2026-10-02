@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { PNG } from "pngjs";
 import { fromUrl } from "geotiff";
-import { project, setProjectionCenter, unproject } from "../src/geo/projection.ts";
+import { project, setProjection, unproject } from "../src/geo/projection.ts";
 import { PROJECTION, REGIONS } from "../src/config/regions.ts";
 import { LandClass } from "../src/geo/landClass.ts";
 
@@ -24,7 +24,7 @@ const CACHE = join(ROOT, "scripts/.cache");
 const regionId = process.argv[2] ?? "alberta";
 const REGION = REGIONS[regionId];
 if (!REGION) throw new Error(`Unknown region "${regionId}". Known: ${Object.keys(REGIONS).join(", ")}`);
-setProjectionCenter(PROJECTION.lat0, PROJECTION.lng0); // shared by every region
+setProjection(PROJECTION); // shared by every region (Lambert conformal conic)
 const OUT = join(ROOT, "public/data", REGION.id);
 mkdirSync(CACHE, { recursive: true });
 mkdirSync(OUT, { recursive: true });
@@ -193,7 +193,8 @@ async function bakeRaster({ outName, boundaryNames, bbox, PX_KM, DEM_ZOOM, wcDeg
     }
   }
 
-  function landClassAt(idx: number): LandClass {
+  /** Land class for a raster pixel; `lat` picks a sensible fallback where WorldCover has no data. */
+  function landClassAt(idx: number, lat: number): LandClass {
     const base = idx * 16;
     let total = 0, best = LandClass.Grass, bestN = -1;
     for (let c = 1; c < 16; c++) {
@@ -203,19 +204,47 @@ async function bakeRaster({ outName, boundaryNames, bbox, PX_KM, DEM_ZOOM, wcDeg
     }
     // Settlements are small but matter most for fire response: promote them.
     if (total > 0 && lcVotes[base + LandClass.Urban] / total >= 0.2) return LandClass.Urban;
-    return total ? best : LandClass.Grass;
+    // No land-cover data (e.g. missing far-Arctic tiles): tundra north of the treeline, grass south of it.
+    return total ? best : lat > 60 ? LandClass.Tundra : LandClass.Grass;
   }
 
   await loadDemTiles();
   await loadLandCover();
 
   const png = new PNG({ width: W, height: H });
+  // Elevation pass, then remove single-pixel spikes (Terrarium has rare bad samples):
+  // a pixel more than SPIKE_M away from the median of its 8 neighbours takes that median.
+  const SPIKE_M = 900;
+  const elev = new Float32Array(W * H);
+  const lats = new Float32Array(W * H);
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const { lat, lng } = unproject(minX + (i + 0.5) * PX_KM, minZ + (j + 0.5) * PX_KM);
+    elev[j * W + i] = Math.max(0, demAt(lat, lng));
+    lats[j * W + i] = lat;
+  }
+  let spikes = 0;
+  const nb: number[] = [];
+  for (let j = 1; j < H - 1; j++) for (let i = 1; i < W - 1; i++) {
+    nb.length = 0;
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) if (di || dj) nb.push(elev[(j + dj) * W + i + di]);
+    nb.sort((a, b) => a - b);
+    const med = (nb[3] + nb[4]) / 2;
+    if (Math.abs(elev[j * W + i] - med) > SPIKE_M) { elev[j * W + i] = med; spikes++; }
+  }
+  if (spikes) console.log(`removed ${spikes} elevation spikes`);
+  // Clusters of bad source pixels can survive the spike filter: never exceed the region's
+  // official high point (+5%). With exaggerated relief a fake 1 km bump would read as a pillar.
+  const cap = HIGH_POINT_M[REGION.id] ? HIGH_POINT_M[REGION.id] * 1.05 : Infinity;
+  let capped = 0;
+  for (let k = 0; k < elev.length; k++) if (elev[k] > cap) { elev[k] = cap; capped++; }
+  if (capped) console.log(`capped ${capped} px above the ${REGION.name} high point`);
+
   let eMin = Infinity, eMax = -Infinity;
   for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
     const idx = j * W + i;
-    const { lat, lng } = unproject(minX + (i + 0.5) * PX_KM, minZ + (j + 0.5) * PX_KM);
-    const e = Math.max(0, Math.round(demAt(lat, lng)));
-    const cls = inside[idx] ? landClassAt(idx) : LandClass.None;
+    const lat = lats[idx];
+    const e = Math.round(elev[idx]);
+    const cls = inside[idx] ? landClassAt(idx, lat) : LandClass.None;
     if (inside[idx]) { eMin = Math.min(eMin, e); eMax = Math.max(eMax, e); }
     png.data[idx * 4] = e >> 8;
     png.data[idx * 4 + 1] = e & 255;
@@ -234,4 +263,32 @@ async function bakeRaster({ outName, boundaryNames, bbox, PX_KM, DEM_ZOOM, wcDeg
   console.log(`${outName}.png ${(out.length / 1e6).toFixed(2)} MB, elevation ${eMin}..${eMax} m`);
 }
 
-await bakeRaster({ outName: "terrain", boundaryNames: [REGION.boundaryName], bbox: REGION.bbox, PX_KM: REGION.pxKm, DEM_ZOOM: 8, wcDeg: 0.00125 });
+// ---------------------------------------------------------------- data QA
+/** Highest point of each region in metres (public geography facts), used to reject bad DEM pixels. */
+const HIGH_POINT_M: Record<string, number> = {
+  alberta: 3747, // Mount Columbia
+  "british-columbia": 4671, // Mount Fairweather
+  saskatchewan: 1468, // Cypress Hills
+  manitoba: 832, // Baldy Mountain
+  ontario: 693, // Ishpatina Ridge
+  quebec: 1652, // Mont D'Iberville
+  "new-brunswick": 817, // Mount Carleton
+  "nova-scotia": 532, // White Hill
+  "prince-edward-island": 142,
+  "newfoundland-and-labrador": 1652, // Mount Caubvick
+  yukon: 5959, // Mount Logan
+  "northwest-territories": 2773, // Mount Nirvana
+  nunavut: 2616, // Barbeau Peak
+};
+
+// Source detail follows the raster resolution: no point fetching 10 m land cover / z8 elevation
+// for a 1.6 km-per-pixel Nunavut raster.
+const px = REGION.pxKm;
+await bakeRaster({
+  outName: "terrain",
+  boundaryNames: [REGION.boundaryName],
+  bbox: REGION.bbox,
+  PX_KM: px,
+  DEM_ZOOM: px <= 0.6 ? 8 : px <= 1.0 ? 7 : 6,
+  wcDeg: px <= 0.6 ? 0.00125 : px <= 1.0 ? 0.0025 : 0.005,
+});

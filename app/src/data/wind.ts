@@ -35,8 +35,12 @@ export class WindField {
   at(x: number, z: number): { vx: number; vz: number; kmh: number } | null {
     const { lat, lng } = unproject(x, z);
     for (const g of this.grids) {
-      const fi = (lng - g.lng0) / g.step, fj = (lat - g.lat0) / g.step;
-      if (fi < 0 || fj < 0 || fi > g.nLng - 1 || fj > g.nLat - 1) continue;
+      // Small tolerance: projection round-trips land points on the grid edge a hair outside it.
+      const E = 1e-6;
+      let fi = (lng - g.lng0) / g.step, fj = (lat - g.lat0) / g.step;
+      if (fi < -E || fj < -E || fi > g.nLng - 1 + E || fj > g.nLat - 1 + E) continue;
+      fi = Math.min(Math.max(fi, 0), g.nLng - 1);
+      fj = Math.min(Math.max(fj, 0), g.nLat - 1);
       const i = Math.min(Math.floor(fi), Math.max(0, g.nLng - 2)), j = Math.min(Math.floor(fj), Math.max(0, g.nLat - 2));
       const tx = fi - i, tz = fj - j;
       const i1 = Math.min(i + 1, g.nLng - 1), j1 = Math.min(j + 1, g.nLat - 1);

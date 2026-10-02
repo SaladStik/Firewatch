@@ -33,7 +33,11 @@ export function LayerDock({ engine }: { engine: Engine | null }) {
 }
 
 const LEGEND_STATUSES = [NodeStatus.Elevated, NodeStatus.High, NodeStatus.Extreme, NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Projected, NodeStatus.Burned];
-const LEGEND_TYPES = [LandClass.Forest, LandClass.Grass, LandClass.Crop, LandClass.Urban, LandClass.Water, LandClass.River, LandClass.Road, LandClass.Rail, LandClass.Wetland, LandClass.Rock, LandClass.Snow];
+/** Every land type, so it's always clear what a hex is (incl. northern ones: tundra, ice). */
+const LEGEND_TYPES = [
+  LandClass.Forest, LandClass.Shrub, LandClass.Grass, LandClass.Crop, LandClass.Urban, LandClass.Wetland,
+  LandClass.Water, LandClass.River, LandClass.Tundra, LandClass.Rock, LandClass.Snow, LandClass.Road, LandClass.Rail,
+];
 
 export function Legend() {
   return (

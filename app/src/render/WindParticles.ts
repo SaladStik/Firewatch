@@ -6,8 +6,8 @@
  * never glow.
  */
 import { BufferAttribute, BufferGeometry, Color, LineSegments, ShaderMaterial, Vector3 } from "three";
-import { BASE_ELEVATION_M } from "../config/grid";
 import type { WindField } from "../data/wind";
+import { reliefKm } from "./heights";
 import { sharedUniforms } from "./materials";
 
 /** Most particles alive at once (far zoom). */
@@ -98,7 +98,7 @@ export class WindParticles {
       const len = (trail * Math.min(1.6, Math.max(0.4, w.kmh / 25))) / Math.max(w.kmh, 1e-3);
       this.elev[i] += (this.elevTarget[i] - this.elev[i]) * ease;
       // Same height mapping as the beacons/labels, re-scaled every frame so zooming stays smooth.
-      const y = Math.max(0, (this.elev[i] - BASE_ELEVATION_M) / 1000) * vScale + lift;
+      const y = reliefKm(this.elev[i]) * vScale + lift;
       this.pos.set([this.x[i], y, this.z[i], this.x[i] - w.vx * len, y, this.z[i] - w.vz * len], i * 6);
       this.alpha[i * 2] = fade;
       this.alpha[i * 2 + 1] = 0;

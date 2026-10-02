@@ -10,7 +10,7 @@ import { buildSnapshot, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/haza
 import { FORECAST_DAYS, fetchWeatherGrid, type WeatherGrid } from "./data/openMeteo";
 import { WindField } from "./data/wind";
 import type { Place } from "./data/places";
-import { project, setProjectionCenter } from "./geo/projection";
+import { project, setProjection } from "./geo/projection";
 import { NodeStatus } from "./hex/nodeTypes";
 import type { Landmark } from "./hex/overlayStyles";
 import { resolveStyle } from "./render/nodeStyle";
@@ -23,8 +23,9 @@ const RISK_STATUSES = new Set<number>([NodeStatus.Elevated, NodeStatus.High, Nod
 const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Burned]);
 const DATA_REFRESH_MS = 10 * 60 * 1000;
 /**
- * Weather changes slowly and Open-Meteo is rate-limited per point (a 3-week request
- * counts as several calls per point): refresh each region at most this often.
+ * Weather changes slowly and Open-Meteo's free tier is ~10k point-lookups/day (a 3-week
+ * request counts as several calls per point), so: only regions IN FOCUS get live weather,
+ * each refreshed at most hourly (unfocused ones still get fires + fuel risk).
  */
 const WEATHER_TTL_MS = 60 * 60 * 1000;
 
@@ -36,44 +37,62 @@ export class Engine {
   private weatherCache = new Map<string, { at: number; grid: WeatherGrid }>();
 
   async boot(canvas: HTMLCanvasElement, overlay: HTMLDivElement) {
-    const stage = (s: string) => app.set({ boot: { stage: s, done: false } });
+    const stage = (s: string, progress: number) => app.set({ boot: { stage: s, done: false, progress } });
     try {
       // Fresh boot (also after a dev hot-reload): nothing is loaded yet.
       app.set({ loaded: [], places: [], hotspots: [], perimeters: [], weather: [], selected: null, hover: null });
-      setProjectionCenter(PROJECTION.lat0, PROJECTION.lng0);
-      await this.client.init(PROJECTION.lat0, PROJECTION.lng0);
+      setProjection(PROJECTION);
+      await this.client.init(PROJECTION);
       this.scene = new Scene(canvas, overlay, this.client, { onHover: (n) => app.set({ hover: n }), onSelect: (n) => this.onSelect(n), onStats: (s) => app.set({ stats: s }) });
       this.setTheme(app.get().theme);
       this.applyLayers(app.get().layers);
       this.setLabelMode(app.get().labelMode);
+      this.scene.world.hold = true; // build nothing until every region is in
 
-      // Focused regions first (so the app is usable fast), the rest stream in behind.
+      // Load every region behind the loading screen (focused ones first), then live data,
+      // then wait for the first view's hexes — the app opens fully ready.
       const { regions, focus } = app.get();
       const order = [...regions].sort((a, b) => Number(focus.includes(b.id)) - Number(focus.includes(a.id)));
-      const [first, ...rest] = order;
-      stage(`Loading ${first.name} terrain + land cover`);
-      await this.loadRegion(first);
-      if (this.disposed) return;
-      this.scene.setFocus(focusIndices());
-      this.scene.resetView();
-      app.set({ boot: { stage: "Online", done: true } });
-      await this.refreshData();
-      for (const r of rest) {
+      const steps = order.length + 2; // regions + live data + first view
+      for (let i = 0; i < order.length; i++) {
+        const r = order[i];
+        stage(`Loading ${r.name} (${i + 1}/${order.length})`, i / steps);
         try {
           await this.loadRegion(r);
         } catch (e) {
           console.warn(`[engine] ${r.name} unavailable (not baked yet?)`, e);
-          continue;
         }
         if (this.disposed) return;
-        this.scene.world.invalidate(); // rebuild chunks so borders/rivers see the new region
-        this.scene.setFocus(focusIndices());
-        await this.refreshData();
+        if (i === 0) { this.scene.setFocus(focusIndices()); this.scene.resetView(); }
       }
+      this.scene.setFocus(focusIndices());
+      stage("Fetching live fire + weather data", order.length / steps);
+      await this.refreshData();
+      if (this.disposed) return;
+      stage("Building the map", (order.length + 1) / steps);
+      this.scene.world.invalidate(); // safety: nothing stale / falsely "empty"
+      this.scene.world.hold = false;
+      await this.waitForFirstView();
+      app.set({ boot: { stage: "Online", done: true, progress: 1 } });
       this.timer = window.setInterval(() => this.refreshData(), DATA_REFRESH_MS);
     } catch (e) {
       app.set({ boot: { stage: "Boot failed", done: false, error: String(e) } });
     }
+  }
+
+  /** Resolves once the visible chunks have finished building (or after 20 s, as a safety net). */
+  private waitForFirstView() {
+    return new Promise<void>((done) => {
+      const t0 = performance.now();
+      let quiet = 0;
+      const check = () => {
+        const s = app.get().stats;
+        quiet = s && s.pending === 0 && s.hexes > 0 ? quiet + 1 : 0;
+        if (quiet >= 3 || performance.now() - t0 > 20_000 || this.disposed) done();
+        else setTimeout(check, 150);
+      };
+      check();
+    });
   }
 
   private async loadRegion(region: Region) {
@@ -92,8 +111,10 @@ export class Engine {
   // ------------------------------------------------------------ focus
   setFocus(ids: string[]) {
     if (!ids.length) return;
+    const added = ids.some((id) => !this.weatherCache.has(id));
     app.set({ focus: ids });
     this.scene.setFocus(focusIndices());
+    if (added) void this.refreshData(); // newly focused region → fetch its weather
   }
 
   toggleFocus(id: string) {
@@ -113,7 +134,7 @@ export class Engine {
     const now = Date.now();
     const [hs, per, ...wx] = await Promise.allSettled([
       fetchHotspots(box), fetchPerimeters(box),
-      ...loaded.map(async (r) => {
+      ...loaded.filter((r) => app.get().focus.includes(r.id)).map(async (r) => {
         const c = this.weatherCache.get(r.id) ?? readStoredWeather(r.id);
         if (c && now - c.at < WEATHER_TTL_MS) return c.grid;
         try {
@@ -137,7 +158,10 @@ export class Engine {
         return [lat, lng];
       })
       : app.get().perimeters;
-    const weather = wx.flatMap((w) => (w.status === "fulfilled" ? [w.value] : []));
+    // Keep previously fetched grids for regions that are no longer in focus.
+    const fresh = wx.flatMap((w) => (w.status === "fulfilled" ? [w.value] : []));
+    void fresh;
+    const weather = [...this.weatherCache.values()].map((c) => c.grid);
     app.set({
       hotspots, perimeters, weather: weather.length ? weather : app.get().weather,
       dataStatus: {

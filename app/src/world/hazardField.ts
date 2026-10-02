@@ -14,12 +14,14 @@ import { SPREAD_MAX_KM, spreadInfluence } from "./spread";
 import type { HazardSnapshot } from "./types";
 
 const BUCKET_KM = 40;
+/** Numeric bucket key (this runs for every hex on every restatus; string keys were the hot spot). */
+const bucketKey = (bx: number, bz: number) => bx * 100003 + bz;
 
 export class HazardField {
-  private buckets = new Map<string, HazardSnapshot["hotspots"]>();
+  private buckets = new Map<number, HazardSnapshot["hotspots"]>();
   constructor(private snap: HazardSnapshot) {
     for (const h of snap.hotspots) {
-      const k = `${Math.floor(h.x / BUCKET_KM)},${Math.floor(h.z / BUCKET_KM)}`;
+      const k = bucketKey(Math.floor(h.x / BUCKET_KM), Math.floor(h.z / BUCKET_KM));
       let b = this.buckets.get(k);
       if (!b) this.buckets.set(k, (b = []));
       b.push(h);
@@ -29,8 +31,9 @@ export class HazardField {
   private forHotspotsNear(x: number, z: number, maxKm: number, fn: (h: HazardSnapshot["hotspots"][number]) => void) {
     const r = Math.ceil(maxKm / BUCKET_KM);
     const bx = Math.floor(x / BUCKET_KM), bz = Math.floor(z / BUCKET_KM);
+    if (!this.buckets.size) return;
     for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
-      const b = this.buckets.get(`${bx + dx},${bz + dz}`);
+      const b = this.buckets.get(bucketKey(bx + dx, bz + dz));
       if (b) for (const h of b) fn(h);
     }
   }

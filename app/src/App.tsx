@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Engine } from "./engine";
+import { mountLodTuner } from "./dev/LodTuner";
 import { app } from "./state/app";
 import { FireFeed } from "./ui/FireFeed";
 import { ForecastBar } from "./ui/ForecastBar";
@@ -22,6 +23,7 @@ export default function App() {
     const e = new Engine();
     if (import.meta.env.DEV) Object.assign(window, { engine: e, app }); // debug handles
     void e.boot(canvasRef.current!, labelsRef.current!).then(() => setEngine(e));
+    mountLodTuner(() => (e.scene ? e : null)); // Ctrl+Shift+L (dev / ?fireflydev)
     return () => e.dispose();
   }, []);
 

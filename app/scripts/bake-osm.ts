@@ -20,13 +20,15 @@ mkdirSync(CACHE, { recursive: true });
 const regionId = process.argv[2] ?? "alberta";
 const REGION = REGIONS[regionId];
 if (!REGION) throw new Error(`Unknown region "${regionId}"`);
-const AREA = `area["name"="${REGION.boundaryName}"]["admin_level"="4"]->.a;`;
+// Alberta/BC/SK were first baked by English name; everything uses the ISO code now (OSM names Quebec "Québec").
+const AREA = `area["ISO3166-2"="${REGION.iso}"]["admin_level"="4"]->.a;`;
 
 // ---------------------------------------------------------------- overpass
 const MIRRORS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
 
 interface OsmElement {
   type: string;
+  id?: number;
   tags?: Record<string, string>;
   bounds?: { minlat: number; minlon: number; maxlat: number; maxlon: number };
   geometry?: { lat: number; lon: number }[];
@@ -35,7 +37,7 @@ interface OsmElement {
 async function overpass(name: string, body: string): Promise<OsmElement[]> {
   const file = join(CACHE, `osm_${REGION.id}_${name}.json`);
   if (existsSync(file)) return JSON.parse(readFileSync(file, "utf8")).elements;
-  const query = `[out:json][timeout:600];${AREA}${body}`;
+  const query = `[out:json][timeout:900][maxsize:2000000000];${AREA}${body}`;
   for (let attempt = 0; attempt < 4; attempt++) {
     for (const url of MIRRORS) {
       try {
@@ -59,6 +61,33 @@ async function overpass(name: string, body: string): Promise<OsmElement[]> {
     await new Promise((res) => setTimeout(res, 8000 * (attempt + 1)));
   }
   throw new Error(`Overpass failed for ${name}`);
+}
+
+/**
+ * Line queries for big provinces are split into a grid of bbox tiles (each cached on its
+ * own, so an interrupted bake resumes) and de-duplicated by way id. Small provinces run
+ * as a single query (and keep their existing cache files).
+ */
+async function overpassTiled(name: string, filter: string): Promise<OsmElement[]> {
+  const [w, s, e, n] = REGION.bbox;
+  const span = Math.max(e - w, n - s);
+  // Small province, or a single-query cache from an earlier bake already exists → one query.
+  if (span <= 12 || existsSync(join(CACHE, `osm_${REGION.id}_${name}.json`))) return overpass(name, `(${filter});out geom;`);
+  const step = 5;
+  const seen = new Set<number>();
+  const out: OsmElement[] = [];
+  for (let lat = s; lat < n; lat += step) {
+    for (let lng = w; lng < e; lng += step) {
+      const bb = `(${lat.toFixed(2)},${lng.toFixed(2)},${Math.min(n, lat + step).toFixed(2)},${Math.min(e, lng + step).toFixed(2)})`;
+      const tileFilter = filter.replaceAll("(area.a)", `(area.a)${bb}`);
+      const els = await overpass(`${name}_${lat.toFixed(0)}_${lng.toFixed(0)}`, `(${tileFilter});out geom;`);
+      for (const el of els) {
+        if (el.id !== undefined) { if (seen.has(el.id)) continue; seen.add(el.id); }
+        out.push(el);
+      }
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- geometry
@@ -141,7 +170,7 @@ buildings.sort((a, b) => b[2] - a[2]);
 // ---------------------------------------------------------------- lines
 const MAJOR_RIVER = /^(Bow|Elbow|Athabasca|Peace|North Saskatchewan|South Saskatchewan|Red Deer|Oldman|Milk|Smoky|Hay|Slave|Wapiti|McLeod|Pembina|Clearwater|Battle|Highwood|Sheep|Belly|St\. Mary|Waterton|Wabasca|Birch|Christina|Beaver|Brazeau|Little Smoky|Berland|Wildhay|Sturgeon|Lesser Slave|Fraser|Thompson|North Thompson|South Thompson|Columbia|Kootenay|Skeena|Nass|Stikine|Liard|Nechako|Kettle|Okanagan|Similkameen|Chilcotin|Quesnel|Churchill|Qu'Appelle|Assiniboine|Souris|Carrot|Saskatchewan|Fond du Lac|Clearwater|Beaver|Red Deer|Frenchman) River$/;
 
-const riverEls = await overpass("rivers", `(way["waterway"="river"](area.a););out geom;`);
+const riverEls = await overpassTiled("rivers", `way["waterway"="river"](area.a);`);
 const rivers = toLines(
   riverEls,
   (t) => (MAJOR_RIVER.test(t.name ?? "") ? LineKind.RiverMajor : LineKind.River),
@@ -153,24 +182,26 @@ const rivers = toLines(
   },
 );
 
-const roadEls = await overpass("roads", `(way["highway"~"^(motorway|trunk|primary|secondary)$"](area.a););out geom;`);
+const roadEls = await overpassTiled("roads", `way["highway"~"^(motorway|trunk|primary|secondary)$"](area.a);`);
 const roads = toLines(roadEls, (t) => {
   if (t.bridge && t.bridge !== "no") return LineKind.Bridge;
   if (t.tunnel && t.tunnel !== "no") return null;
   return t.highway === "motorway" || t.highway === "trunk" ? LineKind.Highway : t.highway === "primary" ? LineKind.Primary : LineKind.Secondary;
 }, 0.025);
 
-const railEls = await overpass("rail", `(way["railway"="rail"]["usage"~"main|branch"](area.a);way["railway"="light_rail"](area.a););out geom;`);
+const railEls = await overpassTiled("rail", `way["railway"="rail"]["usage"~"main|branch"](area.a);way["railway"="light_rail"](area.a);`);
 const rail = toLines(railEls, (t) => (t.bridge && t.bridge !== "no" ? LineKind.Bridge : LineKind.Rail), 0.03);
 
 // Pedestrian / landmark bridges (e.g. Calgary's Peace Bridge) — short, so keep them all.
-const footBridgeEls = await overpass("footbridges", `(way["bridge"]["highway"~"^(footway|cycleway|path|pedestrian)$"]["name"](area.a););out geom;`);
+const footBridgeEls = await overpassTiled("footbridges", `way["bridge"]["highway"~"^(footway|cycleway|path|pedestrian)$"]["name"](area.a);`);
 const footBridges = toLines(footBridgeEls, () => LineKind.Bridge, 0.005);
 
 const lines = [...rivers, ...roads, ...rail, ...footBridges];
 
 // ---------------------------------------------------------------- places + landmarks
-const placeEls = await overpass("places", `(node["place"~"^(city|town)$"]["name"](area.a););out tags center;`);
+// Sparse northern territories have almost no "towns" — include villages/hamlets there so they're labelled.
+const PLACE_KINDS = ["CA-YT", "CA-NT", "CA-NU", "CA-NL"].includes(REGION.iso) ? "city|town|village|hamlet" : "city|town";
+const placeEls = await overpass("places", `(node["place"~"^(${PLACE_KINDS})$"]["name"](area.a););out tags center;`);
 const places = placeEls
   .map((e) => {
     const el = e as OsmElement & { lat?: number; lon?: number; center?: { lat: number; lon: number } };
@@ -178,7 +209,7 @@ const places = placeEls
     const pop = parseInt((e.tags?.population ?? "").replace(/[^\d]/g, ""), 10);
     return lat === undefined || lng === undefined ? null : {
       name: e.tags!.name, lat: r5(lat), lng: r5(lng),
-      pop: Number.isFinite(pop) ? pop : e.tags!.place === "city" ? 50_000 : 2_000,
+      pop: Number.isFinite(pop) ? pop : e.tags!.place === "city" ? 50_000 : e.tags!.place === "town" ? 2_000 : 300,
     };
   })
   .filter((p): p is { name: string; lat: number; lng: number; pop: number } => !!p)

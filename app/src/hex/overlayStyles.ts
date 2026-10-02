@@ -26,6 +26,10 @@ export const LINE_STYLES: Record<LineKind, LineStyle> = {
   [LineKind.Secondary]: { label: "Secondary road", widthKm: 0.018 },
   [LineKind.Rail]: { label: "Railway", widthKm: 0.015 },
   [LineKind.Bridge]: { label: "Bridge", widthKm: 0.025 },
+  [LineKind.Tertiary]: { label: "Tertiary road", widthKm: 0.014 },
+  [LineKind.Local]: { label: "Local road", widthKm: 0.01 },
+  [LineKind.Track]: { label: "Forest / resource track", widthKm: 0.006 },
+  [LineKind.Stream]: { label: "Stream / creek", widthKm: 0.006 },
 };
 
 /** A feature becomes nodes when realWidth ≥ this × hex width (flat-to-flat). */

@@ -72,8 +72,10 @@ function scoreDay(tempIn: Num | undefined, rhIn: Num | undefined, windIn: Num | 
 }
 
 export async function fetchWeatherGrid(bbox: [number, number, number, number], signal?: AbortSignal): Promise<WeatherGrid> {
-  // 1.5° keeps each province to ~50–160 points (Open-Meteo counts every point as a call).
-  const step = 1.5;
+  // Open-Meteo counts every point as a call: size the grid so any province is ≤ ~90 points
+  // (1.5° for Alberta-sized regions, coarser for Quebec / Nunavut).
+  const area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]);
+  const step = Math.max(1.5, Math.ceil(Math.sqrt(area / 90) * 2) / 2);
   const lng0 = Math.floor(bbox[0]), lat0 = Math.floor(bbox[1]);
   const nLng = Math.ceil((bbox[2] - lng0) / step) + 1, nLat = Math.ceil((bbox[3] - lat0) / step) + 1;
   const lats: number[] = [], lngs: number[] = [];

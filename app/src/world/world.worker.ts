@@ -9,11 +9,12 @@
 import { GRID } from "../config/grid";
 import { LandClass } from "../geo/landClass";
 import { LineKind } from "../geo/lineKinds";
-import { setProjectionCenter } from "../geo/projection";
+import { setProjection } from "../geo/projection";
 import { axialToOffset, chunkWorldBounds, hexToWorld, offsetToAxial, SQRT3, worldToHex } from "../hex/hexMath";
 import { NODE_TYPES, type NodeStatus } from "../hex/nodeTypes";
 import type { Landmark } from "../hex/overlayStyles";
 import { HazardField } from "./hazardField";
+import { DetailTiles } from "./detailTiles";
 import { OverlayIndex, type OsmData } from "./overlays";
 import { Terrain, TerrainStack } from "./terrain";
 import type { ChunkData, TerrainMeta, WorkerRequest, WorkerResponse } from "./types";
@@ -22,6 +23,8 @@ declare const self: DedicatedWorkerGlobalScope;
 
 const terrain = new TerrainStack();
 const overlays: OverlayIndex[] = [];
+/** Per-region street-level lines, fetched as tiles on demand. */
+const details: DetailTiles[] = [];
 let hazards = new HazardField({ hotspots: [], perimeters: [], weather: [], spread: [] });
 
 async function decode(blob: Blob): Promise<Uint8ClampedArray> {
@@ -41,6 +44,9 @@ async function addRegion(url: string, index: number, landmarks: Landmark[]): Pro
   ]);
   terrain.add(index, new Terrain(meta, await decode(blob)));
   overlays.push(new OverlayIndex(osm, landmarks));
+  const detail = new DetailTiles(url);
+  await detail.init();
+  details.push(detail);
   return meta;
 }
 
@@ -57,7 +63,8 @@ function familyId(land: LandClass): number {
 }
 
 /** Which line wins when several cross one hex (a road over a river is a bridge → road). */
-const LINE_NODE: Record<number, { land: LandClass; rank: number }> = {
+/** `minor`: local streets / tracks — they never turn a settlement hex into road (in town they ARE the street grid). */
+const LINE_NODE: Record<number, { land: LandClass; rank: number; minor?: boolean }> = {
   [LineKind.Highway]: { land: LandClass.Road, rank: 0 },
   [LineKind.Bridge]: { land: LandClass.Road, rank: 0 },
   [LineKind.Primary]: { land: LandClass.Road, rank: 1 },
@@ -65,9 +72,13 @@ const LINE_NODE: Record<number, { land: LandClass; rank: number }> = {
   [LineKind.Secondary]: { land: LandClass.Road, rank: 3 },
   [LineKind.RiverMajor]: { land: LandClass.River, rank: 4 },
   [LineKind.River]: { land: LandClass.River, rank: 5 },
+  [LineKind.Tertiary]: { land: LandClass.Road, rank: 3, minor: true },
+  [LineKind.Local]: { land: LandClass.Road, rank: 6, minor: true },
+  [LineKind.Track]: { land: LandClass.Road, rank: 7, minor: true },
+  [LineKind.Stream]: { land: LandClass.River, rank: 8 },
 };
 
-function buildChunk(level: number, cx: number, cz: number, withBuildings = true): ChunkData | null {
+async function buildChunk(level: number, cx: number, cz: number, withBuildings = true): Promise<ChunkData | null> {
   const cfg = GRID.levels[level];
   const n = GRID.chunkCells;
   const size = cfg.size;
@@ -81,15 +92,21 @@ function buildChunk(level: number, cx: number, cz: number, withBuildings = true)
   const pad = size * 2;
   const eb = { minX: b.minX - pad, maxX: b.maxX + pad, minZ: b.minZ - pad, maxZ: b.maxZ + pad };
   const hk = (q: number, r: number) => `${q},${r}`;
-  const lineNode = new Map<string, { land: LandClass; rank: number }>();
+  const lineNode = new Map<string, { land: LandClass; rank: number; minor?: boolean }>();
   const claim = (x: number, z: number, kind: LineKind) => {
     const h = worldToHex(x, z, size), k = hk(h.q, h.r), nn = LINE_NODE[kind];
     const cur = lineNode.get(k);
     if (!cur || nn.rank < cur.rank) lineNode.set(k, nn);
   };
   const finest = level === GRID.levels.length - 1;
-  for (const ov of overlays) {
-    for (const sg of ov.segments(level, size * 0.05, size, finest, eb)) {
+  // Street zoom: also every tertiary / local road, forest track and stream (loaded on demand).
+  if (finest) await Promise.all(details.map((d) => d.ensure(eb)));
+  const sources = [
+    ...overlays.map((ov) => ov.segments(level, size * 0.05, size, finest, eb)),
+    ...(finest ? details.map((d) => d.segments(eb)) : []),
+  ];
+  for (const src of sources) {
+    for (const sg of src) {
       const len = Math.hypot(sg.x2 - sg.x1, sg.z2 - sg.z1);
       const steps = Math.max(1, Math.ceil(len / (size * 0.25)));
       const half = sg.widthKm / 2;
@@ -121,7 +138,7 @@ function buildChunk(level: number, cx: number, cz: number, withBuildings = true)
     let elev = terrain.elevation(p.x, p.z);
     if (cfg.terrace > 0) elev = Math.round(elev / cfg.terrace) * cfg.terrace;
     const ln = land !== LandClass.None ? lineNode.get(k) : undefined;
-    if (ln && !(ln.land === LandClass.River && land === LandClass.Water)) {
+    if (ln && !(ln.land === LandClass.River && land === LandClass.Water) && !(ln.minor && land === LandClass.Urban)) {
       land = ln.land;
       // Rivers sit one step down, as a channel in the terrain.
       if (land === LandClass.River) elev -= Math.max(cfg.terrace, 5);
@@ -156,7 +173,8 @@ function buildChunk(level: number, cx: number, cz: number, withBuildings = true)
       const h = worldToHex(p.x + Math.cos(ang) * SQRT3 * size, p.z + Math.sin(ang) * SQRT3 * size, size);
       const nb = classify(h.q, h.r);
       if (nb.key !== self_.key) mask |= 1 << k;
-      if (nb.land !== LandClass.None && self_.elev - nb.elev >= Math.max(1, cfg.terrace)) contour |= 1 << k;
+      // Contour bit = this side wall is visible: neighbour at least a step lower, or open edge (coast / border).
+      if (nb.land === LandClass.None || self_.elev - nb.elev >= Math.max(1, cfg.terrace)) contour |= 1 << k;
     }
     q[count] = a.q; r[count] = a.r; x[count] = p.x; z[count] = p.z;
     elev[count] = self_.elev; land[count] = self_.land; status[count] = self_.status; risk[count] = self_.risk;
@@ -175,8 +193,8 @@ function buildChunk(level: number, cx: number, cz: number, withBuildings = true)
       const lc = col - cx * n, lr = row - cz * n;
       if (lc < 0 || lr < 0 || lc >= n || lr >= n) return -1;
       const i = cellIndex[lr * n + lc];
-      // Buildings don't stand in water or on roads.
-      return i >= 0 && land[i] !== LandClass.Water && land[i] !== LandClass.River && land[i] !== LandClass.Road && land[i] !== LandClass.Rail ? i : -1;
+      // Buildings stand anywhere but water (a 130 m road hex in a downtown also holds its towers).
+      return i >= 0 && land[i] !== LandClass.Water && land[i] !== LandClass.River ? i : -1;
     };
     const parts = overlays.map((ov) => ov.buildings(cfg.buildingMinHeight, cfg.landmarks, b, owner));
     buildings = new Float32Array(parts.reduce((s, p) => s + p.length, 0));
@@ -206,14 +224,14 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
   try {
     switch (msg.type) {
       case "init":
-        setProjectionCenter(msg.lat0, msg.lng0);
+        setProjection(msg.projection);
         reply(true);
         break;
       case "addRegion":
         reply(await addRegion(msg.url, msg.index, msg.landmarks));
         break;
       case "chunk": {
-        const c = buildChunk(msg.level, msg.cx, msg.cz);
+        const c = await buildChunk(msg.level, msg.cx, msg.cz);
         reply(c, transferables(c));
         break;
       }
@@ -223,7 +241,7 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
         break;
       case "restatus": {
         // Deterministic rebuild → same cell order; statuses AND edge masks refresh together.
-        const c = buildChunk(msg.level, msg.cx, msg.cz, false);
+        const c = await buildChunk(msg.level, msg.cx, msg.cz, false);
         reply(c && { status: c.status, risk: c.risk, edges: c.edges }, c ? [c.status.buffer, c.risk.buffer, c.edges.buffer] : []);
         break;
       }

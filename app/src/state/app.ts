@@ -48,7 +48,8 @@ export interface AppState {
   loaded: string[];
   places: RegionPlace[];
   labelMode: LabelMode;
-  boot: { stage: string; done: boolean; error?: string };
+  /** progress 0..1 for the loading bar. */
+  boot: { stage: string; done: boolean; error?: string; progress?: number };
   stats: (WorldStats & { dist: number; fps: number; vScale: number }) | null;
   hover: HexNodeInfo | null;
   selected: HexNodeInfo | null;

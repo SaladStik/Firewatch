@@ -9,6 +9,10 @@ try {
 }
 import App from './App.tsx'
 import { mountFireflyDev } from './mascot/firefly/script'
+import { applySavedLodTuning } from './dev/LodTuner'
+
+// Dev LOD tuning saved in this browser (no-op unless dev / ?fireflydev). Must run before the engine boots.
+applySavedLodTuning()
 
 // No StrictMode: the engine owns a WebGL context + worker and must mount exactly once.
 createRoot(document.getElementById('root')!).render(<App />)

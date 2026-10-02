@@ -2,7 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { WindField } from "../src/data/wind.ts";
 import type { DayWeather, WeatherGrid } from "../src/data/openMeteo.ts";
-import { project } from "../src/geo/projection.ts";
+import { project, setProjection } from "../src/geo/projection.ts";
+
+// Centre the projection on the first grid cell so world (0, 0) is that cell.
+setProjection({ lat0: 54.5, lng0: -115, lat1: 49, lat2: 77 });
 
 const day = (wind: number, windFrom: number): DayWeather => ({ temp: 20, rh: 30, wind, windFrom, rainMm: 0, daysSinceRain: 5, ffwi: 20, risk: 0.2 });
 /** One row of cells along latitude 54.5, 1.5° apart, starting at -115. */
