@@ -22,7 +22,7 @@ test("a quiet day lists nobody, even with moderate fire weather", () => {
 
 test("high fire weather alone lists a town", () => {
   const [t] = run(0.75, []);
-  assert.equal(t?.reason, "high fire weather");
+  assert.equal(t?.reason, "very high fire danger");
 });
 
 test("a nearby fire lists a town with its distance and direction; a far one doesn't", () => {

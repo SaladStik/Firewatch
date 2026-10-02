@@ -5,7 +5,7 @@
  *   - a fire is near: a hotspot or active perimeter within the wind-shaped reach the map
  *     uses (world/spread.ts: 30 km in calm air, up to ~51 km downwind), or
  *   - it's inside a projected spread ellipse (demo scenario), or
- *   - its fire weather alone is High or worse (same thresholds as the map colours).
+ *   - its fire danger alone is Very High or worse (FWI ≥ 20; the map's "High" colour).
  * Plain "warm and dry somewhere" never puts a town on the list.
  */
 import { project } from "../geo/projection";
@@ -94,7 +94,7 @@ export function communityThreats(inp: Inputs): CommunityThreat[] {
       const s = influence * (0.65 + 0.35 * wx);
       if (s > score) { score = s; reason = `fire ${Math.max(1, Math.round(near))} km ${dirOf(nearDx, nearDz)}`; }
     }
-    if (wx >= HIGH_WEATHER && wx * 0.75 > score) { score = wx * 0.75; reason = wx >= 0.85 ? "extreme fire weather" : "high fire weather"; }
+    if (wx >= HIGH_WEATHER && wx * 0.75 > score) { score = wx * 0.75; reason = wx >= 0.85 ? "extreme fire danger" : "very high fire danger"; }
     if (score >= LIST_AT) out.push({ place, score, reason });
   }
   return out.sort((a, b) => b.score - a.score || b.place.pop - a.place.pop);

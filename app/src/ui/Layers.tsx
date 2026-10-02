@@ -7,9 +7,9 @@ import { useStore } from "../state/store";
 import { HexIcon, Panel, Toggle } from "./primitives";
 
 const LAYERS: { key: keyof Layers; label: string; color?: string; hint: string; demoOnly?: boolean }[] = [
-  { key: "risk", label: "Fire risk", color: "var(--color-risk-high)", hint: "Fosberg FFWI × dryness × fuel, stretched downwind of fires" },
+  { key: "risk", label: "Fire risk", color: "var(--color-risk-high)", hint: "Canadian FWI System fire danger × fuel load, raised near fires (see METHODOLOGY.md)" },
   { key: "fires", label: "Fires + perimeters", color: "var(--color-fire)", hint: "CWFIS satellite hotspots + M3 perimeters" },
-  { key: "spread", label: "Projected spread", color: "#c084fc", hint: "Scenario model: where active fires could reach by the selected day (wind + Fosberg + rain). Not an official forecast." },
+  { key: "spread", label: "Projected spread", color: "#c084fc", hint: "Scenario: FBP rates of spread grown over the real fuel map (wind, slope, rain), calibrated per fire from its own growth history. Not an official forecast." },
   { key: "beacons", label: "Hotspot beacons", color: "var(--color-fire)", hint: "Vertical markers visible from any zoom" },
   { key: "wind", label: "Wind", color: "var(--color-water)", hint: "Animated streamlines: live wind today, forecast peak wind on later days (Open-Meteo)" },
   { key: "rain", label: "Rain", color: "#8ec8ff", hint: "Animated rain: live precipitation today, forecast daily totals on later days. Rain lowers fire risk and slows spread." },
