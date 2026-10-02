@@ -307,10 +307,7 @@ export class Scene {
     sharedUniforms.uCam.value.copy(this.camera.position);
     sharedUniforms.uTarget.value.copy(t);
     (this.beaconMat.uniforms.uH.value as number) = Math.max(3, dist * 0.09);
-    this.wind.update(dt, t, dist, (x, z) => {
-      const n = this.world.nodeAt(x, z);
-      return n && this.world.topY(n);
-    });
+    this.wind.update(dt, t, dist, (x, z) => this.world.nodeAt(x, z)?.elevation ?? null);
 
     if (this.pointerDirty) {
       this.pointerDirty = false;
