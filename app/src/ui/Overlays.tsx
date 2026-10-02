@@ -2,7 +2,7 @@
 import { LoadingScreen } from "./loading/LoadingScreen";
 import gsap from "gsap";
 import { Home, Minus, Plus } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NODE_STATUSES, NODE_TYPES, NodeStatus } from "../hex/nodeTypes";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
@@ -50,15 +50,18 @@ export function HoverTip() {
 export function BootScreen() {
   const boot = useStore(app, (s) => s.boot);
   const ref = useRef<HTMLDivElement>(null);
+  // Fade out only after the loading animation's finale has played (it trails the real progress
+  // on purpose so it stays smooth), so the firefly always gets to light the tower.
+  const [finished, setFinished] = useState(false);
   useEffect(() => {
-    if (boot.done && ref.current) {
-      gsap.to(ref.current, { opacity: 0, duration: 0.8, delay: 0.3, ease: "power2.out", onComplete: () => { if (ref.current) ref.current.style.display = "none"; } });
+    if (boot.done && finished && ref.current) {
+      gsap.to(ref.current, { opacity: 0, duration: 0.8, ease: "power2.out", onComplete: () => { if (ref.current) ref.current.style.display = "none"; } });
     }
-  }, [boot.done]);
+  }, [boot.done, finished]);
   return (
     <div ref={ref} className="absolute inset-0 z-50 flex items-center justify-center bg-void">
       {/* EMBER//WATCH tower + firefly (ui/loading/LoadingScreen.tsx; test page: /loading.html) */}
-      <LoadingScreen progress={boot.done ? 1 : boot.progress ?? 0} stage={boot.stage} error={boot.error} />
+      <LoadingScreen progress={boot.done ? 1 : boot.progress ?? 0} stage={boot.stage} error={boot.error} onComplete={() => setFinished(true)} />
     </div>
   );
 }

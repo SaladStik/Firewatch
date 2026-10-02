@@ -31,7 +31,15 @@ export interface LoadingScreenProps {
   error?: string | null;
   /** Show the firefly and his trail. */
   firefly?: boolean;
+  /**
+   * Called once the finale has played (he's at the top, the beacon has flashed and the tower is
+   * lit), so the app can fade the screen out without cutting the animation short.
+   */
+  onComplete?: () => void;
 }
+
+/** How long the lit tower shows (flash + windows + first beacon sweep) before onComplete. */
+const FINALE_S = 1.4;
 
 /** What's loading, and the progress at which each is done (matches the app's boot sequence). */
 export const LOAD_STEPS: { label: string; source: string; doneAt: number }[] = [
@@ -109,7 +117,7 @@ export function paceStep(s: number, v: number, t: number, dt: number): { s: numb
   return { s, v };
 }
 
-export function LoadingScreen({ progress, stage = "loading", error = null, firefly = true }: LoadingScreenProps) {
+export function LoadingScreen({ progress, stage = "loading", error = null, firefly = true, onComplete }: LoadingScreenProps) {
   const target = useRef(progress);
   useEffect(() => { target.current = progress; }, [progress]);
   /** The displayed progress, shared with the flight loop. */
@@ -121,6 +129,14 @@ export function LoadingScreen({ progress, stage = "loading", error = null, firef
   const [lit, setLit] = useState(false);
   const errorRef = useRef(error);
   useEffect(() => { errorRef.current = error; }, [error]);
+  const completeRef = useRef(onComplete);
+  useEffect(() => { completeRef.current = onComplete; }, [onComplete]);
+  // Finale: once the tower is lit, let it play, then report completion (once).
+  useEffect(() => {
+    if (!lit) return;
+    const t = setTimeout(() => completeRef.current?.(), FINALE_S * 1000);
+    return () => clearTimeout(t);
+  }, [lit]);
 
   useEffect(() => {
     let raf = 0, last = performance.now(), lastPct = -1, wasLit = false, v = 0;
