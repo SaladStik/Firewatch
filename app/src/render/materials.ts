@@ -26,9 +26,9 @@ export const sharedUniforms = {
   /** Camera + orbit target: hexes between them turn to outlines (x-ray). */
   uCam: { value: new Vector3() },
   uTarget: { value: new Vector3() },
-  /** Theme: 0 = dark (light on black), 1 = light (ink on paper). uBg = background, linear RGB. */
-  uLight: { value: 0 },
-  uBg: { value: new Vector3(0, 0, 0) },
+  /** Theme: 0 = dark (night ops), 1 = light (cartographic). uBg = background, linear RGB. */
+  uLight: { value: 1 },
+  uBg: { value: new Vector3(0.91, 0.925, 0.902) },
   /** Rain intensity over the view (render/RainParticles.ts): tints wet hex tops blue. */
   uRainTex: { value: emptyRainTex() },
   /** Rain texture placement: x0, z0, size (km), on (0/1). */
@@ -279,7 +279,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           float density = clamp((fwidth(vLocal.x) - 0.04) * 5.0, 0.0, 1.0);
           // Interior edges (same type, same height) only show when each hex is big on screen;
           // further out a uniform area reads as one surface.
-          float interior = 0.09 * (1.0 - smoothstep(0.012, 0.03, fwidth(vLocal.x)));
+          float interior = 0.04 * (1.0 - smoothstep(0.012, 0.03, fwidth(vLocal.x)));
           // Terrace (contour) steps fade once a hex is only a few pixels across — at that size
           // they're sub-pixel speckle, not information. Region borders (b = 1) always stay.
           float fwl = fwidth(vLocal.x);
@@ -300,35 +300,28 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
 
         vec3 col;
         if (uLight < 0.5) {
-          // DARK — emissive lines on black; fill is a faint glow of the line colour.
-          float fill = vStyle.x * 0.3;
-          col = top ? vLine * (fill * solid + pat * 0.08 * solid + line)
-                    : vLine * (fill * 0.3 * vShade * solid + line);
-          if (top) col *= 1.0 + vStyle.y * pulseWave * 1.1;
-          col += vLine * vHL * (top ? 0.35 : 0.15);
-          // Rain: wet ground under rain reads blue (follows the terrain, hidden by what's in front).
-          // Same tint inside the x-ray zone as around it, so the zone never shows as a patch in the rain.
+          // DARK — filled land cover on a dark ops background; outlines stay quiet.
+          float fill = 0.22 + vStyle.x * 0.7;
+          col = top ? mix(uBg, vLine, fill * solid) + vLine * (pat * 0.08 * solid + line)
+                    : mix(uBg, vLine * (0.45 + 0.4 * vShade), fill * 0.85 * solid) + vLine * line;
+          if (top) col *= 1.0 + vStyle.y * pulseWave * 0.35;
+          col += vLine * vHL * (top ? 0.22 : 0.1);
           float wetK = rainAt(vW.xz);
-          if (top) col = mix(col, vec3(0.16, 0.36, 0.7) * (0.4 + vStyle.x), wetK * 0.3);
+          if (top) col = mix(col, vec3(0.22, 0.4, 0.62) * (0.5 + vStyle.x), wetK * 0.28);
           gl_FragColor = vec4(debugTint(col * vFade), 1.0);
         } else {
-          // LIGHT — cartographic: soft tinted land, darker walls for depth, ink outlines.
-          float m = max(max(vLine.r, vLine.g), vLine.b);
-          vec3 hue = vLine / max(m, 1e-4);            // colour without brightness
-          // Near-white types (roads, snow) would vanish on paper: draw them as grey instead.
-          float sat = 1.0 - min(min(hue.r, hue.g), hue.b);
-          hue = mix(vec3(0.42, 0.46, 0.5), hue, smoothstep(0.08, 0.25, sat));
-          float strength = clamp(m * 1.6, 0.35, 1.0);  // unfocused regions / quiet types fade toward paper
-          float tintAmt = (0.24 + vStyle.x * 1.3) * strength;   // hazards fill strongly
-          if (top) tintAmt *= 1.0 + vStyle.y * pulseWave * 0.5;
-          vec3 face = mix(uBg, hue * 0.8 + 0.12, clamp(tintAmt, 0.0, 0.85));
-          if (!top) face *= 0.62 + 0.24 * vShade;      // shaded walls read as columns
+          // LIGHT — GIS land-cover map: lakes, forest and rock use their true colours.
+          float strength = clamp(max(max(vLine.r, vLine.g), vLine.b) * 1.2, 0.45, 1.0);
+          float tintAmt = clamp(0.78 + vStyle.x * 0.28, 0.72, 0.97) * strength;
+          if (top) tintAmt *= 1.0 + vStyle.y * pulseWave * 0.18;
+          vec3 face = mix(uBg, vLine, tintAmt);
+          if (!top) face *= 0.88 + 0.12 * vShade;
           face = mix(uBg, face, solid);
-          vec3 ink = hue * 0.3;
-          col = mix(face, ink, clamp(line * 1.1 * strength, 0.0, 1.0));
-          col = mix(col, ink, pat * 0.12 * strength * solid);
-          col = mix(col, hue * 0.5, vHL * (top ? 0.25 : 0.12));
-          if (top) col = mix(col, vec3(0.42, 0.62, 0.88), rainAt(vW.xz) * 0.25);
+          vec3 ink = vLine * 0.55;
+          col = mix(face, ink, clamp(line * 0.55 * strength, 0.0, 0.55));
+          col = mix(col, ink, pat * 0.1 * strength * solid);
+          col = mix(col, vLine * 0.7, vHL * (top ? 0.2 : 0.1));
+          if (top) col = mix(col, vec3(0.48, 0.68, 0.86), rainAt(vW.xz) * 0.22);
           gl_FragColor = vec4(debugTint(mix(uBg, col, vFade)), 1.0);
         }
       }

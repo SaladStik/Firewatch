@@ -1,5 +1,5 @@
 /**
- * Loading screen test page — /loading.html. Replays the EMBER//WATCH loading screen as often
+ * Loading screen test page — /loading.html. Replays the FIRE//WATCH loading screen as often
  * as you like: simulated loads at any speed, or scrub the progress by hand.
  */
 import { createRoot } from "react-dom/client";

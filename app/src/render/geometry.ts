@@ -70,17 +70,18 @@ function box(segs: Seg[], w: number, d: number, h: number, y0 = 0) {
 
 const PROP_BUILDERS: Record<PropKind, () => Seg[]> = {
   pine: () => {
-    const s: Seg[] = [[0, 0, 0, 0, 0.7, 0]];
-    cone(s, 0.7, 0.9, 2.6, 4);
-    cone(s, 1.6, 0.6, 3.3, 4);
+    const s: Seg[] = [[0, 0, 0, 0, 0.55, 0]];
+    cone(s, 0.55, 0.72, 2.35, 6);
+    cone(s, 1.25, 0.5, 3.05, 6);
+    cone(s, 1.95, 0.28, 3.45, 6);
     return s;
   },
   tree: () => {
-    const s: Seg[] = [[0, 0, 0, 0, 0.8, 0]];
-    const mid = ring(1.5, 0.8, 4);
+    const s: Seg[] = [[0, 0, 0, 0, 0.7, 0]];
+    const mid = ring(1.35, 0.78, 6);
     mid.forEach((p, i) => {
-      const q = mid[(i + 1) % 4];
-      s.push([...p, ...q] as Seg, [...p, 0, 0.8, 0] as Seg, [...p, 0, 2.3, 0] as Seg);
+      const q = mid[(i + 1) % 6];
+      s.push([...p, ...q] as Seg, [...p, 0, 0.7, 0] as Seg, [...p, 0, 2.15, 0] as Seg);
     });
     return s;
   },
@@ -99,9 +100,11 @@ const PROP_BUILDERS: Record<PropKind, () => Seg[]> = {
     return s;
   },
   rock: () => {
-    const p = [[-0.7, 0, -0.4], [0.6, 0, -0.5], [0.2, 0, 0.7], [0.05, 0.7, 0]];
+    const p = [[-0.85, 0, -0.5], [0.75, 0, -0.55], [0.35, 0, 0.85], [-0.45, 0, 0.55], [0.05, 1.05, 0.05], [-0.2, 0.55, -0.15]];
     const s: Seg[] = [];
-    for (let i = 0; i < 4; i++) for (let j = i + 1; j < 4; j++) s.push([...p[i], ...p[j]] as Seg);
+    for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) {
+      if ((i + j) % 2 === 0) s.push([...p[i], ...p[j]] as Seg);
+    }
     return s;
   },
 };

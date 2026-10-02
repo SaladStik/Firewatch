@@ -4,9 +4,9 @@ import './index.css'
 
 // Apply the saved theme before first paint (no flash).
 try {
-  document.documentElement.dataset.theme = localStorage.getItem('emberwatch.theme') === 'light' ? 'light' : 'dark'
+  document.documentElement.dataset.theme = localStorage.getItem('firewatch.theme') === 'dark' ? 'dark' : 'light'
 } catch {
-  document.documentElement.dataset.theme = 'dark'
+  document.documentElement.dataset.theme = 'light'
 }
 import App from './App.tsx'
 import { mountFireflyDev } from './mascot/firefly/script'

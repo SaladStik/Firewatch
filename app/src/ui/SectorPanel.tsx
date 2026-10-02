@@ -7,8 +7,8 @@ import { NODE_STATUSES, NODE_TYPES, NodeStatus } from "../hex/nodeTypes";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
-import { compass, dayLabel } from "./weatherFormat";
-import { HexIcon, KV, Panel, SegBar } from "./primitives";
+import { COMPASS_NAMES, compass, dayLabel, sectorOf } from "./weatherFormat";
+import { KV, Panel, SegBar, Swatch } from "./primitives";
 
 const fx = (v: number, d = 0) => (Number.isFinite(v) ? v.toFixed(d) : "–");
 
@@ -24,10 +24,13 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
   const day = useStore(app, (s) => s.forecastDay);
   const perimeters = useStore(app, (s) => s.perimeters);
   const growth = useStore(app, (s) => s.fireGrowth);
-  const regionName = useStore(app, (s) => s.regions[n?.region ?? 0]?.name);
+  const region = useStore(app, (s) => s.regions[n?.region ?? 0]);
   if (!n) return null;
+  const regionName = region?.name;
+  const bearing = region ? sectorOf(n.lat, n.lng, region.bbox) : "N";
   const type = NODE_TYPES[n.land];
   const status = NODE_STATUSES[n.status];
+  if (!type || !status) return null;
   const cell = weatherAt(weather, n.lat, n.lng);
   const wx = cell?.days[day];
   const statusColor = status.line ?? type.line;
@@ -41,7 +44,8 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
     <Panel
       className="w-[280px]"
       tour="sector"
-      title={`Sector ${n.q},${n.r}`}
+      bearing="NE"
+      title="Northeast"
       right={
         <button onClick={() => engine?.scene.select(null)} className="text-ink-mute hover:text-phos" aria-label="Close">
           <X size={13} />
@@ -49,12 +53,12 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
       }
     >
       <div className="flex items-center gap-3 px-3 pt-3">
-        <HexIcon size={40} color={statusColor} fill={`${statusColor}22`} />
+        <Swatch color={statusColor} fill={`${statusColor}55`} />
         <div className="min-w-0">
-          <div className="text-[13px] font-bold tracking-[0.12em]" style={{ color: statusColor }}>
-            {n.status === NodeStatus.Normal ? "NOMINAL" : status.label.toUpperCase()}
+          <div className="text-[13px] font-bold tracking-wide" style={{ color: statusColor }}>
+            {n.status === NodeStatus.Normal ? "Nominal" : status.label}
           </div>
-          <div className="text-[11px] text-ink-dim">{type.label} · LOD {n.level} · {cellM >= 1000 ? `${(cellM / 1000).toFixed(1)} km` : `${Math.round(cellM)} m`} cell</div>
+          <div className="text-[11px] text-ink-dim">{type.label} · {cellM >= 1000 ? `${(cellM / 1000).toFixed(1)} km` : `${Math.round(cellM)} m`} cell</div>
         </div>
       </div>
 
@@ -67,6 +71,7 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
       </div>
 
       <div className="px-3 py-2.5">
+        <KV k="Map sector" v={`${COMPASS_NAMES[bearing]}${regionName ? ` of ${regionName}` : ""}`} />
         <KV k="Region" v={regionName} />
         <KV k="Position" v={`${n.lat.toFixed(3)}°, ${n.lng.toFixed(3)}°`} />
         <KV k="Elevation" v={`${Math.round(n.elevation)} m`} />
@@ -108,17 +113,17 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
       <div className="flex gap-2 border-t border-line p-3">
         <button
           onClick={() => engine?.scene.flyTo(n.x, n.z, Math.min(engine.scene.distance, 20))}
-          className="flex flex-1 items-center justify-center gap-1.5 border border-line py-1.5 text-[10.5px] tracking-widest text-ink-dim transition hover:border-phos hover:text-phos-glow"
+          className="flex flex-1 items-center justify-center gap-1.5 border border-line py-1.5 text-[10.5px] tracking-wide text-ink-dim transition hover:border-phos hover:text-phos"
         >
-          <Crosshair size={12} /> FOCUS
+          <Crosshair size={12} /> Focus
         </button>
         <button
           disabled={isFlagged}
           onClick={() => engine?.flag(n)}
-          className="flex flex-1 items-center justify-center gap-1.5 border py-1.5 text-[10.5px] tracking-widest transition enabled:hover:shadow-[0_0_12px_rgba(125,211,255,.35)] disabled:opacity-50"
-          style={{ borderColor: "#7dd3ff66", color: "#7dd3ff" }}
+          className="flex flex-1 items-center justify-center gap-1.5 border py-1.5 text-[10.5px] tracking-wide transition disabled:opacity-50"
+          style={{ borderColor: "var(--color-water)", color: "var(--color-water)" }}
         >
-          <Flag size={12} /> {isFlagged ? "FLAGGED" : "FLAG PATROL"}
+          <Flag size={12} /> {isFlagged ? "Flagged" : "Flag patrol"}
         </button>
       </div>
     </Panel>

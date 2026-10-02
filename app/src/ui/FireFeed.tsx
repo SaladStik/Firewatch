@@ -9,7 +9,7 @@ import { useStore } from "../state/store";
 function Metric({ label, value, color }: { label: string; value: string | number; color: string }) {
   return (
     <div className="px-4 py-2">
-      <div className="text-[18px] font-bold tabular-nums leading-none" style={{ color, textShadow: `0 0 12px ${color}` }}>{value}</div>
+      <div className="text-[18px] font-bold tabular-nums leading-none" style={{ color }}>{value}</div>
       <div className="label-xs mt-1">{label}</div>
     </div>
   );
@@ -40,6 +40,10 @@ export function FireFeed({ engine }: { engine: Engine | null }) {
 
   return (
     <div data-tour="fire-feed" className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-stretch">
+      <div className="flex items-center gap-2 border-r border-line px-3">
+        <span className="compass-badge">S</span>
+        <span className="label-xs hidden sm:inline">Situation</span>
+      </div>
       <div className="flex divide-x divide-line border-r border-line">
         <Metric label="Hotspots 24h" value={focusHs.length} color="var(--color-fire)" />
         <Metric label="Elsewhere 24h" value={elsewhere} color="var(--color-ink-dim)" />
