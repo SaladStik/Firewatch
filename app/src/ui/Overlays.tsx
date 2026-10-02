@@ -9,6 +9,13 @@ import { app } from "../state/app";
 import { useStore } from "../state/store";
 import { IconButton, Swatch } from "./primitives";
 
+/** The direction the camera looks, as a compass point. `heading` is from Scene (camera south of target = 0). */
+const POINTS = ["North", "Northeast", "East", "Southeast", "South", "Southwest", "West", "Northwest"];
+function facingName(heading: number) {
+  const facing = ((-heading % 360) + 360) % 360; // degrees clockwise from north
+  return POINTS[Math.round(facing / 45) % 8];
+}
+
 export function CompassRose() {
   const heading = useStore(app, (s) => Math.round(s.stats?.heading ?? 0));
   return (
@@ -25,7 +32,7 @@ export function CompassRose() {
           <circle cx="32" cy="32" r="2.5" fill="var(--color-ink)" />
         </svg>
       </div>
-      <span className="label-xs">Southeast</span>
+      <span className="label-xs">{facingName(heading)}</span>
     </div>
   );
 }
