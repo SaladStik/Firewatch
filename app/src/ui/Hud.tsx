@@ -1,6 +1,6 @@
 /** North bar: agency title, data status, screen options. */
 import { Moon, Radio, Sun } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import type { Engine } from "../engine";
 import { useStore } from "../state/store";
 import { app } from "../state/app";
@@ -96,13 +96,47 @@ export function ThemeToggle({ engine }: { engine: Engine | null }) {
   );
 }
 
-export function LodReadout() {
+const fmtKm = (km: number) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km >= 10 ? Math.round(km) : +km.toFixed(1)} km`);
+
+/** Longest round distance (1 / 2 / 5 × 10ⁿ km) that fits in `maxPx` at this zoom. */
+function niceScale(kmPerPx: number, maxPx: number) {
+  const max = kmPerPx * maxPx;
+  const p = 10 ** Math.floor(Math.log10(max));
+  const km = [5, 2, 1].map((m) => m * p).find((v) => v <= max) ?? p;
+  return { km, px: km / kmPerPx };
+}
+
+/**
+ * Map scale bar (how long a distance is on screen at the centre of the view, updated every frame
+ * as you zoom) and the cell size.
+ */
+export function LodReadout({ engine }: { engine: Engine | null }) {
   const s = useStore(app, (a) => a.stats);
+  const bar = useRef<HTMLSpanElement>(null);
+  const label = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    let raf = 0, lastPx = -1, lastKm = -1;
+    const tick = () => {
+      const kmPerPx = engine?.scene?.kmPerPx;
+      if (kmPerPx && Number.isFinite(kmPerPx) && kmPerPx > 0) {
+        const { km, px } = niceScale(kmPerPx, 110);
+        if (bar.current && Math.abs(px - lastPx) > 0.25) { lastPx = px; bar.current.style.width = `${px.toFixed(1)}px`; }
+        if (label.current && km !== lastKm) { lastKm = km; label.current.textContent = fmtKm(km); }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [engine]);
   if (!s) return null;
-  const km = s.hexSizeKm * Math.sqrt(3);
+  const cellKm = s.hexSizeKm * Math.sqrt(3);
   return (
     <div data-tour="lod" className="pointer-events-none hidden items-center gap-4 text-[10px] tracking-[0.08em] text-ink-mute md:flex">
-      <span>Scale {km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`}</span>
+      <span className="flex items-center gap-2" title="Map scale at the centre of the view">
+        <span ref={bar} className="inline-block h-[7px] border-x border-b border-current text-ink-dim" style={{ width: 0 }} aria-hidden />
+        <span ref={label} className="tabular-nums text-ink-dim" />
+      </span>
+      <span title="Width of one hex cell at this zoom">Hex {fmtKm(cellKm)}</span>
       <span className="hidden lg:inline">{s.hexes.toLocaleString()} cells</span>
     </div>
   );

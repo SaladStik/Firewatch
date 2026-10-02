@@ -36,7 +36,7 @@ export default function App() {
 
       {/* HUD layout — every panel is pointer-events-auto; the frame itself is click-through. */}
       <div className="pointer-events-none absolute inset-0 z-10 flex flex-col">
-        <AppBar engine={engine} screen={screen} onScreen={setScreen} center={<LodReadout />} />
+        <AppBar engine={engine} screen={screen} onScreen={setScreen} center={<LodReadout engine={engine} />} />
         <div className="flex min-h-0 flex-1 flex-col justify-between p-4">
           <div className="flex min-h-0 flex-1 items-start justify-between gap-4 py-3">
             <div className="hidden max-h-full min-h-0 gap-2 md:flex">

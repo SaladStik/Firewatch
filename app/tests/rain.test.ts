@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blobDamping, blobRain, dayIntensity, nowIntensity, rainDamping, RainField } from "../src/data/rain.ts";
+import { blobDamping, blobRain, dayIntensity, nowIntensity, rainDamping, RainField, snowShare } from "../src/data/rain.ts";
 import { growthSources } from "../src/data/fireSpread.ts";
 import { growthLookup, simulateGrowth } from "../src/world/fireGrowth.ts";
 import { LandClass } from "../src/geo/landClass.ts";
@@ -9,10 +9,10 @@ import { setProjection } from "../src/geo/projection.ts";
 
 setProjection({ lat0: 54.5, lng0: -115, lat1: 49, lat2: 77 });
 
-const day = (rainMm: number, risk = 0.6): DayWeather => ({ temp: 25, rh: 20, wind: 20, windFrom: 270, rainMm, daysSinceRain: 10, ffwi: 50, risk });
-const grid = (d: DayWeather[], nowRain = 0): WeatherGrid => ({
+const day = (rainMm: number, risk = 0.6, temp = 25): DayWeather => ({ temp, rh: 20, wind: 20, windFrom: 270, rainMm, daysSinceRain: 10, ffwi: 50, risk });
+const grid = (d: DayWeather[], nowRain = 0, nowTemp = 20): WeatherGrid => ({
   lat0: 54.5, lng0: -115, step: 1.5, nLat: 2, nLng: 2, dates: [], fetchedAt: "",
-  cells: [0, 1, 2, 3].map((i) => ({ lat: 54.5 + Math.floor(i / 2) * 1.5, lng: -115 + (i % 2) * 1.5, days: d, now: { temp: 20, rh: 30, wind: 10, windFrom: 270, rain: nowRain } })),
+  cells: [0, 1, 2, 3].map((i) => ({ lat: 54.5 + Math.floor(i / 2) * 1.5, lng: -115 + (i % 2) * 1.5, days: d, now: { temp: nowTemp, rh: 30, wind: 10, windFrom: 270, rain: nowRain } })),
 });
 
 test("rain damping: none below 1 mm, stronger with more rain", () => {
@@ -43,6 +43,19 @@ test("RainField: today uses live rain; forecast days use the daily total; storms
   assert.ok(new RainField([grid([day(0), day(20)])], 1).at(0, 0) > 0.9); // wet tomorrow
   const dry = new RainField([grid([day(0)])], 0, [{ x: 0, z: 0, r: 40, intensity: 1 }]);
   assert.ok(dry.any && dry.at(0, 0) === 1);
+});
+
+test("snow: precipitation falls as snow at or below freezing, rain above 2 °C, mixed between", () => {
+  assert.equal(snowShare(-5), 1);
+  assert.equal(snowShare(0), 1);
+  assert.equal(snowShare(1), 0.5);
+  assert.equal(snowShare(3), 0);
+  assert.equal(snowShare(NaN), 0);
+  // Today by the live temperature; forecast days by the day's high. Demo storms stay rain.
+  assert.equal(new RainField([grid([day(0), day(0)], 2, -4)], 0).snowAt(0, 0), 1);
+  assert.equal(new RainField([grid([day(0), day(0)], 2, 12)], 0).snowAt(0, 0), 0);
+  assert.equal(new RainField([grid([day(0), day(20, 0.6, -6)])], 1).snowAt(0, 0), 1);
+  assert.equal(new RainField([grid([day(0)], 2, -4)], 0, [{ x: 0, z: 0, r: 40, intensity: 1 }]).snowAt(0, 0), 0);
 });
 
 test("a demo storm over a fire slows its projected growth", () => {

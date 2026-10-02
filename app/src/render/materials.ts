@@ -5,7 +5,7 @@
  * are computed per-pixel from a hex distance field (constant pixel width at
  * any zoom, zero extra geometry). Props are instanced line segments.
  */
-import { Color, DataTexture, LinearFilter, RedFormat, ShaderMaterial, Vector2, Vector3, Vector4 } from "three";
+import { Color, DataTexture, LinearFilter, RGFormat, ShaderMaterial, Vector2, Vector3, Vector4 } from "three";
 
 
 import { HEIGHT_GLSL } from "./heights";
@@ -38,14 +38,16 @@ export const sharedUniforms = {
 };
 
 function emptyRainTex() {
-  const t = new DataTexture(new Uint8Array([0]), 1, 1, RedFormat);
+  const t = new DataTexture(new Uint8Array([0, 0]), 1, 1, RGFormat);
+  t.unpackAlignment = 1;
   t.needsUpdate = true;
   return t;
 }
 
-/** Rain-intensity texture for the hex shader (GRID×GRID, filtered so it blends smoothly). */
+/** Precipitation texture for the hex shader (size×size, filtered so it blends smoothly): R = rain, G = snow. */
 export function makeRainTexture(size: number, data: Uint8Array) {
-  const t = new DataTexture(data, size, size, RedFormat);
+  const t = new DataTexture(data, size, size, RGFormat);
+  t.unpackAlignment = 1;
   t.magFilter = LinearFilter;
   t.minFilter = LinearFilter;
   t.needsUpdate = true;
@@ -62,12 +64,13 @@ const COMMON_FRAG = /* glsl */ `
 uniform float uLight;
 uniform vec3 uBg;
 // Dark theme: emissive lines on black. Light theme: the same design as ink on paper —
-// the dark-theme brightness becomes ink coverage, hue kept, darkened for contrast.
+// neutral lines (buildings) print charcoal, coloured ones a deep shade of their own hue.
 vec3 themed(vec3 col, float fade) {
   if (uLight < 0.5) return col * fade;
   float m = max(max(col.r, col.g), col.b);
   vec3 hue = m > 1e-4 ? col / m : vec3(0.0);
-  vec3 ink = hue * 0.42;
+  float sat = 1.0 - min(min(hue.r, hue.g), hue.b);
+  vec3 ink = hue * mix(0.035, 0.22, sat);
   float amount = clamp(m * 1.5, 0.0, 1.0);
   return mix(uBg, mix(uBg, ink, amount), fade);
 }
@@ -134,6 +137,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
       attribute vec2 aUV;
 
       varying vec3 vLine;
+      varying float vEmph;
       varying vec4 vStyle;
       varying vec2 vLocal;
       varying vec2 vUV;
@@ -165,6 +169,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
         float floorY = aSide >= 0.0 && aFloor.x >= 0.0 ? min(hexTop(aFloor.x, aFloor.y), top) : 0.0;
         w.y = mix(floorY, top, P.y) * s;
         vLine = aLine.rgb * aLine.a;
+        vEmph = aLine.a;
         vEdges = aEdges;
         vStyle = aStyle;
         vLocal = P.xz;
@@ -199,6 +204,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
       }
       varying vec3 vW;
       varying vec3 vLine;
+      varying float vEmph;
       varying vec4 vStyle;
       varying vec2 vLocal;
       varying vec2 vUV;
@@ -264,6 +270,12 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
         if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 0.0;
         return smoothstep(0.02, 0.6, texture2D(uRainTex, uv).r);
       }
+      float snowAt(vec2 xz) {
+        if (uRain.w < 0.5) return 0.0;
+        vec2 uv = (xz - uRain.xy) / uRain.z;
+        if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return 0.0;
+        return smoothstep(0.02, 0.6, texture2D(uRainTex, uv).g);
+      }
       void main() {
         float xray = occluder();
         float pulseWave = 0.5 + 0.5 * sin(uTime * 3.4 + vSeed * 6.2831);
@@ -312,20 +324,28 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           col += vLine * vHL * (top ? 0.22 : 0.1);
           float wetK = rainAt(vW.xz);
           if (top) col = mix(col, vec3(0.2, 0.45, 0.95) * (0.55 + 0.45 * vStyle.x), wetK * 0.55);
+          if (top) col = mix(col, vec3(0.62, 0.68, 0.75), snowAt(vW.xz) * 0.5); // snowing: a cold white wash
           gl_FragColor = vec4(debugTint(col * vFade), 1.0);
         } else {
-          // LIGHT — GIS land-cover map: lakes, forest and rock use their true colours.
-          float strength = clamp(max(max(vLine.r, vLine.g), vLine.b) * 1.2, 0.45, 1.0);
-          float tintAmt = clamp(0.78 + vStyle.x * 0.28, 0.72, 0.97) * strength;
-          if (top) tintAmt *= 1.0 + vStyle.y * pulseWave * 0.18;
-          vec3 face = mix(uBg, vLine, tintAmt);
-          if (!top) face *= 0.88 + 0.12 * vShade;
+          // LIGHT — a printed map: each land class a clear tint of its own colour on paper,
+          // relief shaded like a hillshade (walls darker than tops), and the status colours
+          // (danger, fire, projection) printed near full strength so they own the page.
+          vec3 hue = clamp(vLine / max(vEmph, 1e-3), 0.0, 1.0);
+          vec3 hueS = sqrt(hue), paperS = vec3(0.87, 0.885, 0.85); // map paper (~sRGB, mixing in ~sRGB)
+          float status = clamp(vStyle.y, 0.0, 1.0);           // pulse: 0 for land cover
+          float ink = status > 0.01 ? mix(0.88, 1.0, status) : mix(0.66, 0.95, clamp(vStyle.x, 0.0, 1.0));
+          ink *= clamp(vEmph, 0.6, 1.0);                       // unfocused regions print paler
+          if (top) ink = min(1.0, ink * (1.0 + status * pulseWave * 0.12));
+          vec3 face = mix(paperS, hueS, ink);
+          face *= face;
+          if (!top) face *= 0.58 + 0.32 * vShade;
           face = mix(uBg, face, solid);
-          vec3 ink = vLine * 0.55;
-          col = mix(face, ink, clamp(line * 0.55 * strength, 0.0, 0.55));
-          col = mix(col, ink, pat * 0.1 * strength * solid);
-          col = mix(col, vLine * 0.7, vHL * (top ? 0.2 : 0.1));
-          if (top) col = mix(col, vec3(0.3, 0.55, 0.92), rainAt(vW.xz) * 0.48);
+          vec3 edgeInk = face * 0.42;
+          col = mix(face, edgeInk, clamp(line * 0.75, 0.0, 0.75));
+          col = mix(col, edgeInk, pat * 0.16 * solid);
+          col = mix(col, face * 0.55, vHL * (top ? 0.4 : 0.15));
+          if (top) col = mix(col, vec3(0.03, 0.17, 0.62), rainAt(vW.xz) * 0.5);
+          if (top) col = mix(col, vec3(0.93, 0.95, 0.98), snowAt(vW.xz) * 0.6);
           gl_FragColor = vec4(debugTint(mix(uBg, col, vFade)), 1.0);
         }
       }

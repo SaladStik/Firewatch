@@ -12,7 +12,7 @@ const LAYERS: { key: keyof Layers; label: string; color?: string; hint: string; 
   { key: "spread", label: "Projected spread", color: "#6b3d8a", hint: "Scenario: FBP rates of spread grown over the real fuel map (wind, slope, rain), calibrated per fire from its own growth history. Not an official forecast." },
   { key: "beacons", label: "Hotspot beacons", color: "var(--color-fire)", hint: "Vertical markers visible from any zoom" },
   { key: "wind", label: "Wind", color: "var(--color-water)", hint: "Animated streamlines: live wind today, forecast peak wind on later days (Open-Meteo)" },
-  { key: "rain", label: "Rain", color: "#8ec8ff", hint: "Animated rain: live precipitation today, forecast daily totals on later days. Rain lowers fire risk and slows spread." },
+  { key: "rain", label: "Rain & snow", color: "#8ec8ff", hint: "Animated rain and snow: live precipitation today, forecast daily totals on later days (snow where it is at or below freezing). Both lower fire risk and slow spread." },
   { key: "bloom", label: "Highlight glow", hint: "Bloom post-processing (off by default; turn on for night ops)" },
 ];
 
