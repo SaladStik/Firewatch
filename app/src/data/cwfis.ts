@@ -59,6 +59,30 @@ export async function fetchHotspots(bbox: BBox, signal?: AbortSignal): Promise<H
   });
 }
 
+/** A CWFIS fire weather station's latest observed FWI moisture codes (CFFDRS). */
+export interface FwiStation {
+  lat: number;
+  lng: number;
+  date: string;
+  ffmc: number;
+  dmc: number;
+  dc: number;
+}
+
+/** Every reporting station's current FFMC / DMC / DC (one small request, Canada-wide). */
+export async function fetchFwiStations(signal?: AbortSignal): Promise<FwiStation[]> {
+  const p = new URLSearchParams({
+    service: "WFS", version: "1.0.0", request: "GetFeature", outputFormat: "application/json",
+    typeName: "public:firewx_stns_current", propertyName: "lat,lon,rep_date,ffmc,dmc,dc",
+  });
+  const res = await fetch(`${WFS}?${p}`, { signal });
+  if (!res.ok) throw new Error(`CWFIS stations ${res.status}`);
+  const json = await res.json();
+  return ((json.features ?? []) as { properties: Record<string, unknown> }[])
+    .map(({ properties: q }) => ({ lat: Number(q.lat), lng: Number(q.lon), date: String(q.rep_date), ffmc: Number(q.ffmc), dmc: Number(q.dmc), dc: Number(q.dc) }))
+    .filter((s) => [s.lat, s.lng, s.ffmc, s.dmc, s.dc].every(Number.isFinite));
+}
+
 export async function fetchPerimeters(bbox: BBox, signal?: AbortSignal): Promise<Perimeter[]> {
   const res = await fetch(wfsUrl("public:m3_polygons_current", bbox), { signal });
   if (!res.ok) throw new Error(`CWFIS perimeters ${res.status}`);

@@ -4,7 +4,7 @@
  * about all layers.
  */
 import { PROJECTION, type Region } from "./config/regions";
-import { fetchHotspots, fetchPerimeters, type Perimeter } from "./data/cwfis";
+import { fetchFwiStations, fetchHotspots, fetchPerimeters, type FwiStation, type Perimeter } from "./data/cwfis";
 import { fetchFireHistory, growthCalibration, type FireGrowth, type FireHistory } from "./data/fireHistory";
 import { fireSources, spreadEllipses } from "./data/fireSpread";
 import { buildSnapshot, isPerimeterActive, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
@@ -24,6 +24,8 @@ import type { HexNodeInfo } from "./world/types";
 const RISK_STATUSES = new Set<number>([NodeStatus.Elevated, NodeStatus.High, NodeStatus.Extreme]);
 const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Burned]);
 const DATA_REFRESH_MS = 10 * 60 * 1000;
+/** Weather cells further than this from any CWFIS station spin up the FWI codes on their own. */
+const STATION_MAX_KM = 150;
 /** A fire's growth history is refetched at most this often (and only when its perimeter changed). */
 const FIRE_HISTORY_TTL_MS = 60 * 60 * 1000;
 /** Hotspots closer than this share one beacon. */
@@ -138,6 +140,7 @@ export class Engine {
       Math.max(...loaded.map((r) => r.bbox[2])), Math.max(...loaded.map((r) => r.bbox[3])),
     ];
     const now = Date.now();
+    const seed = await this.fwiSeed();
     const [hs, per, ...wx] = await Promise.allSettled([
       fetchHotspots(box), fetchPerimeters(box),
       ...loaded.filter((r) => app.get().focus.includes(r.id)).map(async (r) => {
@@ -146,7 +149,7 @@ export class Engine {
         if (c) this.weatherCache.set(r.id, c);
         if (c && now - c.at < WEATHER_TTL_MS) return c.grid;
         try {
-          const grid = await fetchWeatherGrid(r.bbox);
+          const grid = await fetchWeatherGrid(r.bbox, undefined, seed);
           const entry = { at: now, grid };
           this.weatherCache.set(r.id, entry);
           storeWeather(r.id, entry);
@@ -181,6 +184,26 @@ export class Engine {
     await this.pushHazards();
     // Each active fire's own growth history, fetched in the background; re-score when it lands.
     void this.refreshFireHistory(perimeters).then((changed) => { if (changed) void this.pushHazards(); });
+  }
+
+  private stations: { at: number; list: FwiStation[] } | null = null;
+
+  /**
+   * Nearest CWFIS fire weather station's observed FFMC / DMC / DC (within STATION_MAX_KM),
+   * used to seed the FWI System per weather cell. Station list refreshed at most hourly.
+   */
+  private async fwiSeed() {
+    const now = Date.now();
+    if (!this.stations || now - this.stations.at > WEATHER_TTL_MS) {
+      try { this.stations = { at: now, list: await fetchFwiStations() }; } catch { /* keep the old list / spin up from startup values */ }
+    }
+    const list = (this.stations?.list ?? []).map((s) => ({ ...s, ...project(s.lat, s.lng) }));
+    return (lat: number, lng: number) => {
+      const p = project(lat, lng);
+      let best: (typeof list)[number] | null = null, bd = STATION_MAX_KM;
+      for (const s of list) { const d = Math.hypot(s.x - p.x, s.z - p.z); if (d < bd) { bd = d; best = s; } }
+      return best && { ffmc: best.ffmc, dmc: best.dmc, dc: best.dc };
+    };
   }
 
   /** Fire histories by perimeter id (re-fetched when the perimeter updates, at most hourly). */
@@ -383,7 +406,7 @@ function readStoredWeather(id: string): { at: number; grid: WeatherGrid } | unde
   try {
     const v = JSON.parse(localStorage.getItem(WX_KEY(id)) ?? "null");
     // Ignore entries written by an older data shape. Past days are required (fire-growth calibration).
-    return v?.grid?.cells?.[0]?.days?.length === FORECAST_DAYS + 1 && v.grid.cells[0].now && "rain" in v.grid.cells[0].now && v.grid.cells[0].past?.length && v.grid.pastDates?.length ? v : undefined;
+    return v?.grid?.cells?.[0]?.days?.length === FORECAST_DAYS + 1 && v.grid.cells[0].now && "rain" in v.grid.cells[0].now && Number.isFinite(v.grid.cells[0].days[0]?.fwi) && v.grid.cells[0].past?.length && v.grid.pastDates?.length ? v : undefined;
   } catch { return undefined; }
 }
 function storeWeather(id: string, entry: { at: number; grid: WeatherGrid }) {

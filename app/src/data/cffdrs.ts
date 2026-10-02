@@ -124,6 +124,13 @@ export function fwiDay(prev: FwiCodes, temp: number, rh: number, ws: number, rai
   return { ffmc: f, dmc: d, dc: c, isi: i, bui: b, fwi: fwi(i, b) };
 }
 
+/** ISI / BUI / FWI for known moisture codes (e.g. a station's observed values) and today's wind. */
+export function fwiFromCodes(c: FwiCodes, ws: number): FwiDay {
+  const w = Number.isFinite(ws) ? Math.max(0, ws) : 0;
+  const i = isi(c.ffmc, w), b = bui(c.dmc, c.dc);
+  return { ffmc: c.ffmc, dmc: c.dmc, dc: c.dc, isi: i, bui: b, fwi: fwi(i, b) };
+}
+
 // ------------------------------------------------------------ danger classes
 /**
  * Fire danger class from FWI (the common Canadian 5-class rating used by CWFIS maps and many

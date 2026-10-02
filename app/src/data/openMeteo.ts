@@ -1,12 +1,15 @@
 /**
  * Open-Meteo (open-meteo.com) — free weather API, CORS enabled, no key.
- * Samples a 1.5° lat/lng grid over the region bbox: today + a 7-day daily
- * forecast, live current conditions (display only) and two weeks of rain history
- * (for days-since-rain). Each day's peak is scored with the Fosberg FFWI × a
- * dryness factor (data/fosberg.ts).
+ * Samples a lat/lng grid over the region bbox: two weeks of history, today and a 7-day
+ * daily forecast, plus live current conditions.
+ *
+ * Fire danger is the Canadian FWI System (data/cffdrs.ts) run day by day through that
+ * whole series per cell, with today's moisture codes taken from the nearest CWFIS fire
+ * weather station when there is one (the official observed values). Fosberg is computed
+ * too, for comparison with the team's sensor station.
  */
-import { daysSinceRain, fireWeatherRisk, fosbergFFWI, FULLY_DRY_DAYS } from "./fosberg";
-import { rainDamping } from "./rain";
+import { dangerClass, fwiDay, fwiFromCodes, riskFromFwi, STARTUP, type FwiCodes, type FwiDay } from "./cffdrs";
+import { daysSinceRain, fosbergFFWI, FULLY_DRY_DAYS } from "./fosberg";
 
 /** Days after today on the forecast slider (day 0 = today). */
 export const FORECAST_DAYS = 7;
@@ -24,8 +27,17 @@ export interface DayWeather {
   windFrom: number; // degrees, direction the wind blows FROM (0 = north)
   rainMm: number; // that day's total
   daysSinceRain: number;
-  ffwi: number; // Fosberg 0..100
-  risk: number; // 0..1
+  ffwi: number; // Fosberg 0..100 (comparison with the sensor station)
+  /** Canadian FWI System for the day: FFMC, DMC, DC, ISI, BUI, FWI. */
+  ffmc: number;
+  dmc: number;
+  dc: number;
+  isi: number;
+  bui: number;
+  fwi: number;
+  /** Danger class from FWI: Low / Moderate / High / Very High / Extreme. */
+  danger: string;
+  risk: number; // 0..1, from FWI (data/cffdrs.ts riskFromFwi)
 }
 
 export interface WeatherCell {
@@ -70,14 +82,15 @@ interface Row {
 /** Missing API value → NaN (scores as 0, renders as "–"). */
 const num = (v: Num | undefined) => v ?? NaN;
 
-function scoreDay(tempIn: Num | undefined, rhIn: Num | undefined, windIn: Num | undefined, windFromIn: Num | undefined, rainMm: number, dry: number): DayWeather {
+function scoreDay(tempIn: Num | undefined, rhIn: Num | undefined, windIn: Num | undefined, windFromIn: Num | undefined, rainMm: number, dry: number, f: FwiDay): DayWeather {
   const temp = num(tempIn), rh = num(rhIn), wind = num(windIn), windFrom = num(windFromIn);
-  const ffwi = fosbergFFWI(temp, rh, wind);
-  // Fosberg × days-since-rain dryness, damped by the day's own rain (data/rain.ts).
-  return { temp, rh, wind, windFrom, rainMm, daysSinceRain: dry, ffwi, risk: fireWeatherRisk(ffwi, dry) * rainDamping(rainMm) };
+  return { temp, rh, wind, windFrom, rainMm, daysSinceRain: dry, ffwi: fosbergFFWI(temp, rh, wind), ...f, danger: dangerClass(f.fwi), risk: riskFromFwi(f.fwi) };
 }
 
-export async function fetchWeatherGrid(bbox: [number, number, number, number], signal?: AbortSignal): Promise<WeatherGrid> {
+/** Today's observed FWI codes near a point (nearest CWFIS station), or null. */
+export type FwiSeed = (lat: number, lng: number) => FwiCodes | null;
+
+export async function fetchWeatherGrid(bbox: [number, number, number, number], signal?: AbortSignal, seed?: FwiSeed): Promise<WeatherGrid> {
   // Open-Meteo counts every point as a call: size the grid so any province is ≤ ~90 points
   // (1.5° for Alberta-sized regions, coarser for Quebec / Nunavut).
   const area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1]);
@@ -101,16 +114,22 @@ export async function fetchWeatherGrid(bbox: [number, number, number, number], s
   const rows: Row[] = Array.isArray(json) ? json : [json];
   const cells = rows.map((r, k): WeatherCell => {
     const c = r.current, d = r.daily, rain = d.precipitation_sum;
-    const days: DayWeather[] = [];
+    // FWI System through the whole series (past → today → forecast). Codes carry over day to day.
+    // Daily peak temperature / minimum RH / peak wind stand in for the standard noon readings.
+    const obs = seed?.(lats[k], lngs[k]) ?? null;
+    let codes: FwiCodes = obs ? { ...STARTUP, dmc: obs.dmc, dc: obs.dc } : STARTUP; // slow codes seeded from the station
+    const scored: DayWeather[] = [];
+    for (let i = 0; i < PAST_DAYS + FORECAST_DAYS + 1; i++) {
+      const month = Number((d.time[i] ?? "2000-07").slice(5, 7)) || 7;
+      let f = fwiDay(codes, num(d.temperature_2m_max[i]), num(d.relative_humidity_2m_min[i]), num(d.wind_speed_10m_max[i]), rain[i] ?? 0, month);
+      // Today: the station's observed codes replace our spin-up (then the forecast runs on from them).
+      if (i === PAST_DAYS && obs) f = fwiFromCodes(obs, num(d.wind_speed_10m_max[i]));
+      codes = f;
+      scored.push(scoreDay(d.temperature_2m_max[i], d.relative_humidity_2m_min[i], d.wind_speed_10m_max[i], d.wind_direction_10m_dominant[i], rain[i] ?? 0, daysSinceRain(rain, i), f));
+    }
     // Day 0 = today: its rain total includes the forecast for the rest of today.
-    for (let n = 0; n <= FORECAST_DAYS; n++) {
-      const i = PAST_DAYS + n;
-      days.push(scoreDay(d.temperature_2m_max[i], d.relative_humidity_2m_min[i], d.wind_speed_10m_max[i], d.wind_direction_10m_dominant[i], rain[i] ?? 0, daysSinceRain(rain, i)));
-    }
-    const past: DayWeather[] = [];
-    for (let i = 0; i < PAST_DAYS; i++) {
-      past.push(scoreDay(d.temperature_2m_max[i], d.relative_humidity_2m_min[i], d.wind_speed_10m_max[i], d.wind_direction_10m_dominant[i], rain[i] ?? 0, daysSinceRain(rain, i)));
-    }
+    const days = scored.slice(PAST_DAYS);
+    const past = scored.slice(0, PAST_DAYS);
     const now = { temp: num(c.temperature_2m), rh: num(c.relative_humidity_2m), wind: num(c.wind_speed_10m), windFrom: num(c.wind_direction_10m), rain: num(c.precipitation) };
     return { lat: lats[k], lng: lngs[k], days, past, now };
   });
