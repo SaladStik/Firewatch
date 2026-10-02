@@ -21,6 +21,8 @@ export const sharedUniforms = {
   uSelect: { value: new Vector3(0, 0, 0) },
   /** Vertical scale for buildings (kept milder than terrain exaggeration). */
   uBScale: { value: 2 },
+  /** Screen pixels per km at 1 km from the camera (viewport height / 2·tan(fov/2)). */
+  uPxPerKm: { value: 1400 },
   /** Camera + orbit target: hexes between them turn to outlines (x-ray). */
   uCam: { value: new Vector3() },
   uTarget: { value: new Vector3() },
@@ -54,13 +56,21 @@ export interface LevelUniforms {
   uSize: { value: number };
   uGap: { value: number };
   uLevelAlpha: { value: number };
+  /** This level's ring: centre + outer radius, and the finer ring it surrounds (its hole). */
+  uFocusL: { value: Vector2 };
+  uRadius: { value: number };
+  uInnerFocus: { value: Vector2 };
+  uInnerRadius: { value: number };
 }
 
 const COMMON_VERT = /* glsl */ `
 ${HEIGHT_GLSL}
 uniform float uTime;
-uniform vec2 uFocus;
+uniform vec2 uFocusL;
 uniform float uRadius;
+uniform vec2 uInnerFocus;
+uniform float uInnerRadius;
+uniform float uHoleOn;
 uniform float uLevelAlpha;
 uniform vec3 uHover;
 uniform vec3 uSelect;
@@ -69,8 +79,10 @@ float easeOut(float t) { t = clamp(t, 0.0, 1.0); return 1.0 - pow(1.0 - t, 3.0);
 
 // Spawn + view-ring factor: 0 = collapsed, 1 = fully present.
 float presence(vec2 xz, float born, float seed, out float ringFade) {
-  float d = length(xz - uFocus);
-  ringFade = 1.0 - smoothstep(uRadius * 0.72, uRadius, d);
+  float d = length(xz - uFocusL);
+  ringFade = 1.0 - smoothstep(uRadius * 0.82, uRadius, d);
+  // Coarser rings leave a hole where the finer ring is drawn (unless standing in while it loads).
+  if (uHoleOn > 0.5 && uInnerRadius > 0.0 && length(xz - uInnerFocus) < uInnerRadius * 0.9) { ringFade = 0.0; return 0.0; }
   float grow = easeOut((uTime - born - seed * 0.25 - (d / uRadius) * 0.35) / 0.5);
   return grow * uLevelAlpha * smoothstep(0.0, 0.25, ringFade);
 }
@@ -84,7 +96,7 @@ float highlight(vec2 xz) {
 
 export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
   return new ShaderMaterial({
-    uniforms: { ...sharedUniforms, ...level },
+    uniforms: { ...sharedUniforms, ...level, uHoleOn: { value: 1 } },
     vertexShader: /* glsl */ `
       ${COMMON_VERT}
       uniform float uGap;
@@ -94,6 +106,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
       attribute vec4 aStyle;  // fill, pulse, lift, pattern
       attribute vec2 aMeta;   // born time, seed
       attribute float aFace;  // 0 = top, 1 = side
+      attribute float aSide;  // -1 = top; 0..5 = which wall (instanced)
       attribute vec2 aUV;
 
       varying vec3 vLine;
@@ -113,19 +126,27 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
         float s = presence(aPos.xy, aMeta.x, aMeta.y, ring);
         if (s < 0.002) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
         float top = hexTop(aPos.z, aStyle.z);
+        // Walls are instanced per visible wall: rotate the side-0 quad to side aSide.
+        vec3 P = position, N = normal;
+        if (aSide >= 0.0) {
+          float ang = aSide * 1.0471976, c = cos(ang), sn = sin(ang);
+          mat2 rot = mat2(c, sn, -sn, c);
+          P.xz = rot * P.xz;
+          N.xz = rot * N.xz;
+        }
         vec3 w;
-        w.xz = aPos.xy + position.xz * uSize * uGap * mix(0.35, 1.0, s);
-        w.y = position.y * top * s;
+        w.xz = aPos.xy + P.xz * uSize * uGap * mix(0.35, 1.0, s);
+        w.y = P.y * top * s;
         vLine = aLine.rgb * aLine.a;
         vEdges = aEdges;
         vStyle = aStyle;
-        vLocal = position.xz;
+        vLocal = P.xz;
         vUV = aUV;
         vFace = aFace;
         vFade = ring * uLevelAlpha;
         vHL = highlight(aPos.xy);
         vSeed = aMeta.y;
-        vShade = aFace > 0.5 ? 0.35 + 0.65 * max(0.0, dot(normal, normalize(vec3(-0.45, 0.0, 0.9)))) : 1.0;
+        vShade = aFace > 0.5 ? 0.35 + 0.65 * max(0.0, dot(N, normalize(vec3(-0.45, 0.0, 0.9)))) : 1.0;
         vW = w;
         gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
       }
@@ -169,6 +190,10 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
         if (kind == 2) { vec2 g = fract(p * 3.2) - 0.5; return aaLine(length(g) - 0.04, 1.0); } // dots
         if (kind == 3) return repLine(p.y * 3.0 + sin(p.x * 7.0 + uTime * 0.7) * 0.18, 0.6); // waves
         if (kind == 4) return max(repLine(p.x * 3.5, 0.5), repLine(p.y * 3.5, 0.5));       // grid
+        if (kind == 5) {                                                                     // ice: cracked crosshatch
+          float a = repLine(p.x * 2.1 + p.y * 1.2, 0.55), b = repLine(p.x * 1.4 - p.y * 2.3 + 0.37, 0.55);
+          return max(a, b * 0.8);
+        }
         return 0.0;
       }
 
@@ -208,7 +233,15 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           float k = floor(mod(atan(vLocal.y, vLocal.x) + 0.5235988, 6.2831853) / 1.0471976);
           float b = edgeWeight(k);
           float density = clamp((fwidth(vLocal.x) - 0.04) * 5.0, 0.0, 1.0);
-          line = aaLine(edge, mix(0.8, 1.5, b)) * mix(0.09, 1.0, b) + density * 0.12;
+          // Interior edges (same type, same height) only show when each hex is big on screen;
+          // further out a uniform area reads as one surface.
+          float interior = 0.09 * (1.0 - smoothstep(0.012, 0.03, fwidth(vLocal.x)));
+          // Terrace (contour) steps fade once a hex is only a few pixels across — at that size
+          // they're sub-pixel speckle, not information. Region borders (b = 1) always stay.
+          float fwl = fwidth(vLocal.x);
+          float small = smoothstep(0.07, 0.16, fwl);
+          b = b >= 0.99 ? b : b * (1.0 - small);
+          line = aaLine(edge, mix(0.8, 1.5, b)) * mix(interior, 1.0, b) + density * 0.12 * b;
           float detail = 1.0 - smoothstep(0.012, 0.03, fwidth(vLocal.x)); // patterns only when close
           pat = pattern(int(vStyle.w + 0.5), vLocal) * detail * step(0.14, edge);
         } else {
@@ -256,10 +289,11 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
 
 export function createPropMaterial(level: LevelUniforms): ShaderMaterial {
   return new ShaderMaterial({
-    uniforms: { ...sharedUniforms, ...level },
+    uniforms: { ...sharedUniforms, ...level, uHoleOn: { value: 1 } },
     vertexShader: /* glsl */ `
       ${COMMON_VERT}
       attribute vec3 aPos;    // hex x, z, elevation (km)
+      uniform float uPxPerKm;
       attribute vec4 aOff;    // local dx, dz (hex units), scale, rotation
       attribute vec3 aColor;
       attribute vec3 aMeta;   // born, seed, lift
@@ -270,6 +304,11 @@ export function createPropMaterial(level: LevelUniforms): ShaderMaterial {
         float ring;
         float s = presence(aPos.xy, aMeta.x, aMeta.y, ring);
         if (s < 0.05) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+        // Props under a few screen pixels read as speckle noise — shrink them out.
+        float px = aOff.z * uSize * 0.34 / max(distance(cameraPosition, vec3(aPos.x, 0.0, aPos.y)), 0.01) * uPxPerKm;
+        float vis = smoothstep(2.0, 4.0, px);
+        if (vis < 0.02) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+        s *= vis;
         float c = cos(aOff.w), sn = sin(aOff.w);
         vec3 p = position * aOff.z * uSize * 0.17;
         p.xz = mat2(c, -sn, sn, c) * p.xz;
@@ -296,10 +335,11 @@ export function createPropMaterial(level: LevelUniforms): ShaderMaterial {
 
 export function createBuildingMaterial(level: LevelUniforms): ShaderMaterial {
   return new ShaderMaterial({
-    uniforms: { ...sharedUniforms, ...level },
+    uniforms: { ...sharedUniforms, ...level, uHoleOn: { value: 1 } },
     vertexShader: /* glsl */ `
       ${COMMON_VERT}
       uniform float uBScale;
+      uniform float uPxPerKm;
       attribute vec3 aPos;    // x, z, hex elevation (km)
       attribute vec3 aDim;    // footprint w, d (km), height (km)
       attribute vec3 aColor;
@@ -310,6 +350,12 @@ export function createBuildingMaterial(level: LevelUniforms): ShaderMaterial {
         float ring;
         float s = presence(aPos.xy, aMeta.x, aMeta.y, ring);
         if (s < 0.05) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+        // Buildings smaller than a couple of screen pixels are just noise (speckle) — shrink them out.
+        float bSize = max(max(aDim.x, aDim.y), aDim.z * uBScale);
+        float px = bSize / max(distance(cameraPosition, vec3(aPos.x, 0.0, aPos.y)), 0.01) * uPxPerKm;
+        float vis = smoothstep(1.6, 3.2, px);
+        if (vis < 0.02) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+        s *= vis;
         vec3 w;
         w.xz = aPos.xy + position.xz * aDim.xy;
         w.y = hexTop(aPos.z, aMeta.z) * s + position.y * aDim.z * uBScale * s;

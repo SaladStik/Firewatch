@@ -9,15 +9,17 @@ import {
 import { GRID } from "../config/grid";
 import { chunkWorldBounds, hash01, hexKey } from "../hex/hexMath";
 import { NODE_TYPES, type NodeOverride, type PropKind } from "../hex/nodeTypes";
-import type { LandClass } from "../geo/landClass";
+import { LandClass } from "../geo/landClass";
 import type { NodeStatus } from "../hex/nodeTypes";
 import type { ChunkData } from "../world/types";
 import { BUILDING_BRIGHTNESS, BUILDING_KINDS, FOOTPRINT_SCALE } from "../hex/overlayStyles";
 import { BLD_STRIDE } from "../world/overlays";
-import { buildingLines, hexPrism, propLines } from "./geometry";
+import { MIN_THICKNESS, reliefKm } from "./heights";
+import { buildingLines, hexTop, hexWall, propLines } from "./geometry";
 import { resolveStyle, type NodeStyler } from "./nodeStyle";
 
-let prism: BufferGeometry | null = null;
+let topGeo: BufferGeometry | null = null;
+let wallGeo: BufferGeometry | null = null;
 
 export interface StyleSource {
   overrides: Map<string, NodeOverride>;
@@ -40,6 +42,8 @@ interface PropBatch {
   obj: LineSegments;
   /** Brightness multiplier on the hex's prop colour. */
   gain?: number;
+  /** Largest on-screen extent (km) of anything in this batch — for skipping sub-pixel draws. */
+  maxSizeKm: number;
 }
 
 export class ChunkMesh {
@@ -50,7 +54,17 @@ export class ChunkMesh {
   private aStyle: InstancedBufferAttribute;
   private aMeta: InstancedBufferAttribute;
   private props: PropBatch[] = [];
-
+  private aPos: InstancedBufferAttribute;
+  /** Walls: one instance per VISIBLE wall (copies of its hex's attributes + side index). */
+  private wallsGeo = new InstancedBufferGeometry();
+  private wallCap = 0;
+  /** 1 = honour the finer ring's hole; 0 = draw everywhere (standing in for loading finer chunks). */
+  holeOn = 1;
+  /** Shared culling sphere for every draw in this chunk; refit as the vertical scale changes. */
+  private bounds: Sphere;
+  private halfDiag: number;
+  private maxRelief = 0;
+  private fitVs = -1;
 
   constructor(
     readonly data: ChunkData,
@@ -58,11 +72,13 @@ export class ChunkMesh {
     private src: StyleSource,
     born: number,
   ) {
-    prism ??= hexPrism();
+    topGeo ??= hexTop();
+    wallGeo ??= hexWall();
     const n = data.count;
     const g = (this.hexGeo = new InstancedBufferGeometry());
-    for (const name of ["position", "normal", "aFace", "aUV"]) g.setAttribute(name, prism.getAttribute(name));
+    for (const name of ["position", "normal", "aFace", "aUV", "aSide"]) g.setAttribute(name, topGeo.getAttribute(name));
     g.instanceCount = n;
+    for (const name of ["position", "normal", "aFace", "aUV"]) this.wallsGeo.setAttribute(name, wallGeo.getAttribute(name));
 
     const aPos = new Float32Array(n * 3);
     const aMeta = new Float32Array(n * 2);
@@ -73,7 +89,7 @@ export class ChunkMesh {
       aMeta[i * 2] = born;
       aMeta[i * 2 + 1] = hash01(data.q[i], data.r[i], 7);
     }
-    g.setAttribute("aPos", new InstancedBufferAttribute(aPos, 3));
+    g.setAttribute("aPos", (this.aPos = new InstancedBufferAttribute(aPos, 3)));
     g.setAttribute("aMeta", (this.aMeta = new InstancedBufferAttribute(aMeta, 2)));
     g.setAttribute("aLine", (this.aLine = new InstancedBufferAttribute(new Float32Array(n * 4), 4)));
     g.setAttribute("aEdges", (this.aEdges = new InstancedBufferAttribute(new Float32Array(n * 2), 2)));
@@ -82,16 +98,38 @@ export class ChunkMesh {
     // Culling bounds: chunk footprint, generous height.
     const size = GRID.levels[data.level].size;
     const b = chunkWorldBounds(data.cx, data.cz, GRID.chunkCells, size);
-    const c = new Vector3((b.minX + b.maxX) / 2, 20, (b.minZ + b.maxZ) / 2);
-    g.boundingSphere = new Sphere(c, Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 120);
+    // Generous vertical allowance: with relief shaping + national exaggeration the Rockies
+    // can stand a few hundred km tall in world units; under-sized bounds would cull them.
+    // Tight bounds (footprint × this chunk's real relief) so off-screen chunks are actually
+    // culled — each chunk is ~4 draw calls and the map is draw-call bound.
+    for (let i = 0; i < n; i++) this.maxRelief = Math.max(this.maxRelief, reliefKm(data.elev[i]));
+    this.halfDiag = Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2;
+    this.bounds = g.boundingSphere = new Sphere(new Vector3((b.minX + b.maxX) / 2, 0, (b.minZ + b.maxZ) / 2), 1);
+    this.fitBounds(1);
 
     const mesh = new Mesh(g, mats.hex);
     mesh.frustumCulled = true;
     this.group.add(mesh);
+    // Shared material: set this chunk's hole flag right before it draws.
+    const setHole = (_r: unknown, _s: unknown, _c: unknown, _g: unknown, material: unknown) => {
+      const m = material as ShaderMaterial;
+      if (m.uniforms.uHoleOn.value !== this.holeOn) { m.uniforms.uHoleOn.value = this.holeOn; m.uniformsNeedUpdate = true; }
+    };
+    mesh.onBeforeRender = setHole;
+    this.wallsGeo.boundingSphere = g.boundingSphere;
+    const walls = new Mesh(this.wallsGeo, mats.hex);
+    walls.frustumCulled = true;
+    walls.onBeforeRender = setHole;
+    this.group.add(walls);
 
     if (GRID.levels[data.level].decorations) this.buildProps(mats.prop, g.boundingSphere, born);
     if (data.buildings.length) this.buildBuildings(mats.building, g.boundingSphere, born);
     this.restyle();
+    // Chunks never move: skip three's per-frame matrix walk over thousands of meshes.
+    this.group.traverse((o) => {
+      o.matrixAutoUpdate = false;
+      o.matrixWorldAutoUpdate = false;
+    });
   }
 
   private buildProps(mat: ShaderMaterial, bounds: Sphere, born: number) {
@@ -138,7 +176,10 @@ export class ChunkMesh {
       g.boundingSphere = bounds;
       const obj = new LineSegments(g, mat);
       this.group.add(obj);
-      this.props.push({ kind, hexIndex: Int32Array.from(e.hex), color, meta: metaAttr, obj });
+      let maxScale = 0;
+      for (let j = 2; j < e.off.length; j += 4) maxScale = Math.max(maxScale, e.off[j]);
+      const maxSizeKm = maxScale * GRID.levels[d.level].size * 0.34; // matches the prop shader
+      this.props.push({ kind, hexIndex: Int32Array.from(e.hex), color, meta: metaAttr, obj, maxSizeKm });
     }
   }
 
@@ -175,8 +216,33 @@ export class ChunkMesh {
       g.boundingSphere = bounds;
       const obj = new LineSegments(g, mat);
       this.group.add(obj);
-      this.props.push({ kind: `building:${k}`, hexIndex, color, meta: metaAttr, obj, gain: BUILDING_BRIGHTNESS });
+      let maxSizeKm = 0;
+      for (let j = 0; j < m; j++) maxSizeKm = Math.max(maxSizeKm, aDim[j * 3], aDim[j * 3 + 1], aDim[j * 3 + 2] * 3);
+      this.props.push({ kind: `building:${k}`, hexIndex, color, meta: metaAttr, obj, gain: BUILDING_BRIGHTNESS, maxSizeKm });
     }
+  }
+
+  /**
+   * Skip prop / building draws whose largest item would be under ~2 px from the nearest point
+   * of this chunk (the shaders fade those out anyway — this just saves the draw calls).
+   */
+  cullDetail(cam: Vector3, pxPerKm: number) {
+    if (!this.props.length) return;
+    const c = this.bounds.center;
+    const near = Math.max(0.01, Math.hypot(cam.x - c.x, cam.y, cam.z - c.z) - this.halfDiag);
+    const minKm = (2 * near) / pxPerKm;
+    for (const p of this.props) p.obj.visible = p.maxSizeKm >= minKm;
+  }
+
+  /** Refit the culling sphere to the current vertical exaggeration. */
+  fitBounds(vScale: number) {
+    if (Math.abs(vScale - this.fitVs) < this.fitVs * 0.02) return;
+    this.fitVs = vScale;
+    const size = GRID.levels[this.data.level].size;
+    // Tallest point: relief, plus hazard lift (≤ ~2 hexes) and building height (≤ ~1 km).
+    const top = Math.max(MIN_THICKNESS * size, this.maxRelief * vScale) + size * 3 + 1;
+    this.bounds.center.y = top / 2;
+    this.bounds.radius = Math.hypot(this.halfDiag, top / 2);
   }
 
   /** Recompute colours / pulse / lift from the registry, overrides and styler. */
@@ -184,7 +250,7 @@ export class ChunkMesh {
     const d = this.data;
     const line = this.aLine.array as Float32Array, style = this.aStyle.array as Float32Array;
     const edges = this.aEdges.array as Float32Array;
-    const propCol = new Float32Array(d.count * 3), lift = new Float32Array(d.count);
+    const propCol = new Float32Array(d.count * 3), bldCol = new Float32Array(d.count * 3), lift = new Float32Array(d.count);
     for (let i = 0; i < d.count; i++) {
       const key = hexKey(d.level, d.q[i], d.r[i]);
       const s = resolveStyle(
@@ -200,16 +266,26 @@ export class ChunkMesh {
       propCol[i * 3] = s.prop[0] * s.emphasis;
       propCol[i * 3 + 1] = s.prop[1] * s.emphasis;
       propCol[i * 3 + 2] = s.prop[2] * s.emphasis;
+      // Buildings on a road / rail hex keep the settlement look (same status: a burning block is still red).
+      const land = d.land[i] as LandClass;
+      const bs = land === LandClass.Road || land === LandClass.Rail
+        ? resolveStyle({ key, land: LandClass.Urban, status: d.status[i] as NodeStatus, risk: d.risk[i], dimmed: !this.src.focus.has(d.region[i]) }, this.src.overrides.get(key), this.src.styler)
+        : s;
+      bldCol[i * 3] = bs.prop[0] * bs.emphasis;
+      bldCol[i * 3 + 1] = bs.prop[1] * bs.emphasis;
+      bldCol[i * 3 + 2] = bs.prop[2] * bs.emphasis;
       lift[i] = s.lift;
     }
     this.aLine.needsUpdate = true;
     this.aEdges.needsUpdate = true;
     this.aStyle.needsUpdate = true;
+    this.syncWalls();
     for (const p of this.props) {
       const c = p.color.array as Float32Array, m = p.meta.array as Float32Array;
       for (let j = 0; j < p.hexIndex.length; j++) {
         const hi = p.hexIndex[j], gain = p.gain ?? 1;
-        c[j * 3] = propCol[hi * 3] * gain; c[j * 3 + 1] = propCol[hi * 3 + 1] * gain; c[j * 3 + 2] = propCol[hi * 3 + 2] * gain;
+        const src = String(p.kind).startsWith("building:") ? bldCol : propCol;
+        c[j * 3] = src[hi * 3] * gain; c[j * 3 + 1] = src[hi * 3 + 1] * gain; c[j * 3 + 2] = src[hi * 3 + 2] * gain;
         m[j * 3 + 2] = lift[hi];
       }
       p.color.needsUpdate = true;
@@ -217,11 +293,52 @@ export class ChunkMesh {
     }
   }
 
+  /**
+   * Rebuild the wall instances: a wall is drawn only where the neighbour is lower or open
+   * (contour bit), or for lifted hexes (hazard pop-up) where every wall can show.
+   */
+  private syncWalls() {
+    const d = this.data, style = this.aStyle.array as Float32Array;
+    const list: number[] = []; // pairs: hex index, side
+    for (let i = 0; i < d.count; i++) {
+      const lifted = style[i * 4 + 2] > 0.001;
+      const c = d.contours[i];
+      for (let k = 0; k < 6; k++) if (lifted || c & (1 << k)) list.push(i, k);
+    }
+    const m = list.length / 2;
+    const g = this.wallsGeo;
+    if (m > this.wallCap || !g.getAttribute("aSide")) {
+      this.wallCap = Math.ceil(m * 1.25) + 8;
+      const cap = this.wallCap;
+      g.setAttribute("aPos", new InstancedBufferAttribute(new Float32Array(cap * 3), 3));
+      g.setAttribute("aMeta", new InstancedBufferAttribute(new Float32Array(cap * 2), 2));
+      g.setAttribute("aLine", new InstancedBufferAttribute(new Float32Array(cap * 4), 4));
+      g.setAttribute("aEdges", new InstancedBufferAttribute(new Float32Array(cap * 2), 2));
+      g.setAttribute("aStyle", new InstancedBufferAttribute(new Float32Array(cap * 4), 4));
+      g.setAttribute("aSide", new InstancedBufferAttribute(new Float32Array(cap), 1));
+    }
+    const copy = (name: string, src: Float32Array, n: number) => {
+      const attr = g.getAttribute(name) as InstancedBufferAttribute, dst = attr.array as Float32Array;
+      for (let j = 0; j < m; j++) { const i = list[j * 2]; for (let c = 0; c < n; c++) dst[j * n + c] = src[i * n + c]; }
+      attr.needsUpdate = true;
+    };
+    copy("aPos", this.aPos.array as Float32Array, 3);
+    copy("aMeta", this.aMeta.array as Float32Array, 2);
+    copy("aLine", this.aLine.array as Float32Array, 4);
+    copy("aEdges", this.aEdges.array as Float32Array, 2);
+    copy("aStyle", style, 4);
+    const side = g.getAttribute("aSide") as InstancedBufferAttribute, sd = side.array as Float32Array;
+    for (let j = 0; j < m; j++) sd[j] = list[j * 2 + 1];
+    side.needsUpdate = true;
+    g.instanceCount = m;
+  }
+
   /** Replay the build-in animation (e.g. when a cached chunk re-enters view). */
   rebirth(time: number) {
     const m = this.aMeta.array as Float32Array;
     for (let i = 0; i < this.data.count; i++) m[i * 2] = time;
     this.aMeta.needsUpdate = true;
+    this.syncWalls();
     for (const p of this.props) {
       const pm = p.meta.array as Float32Array;
       for (let j = 0; j < p.hexIndex.length; j++) pm[j * 3] = time;
@@ -231,6 +348,7 @@ export class ChunkMesh {
 
   dispose() {
     this.hexGeo.dispose();
+    this.wallsGeo.dispose();
     for (const p of this.props) p.obj.geometry.dispose();
     this.group.removeFromParent();
   }

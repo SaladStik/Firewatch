@@ -5,6 +5,7 @@
 import type { LandClass } from "../geo/landClass";
 import type { NodeStatus } from "../hex/nodeTypes";
 import type { Landmark } from "../hex/overlayStyles";
+import type { ProjectionParams } from "../geo/projection";
 
 /** Raw hex data for one chunk, struct-of-arrays (one entry per hex). */
 export interface ChunkData {
@@ -72,7 +73,7 @@ export interface HexNodeInfo {
 
 // ------------------------------------------------------------- RPC messages
 export type WorkerRequest =
-  | { id: number; type: "init"; lat0: number; lng0: number }
+  | { id: number; type: "init"; projection: ProjectionParams }
   | { id: number; type: "addRegion"; url: string; index: number; landmarks: Landmark[] }
   | { id: number; type: "chunk"; level: number; cx: number; cz: number }
   | { id: number; type: "restatus"; level: number; cx: number; cz: number }
