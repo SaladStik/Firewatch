@@ -103,8 +103,8 @@ export class RainParticles {
   }
 
   setTheme(light: boolean) {
-    this.mat.uniforms.uColor.value.set(light ? "#1f5c96" : "#a8d6ff");
-    this.mat.uniforms.uOpacity.value = light ? 0.4 : 0.42;
+    this.mat.uniforms.uColor.value.set(light ? "#062a66" : "#a8d6ff");
+    this.mat.uniforms.uOpacity.value = light ? 0.95 : 0.42;
   }
 
   update(dt: number, target: Vector3, dist: number, groundElev: GroundElev) {

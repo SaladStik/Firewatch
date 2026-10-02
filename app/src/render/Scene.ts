@@ -523,11 +523,13 @@ export class Scene {
   /** Dark = night ops. Light = cartographic land-cover map (government style). */
   setTheme(theme: "dark" | "light") {
     this.light = theme === "light";
-    const bg = new Color(this.light ? "#e8ece6" : "#1a211c");
+    // Light: the sky / seam colour is a mid-tone haze darker than the map paper, so hairline
+    // cracks between hexes read as quiet seams (as in dark mode), never white speckle.
+    const bg = new Color(this.light ? "#9da69a" : "#1a211c");
     this.renderer.setClearColor(bg);
     sharedUniforms.uLight.value = this.light ? 1 : 0;
     sharedUniforms.uBg.value.set(bg.r, bg.g, bg.b);
-    const grid = new Color(this.light ? "#c5cdc4" : "#2a332d");
+    const grid = new Color(this.light ? "#aab2a6" : "#2a332d");
     this.gridColor.value.set(grid.r, grid.g, grid.b);
     this.borderMat.color.set(this.light ? "#1c3d2e" : "#7a9a86");
     this.borderMatDim.color.set(this.light ? "#9aa89e" : "#4a554e");

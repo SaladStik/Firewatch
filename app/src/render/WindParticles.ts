@@ -14,7 +14,7 @@ import { sharedUniforms } from "./materials";
 const MAX = 160;
 /** Stream opacity (dark / light theme): a light touch over the hexes, not a curtain. */
 const OPACITY_DARK = 0.2;
-const OPACITY_LIGHT = 0.22;
+const OPACITY_LIGHT = 0.42;
 /** Trail points kept per particle (more = smoother curves). */
 const TRAIL_PTS = 24;
 /** Trail length and drift speed scale with camera distance so they look the same at every zoom. */
@@ -86,7 +86,7 @@ export class WindParticles {
   }
 
   setTheme(light: boolean) {
-    this.mat.uniforms.uColor.value.set(light ? "#1b2a38" : "#ffffff");
+    this.mat.uniforms.uColor.value.set(light ? "#0f1c26" : "#ffffff");
     this.mat.uniforms.uOpacity.value = light ? OPACITY_LIGHT : OPACITY_DARK;
   }
 
