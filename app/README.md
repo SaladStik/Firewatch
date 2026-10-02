@@ -206,6 +206,10 @@ A live readout shows the camera distance, active level, cell size, exaggeration,
 
 Fires, weather, labels, borders, focus and the Explore menu all pick the new province up automatically.
 
+## Loading screen (test page)
+
+The boot screen is **EMBER//WATCH**: a fire lookout tower that draws itself as the app loads (legs, bracing, platform, cab, roof, antenna). When loading finishes, the cab lights up and the beacon sweeps. The firefly orbits the tower in 3D: behind the cab, in front of the lattice. Open **`/loading.html`** to replay it as often as you like. Its controls are replay, load time, a progress scrubber, firefly speed, loop, error state and light theme. Code: `src/ui/loading/LoadingScreen.tsx` (used by the app's boot overlay) and `src/ui/loading/preview.tsx` (the test page).
+
 ## Firefly mascot (preview)
 
 A fully customisable, individually animatable 2D mascot lives in `src/mascot/firefly/`. Try him at **`/firefly.html`**. For the full docs (config, pose fields, moods, controller API, emotes, the 3D transformation spin, recipes, extending), see **[src/mascot/firefly/README.md](src/mascot/firefly/README.md)**.

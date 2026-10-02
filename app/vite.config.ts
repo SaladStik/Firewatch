@@ -53,7 +53,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       // Main app + the standalone mascot preview page.
-      input: { main: path.resolve(appDir, 'index.html'), firefly: path.resolve(appDir, 'firefly.html') },
+      input: { main: path.resolve(appDir, 'index.html'), firefly: path.resolve(appDir, 'firefly.html'), loading: path.resolve(appDir, 'loading.html') },
     },
   },
 })
