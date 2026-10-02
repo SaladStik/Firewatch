@@ -121,7 +121,12 @@ export async function fetchWeatherGrid(bbox: [number, number, number, number], s
     past_days: String(PAST_DAYS), forecast_days: String(FORECAST_DAYS + 1), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
   const res = await fetch(`https://api.open-meteo.com/v1/forecast?${p}`, { signal });
-  if (!res.ok) throw new Error(`Open-Meteo ${res.status}`);
+  if (!res.ok) {
+    // Open-Meteo's free tier is limited per network (hourly and daily); say so plainly.
+    let reason = "";
+    try { reason = (await res.json())?.reason ?? ""; } catch { /* not JSON */ }
+    throw new Error(res.status === 429 ? `Open-Meteo request limit reached${/daily/i.test(reason) ? " for today" : /hour/i.test(reason) ? " for this hour" : ""}` : `Open-Meteo ${res.status}`);
+  }
   const json = await res.json();
   const rows: Row[] = Array.isArray(json) ? json : [json];
   const cells = rows.map((r, k): WeatherCell => {
