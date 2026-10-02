@@ -1,4 +1,4 @@
-# EMBER//GRID
+# EMBER//WATCH
 
 Wildfire risk intelligence on a 3D hex grid, built entirely on open data. It covers all of Canada: every province and territory gets the same treatment. Alberta loads first and is usable straight away, and the rest stream in behind it. The provinces in focus render at full strength and the rest are slightly greyed.
 

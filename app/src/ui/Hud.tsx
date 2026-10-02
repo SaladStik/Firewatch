@@ -26,7 +26,7 @@ export function Brand() {
       </div>
       <div>
         <div className="text-[15px] font-bold tracking-[0.22em] text-ink glow-text">
-          EMBER<span className="text-phos">//</span>GRID
+          EMBER<span className="text-phos">//</span>WATCH
         </div>
         <div className="mt-0.5 flex items-center gap-3 text-[10px] tracking-[0.14em] text-ink-mute">
           <span>{title} WILDFIRE INTEL</span>

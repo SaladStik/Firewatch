@@ -1,6 +1,6 @@
 # Firefly mascot
 
-A 2D mascot (and future AI agent) for EMBER//GRID: a glowing firefly drawn entirely in SVG and written in TypeScript and React. There are no image assets.
+A 2D mascot (and future AI agent) for EMBER//WATCH: a glowing firefly drawn entirely in SVG and written in TypeScript and React. There are no image assets.
 
 He's built so that every part of him can be animated on its own. He can fly around the screen, emote, talk and change outfits mid-spin.
 
