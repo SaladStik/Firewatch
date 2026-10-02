@@ -5,14 +5,14 @@
  *   - a fire is near: a hotspot or active perimeter within the wind-shaped reach the map
  *     uses (world/spread.ts: 30 km in calm air, up to ~51 km downwind), or
  *   - it's inside a projected spread ellipse (demo scenario), or
- *   - its fire weather alone is High or worse (same thresholds as the map colours).
+ *   - its fire danger alone is Very High or worse (FWI ≥ 20; the map's "High" colour).
  * Plain "warm and dry somewhere" never puts a town on the list.
  */
 import { project } from "../geo/projection";
 import { downwind, SPREAD_MAX_KM, spreadInfluence } from "../world/spread";
 import type { Hotspot, Perimeter } from "./cwfis";
 import { perimeterAt, reachScale, type FireGrowth } from "./fireHistory";
-import { insideEllipse, type SpreadEllipse } from "./fireSpread";
+import { growthLookup, type GrowthField } from "../world/fireGrowth";
 import { isPerimeterActive } from "./hazards";
 import { weatherAt, type WeatherGrid } from "./openMeteo";
 import type { Place } from "./places";
@@ -38,7 +38,7 @@ interface Inputs {
   day: number;
   /** Demo-mode weather multiplier. */
   boost: number;
-  spread: SpreadEllipse[];
+  spread: GrowthField | null;
   /** Per-fire growth calibration by perimeter id. */
   growth?: Record<string, FireGrowth>;
   now?: number;
@@ -72,6 +72,7 @@ export function communityThreats(inp: Inputs): CommunityThreat[] {
   }
 
   const out: CommunityThreat[] = [];
+  const spreadDay = growthLookup(inp.spread);
   for (const place of inp.places) {
     const { x, z } = project(place.lat, place.lng);
     // Nearest fire, and the strongest wind-shaped influence of any fire on this town.
@@ -84,7 +85,7 @@ export function communityThreats(inp: Inputs): CommunityThreat[] {
       influence = Math.max(influence, spreadInfluence(vx, vz, f));
     }
     const wx = Math.min(1, (weatherAt(inp.weather, place.lat, place.lng)?.days[inp.day]?.risk ?? 0) * inp.boost);
-    const inPath = inp.spread.some((e) => insideEllipse(e, x, z));
+    const inPath = spreadDay(x, z) >= 0;
 
     let score = 0, reason = "";
     if (inPath) { score = 0.9 + 0.1 * wx; reason = "in projected path"; }
@@ -93,7 +94,7 @@ export function communityThreats(inp: Inputs): CommunityThreat[] {
       const s = influence * (0.65 + 0.35 * wx);
       if (s > score) { score = s; reason = `fire ${Math.max(1, Math.round(near))} km ${dirOf(nearDx, nearDz)}`; }
     }
-    if (wx >= HIGH_WEATHER && wx * 0.75 > score) { score = wx * 0.75; reason = wx >= 0.85 ? "extreme fire weather" : "high fire weather"; }
+    if (wx >= HIGH_WEATHER && wx * 0.75 > score) { score = wx * 0.75; reason = wx >= 0.85 ? "extreme fire danger" : "very high fire danger"; }
     if (score >= LIST_AT) out.push({ place, score, reason });
   }
   return out.sort((a, b) => b.score - a.score || b.place.pop - a.place.pop);

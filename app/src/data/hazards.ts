@@ -7,7 +7,7 @@ import { downwind } from "../world/spread";
 import type { HazardSnapshot } from "../world/types";
 import type { Hotspot, Perimeter } from "./cwfis";
 import { perimeterAt, reachScale, type FireGrowth } from "./fireHistory";
-import type { SpreadEllipse } from "./fireSpread";
+import type { GrowthField } from "../world/fireGrowth";
 import type { RainBlob } from "./rain";
 import { weatherAt, type WeatherGrid } from "./openMeteo";
 
@@ -19,8 +19,8 @@ export interface HazardInputs {
   day: number;
   /** Demo scenario: multiplies weather risk (1 = real data). */
   weatherBoost: number;
-  /** Projected spread ellipses (data/fireSpread.ts); computed by the engine. */
-  spread: SpreadEllipse[];
+  /** Projected burn from the fuel-aware growth model (world/fireGrowth.ts). */
+  spread: GrowthField | null;
   /** Demo-scenario rain cells for the selected day (data/rain.ts). */
   rain: RainBlob[];
   /** Per-fire growth calibration by perimeter id (data/fireHistory.ts). */

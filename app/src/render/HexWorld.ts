@@ -62,6 +62,7 @@ export class HexWorld {
         uRadius: { value: 1000 },
         uInnerFocus: { value: new Vector2() },
         uInnerRadius: { value: 0 },
+        uLevelIdx: { value: i },
       };
       const group = new Group();
       group.visible = i === 0;

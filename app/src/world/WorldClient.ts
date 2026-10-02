@@ -2,6 +2,7 @@
 import type { Landmark } from "../hex/overlayStyles";
 import type { ProjectionParams } from "../geo/projection";
 import type { ChunkData, HazardSnapshot, TerrainMeta, WorkerRequest, WorkerResponse } from "./types";
+import type { GrowthField, GrowthSource } from "./fireGrowth";
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -84,6 +85,11 @@ export class WorldClient {
   restatus(c: ChunkData) {
     return this.any<{ status: Uint8Array; risk: Float32Array; edges: Uint8Array } | null>({ type: "restatus", level: c.level, cx: c.cx, cz: c.cz });
   }
+  /** Run the fuel-aware fire growth model on one worker (it needs the land cover). */
+  growth(sources: GrowthSource[], horizon: number, size: number) {
+    return this.any<GrowthField>({ type: "growth", sources, horizon, size });
+  }
+
   sample(x: number, z: number) {
     return this.call<PointSample>({ type: "sample", x, z });
   }

@@ -7,7 +7,7 @@
  * Demo rainstorms damp the whole score under them (data/rain.ts).
  * Direct observations override: inside an active perimeter / a hotspot in the hex.
  */
-import { insideEllipse } from "../data/fireSpread";
+import { growthLookup } from "./fireGrowth";
 import { blobDamping, blobRain } from "../data/rain";
 import { unproject } from "../geo/projection";
 import { NODE_TYPES, NodeStatus, statusForRisk } from "../hex/nodeTypes";
@@ -22,6 +22,7 @@ const bucketKey = (bx: number, bz: number) => bx * 100003 + bz;
 export class HazardField {
   private buckets = new Map<number, HazardSnapshot["hotspots"]>();
   constructor(private snap: HazardSnapshot) {
+    this.spreadDay = growthLookup(snap.spread);
     for (const h of snap.hotspots) {
       const k = bucketKey(Math.floor(h.x / BUCKET_KM), Math.floor(h.z / BUCKET_KM));
       let b = this.buckets.get(k);
@@ -80,9 +81,19 @@ export class HazardField {
     return 0;
   }
 
-  /** Inside any projected spread ellipse? */
-  private inSpread(x: number, z: number): boolean {
-    for (const e of this.snap.spread) if (insideEllipse(e, x, z)) return true;
+  /**
+   * Projected to burn by the selected day (fuel-aware growth model)? A map hex counts if ANY part
+   * of it is reached (centre + 6 points toward its corners), so a small projection still shows
+   * on coarse hexes instead of slipping between their centres.
+   */
+  private spreadDay = growthLookup(null);
+  private inSpread(x: number, z: number, hexSize: number): boolean {
+    if (!this.snap.spread?.cells.length) return false;
+    if (this.spreadDay(x, z) >= 0) return true;
+    for (let k = 0; k < 6; k++) {
+      const a = (Math.PI / 3) * k + Math.PI / 6;
+      if (this.spreadDay(x + Math.cos(a) * hexSize * 0.75, z + Math.sin(a) * hexSize * 0.75) >= 0) return true;
+    }
     return false;
   }
 
@@ -99,7 +110,7 @@ export class HazardField {
     if (this.snap.rain.length) risk *= blobDamping(blobRain(this.snap.rain, x, z));
     risk = Math.min(1, risk);
     // Projected spread only marks burnable ground outside existing burn scars.
-    if (perim === 0 && fuel > 0 && this.inSpread(x, z)) return { status: NodeStatus.Projected, risk };
+    if (perim === 0 && fuel > 0 && this.inSpread(x, z, hexSize)) return { status: NodeStatus.Projected, risk };
     if (perim === 1) return { status: NodeStatus.Burned, risk: risk * 0.3 };
     return { status: fuel === 0 ? NodeStatus.Normal : statusForRisk(risk), risk };
   }

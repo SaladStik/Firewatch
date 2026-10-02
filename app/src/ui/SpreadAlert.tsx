@@ -1,6 +1,6 @@
 /** Communities inside the projected fire spread for the selected day (scenario model). */
 import { useMemo } from "react";
-import { insideEllipse } from "../data/fireSpread";
+import { growthLookup } from "../world/fireGrowth";
 import type { Engine } from "../engine";
 import { project } from "../geo/projection";
 import { app } from "../state/app";
@@ -19,12 +19,13 @@ export function SpreadAlert({ engine }: { engine: Engine | null }) {
   const focus = useFocusIndices();
 
   const threatened = useMemo(() => {
-    if (!spread.length) return [];
+    if (!spread?.cells.length) return [];
+    const dayAt = growthLookup(spread);
     return places
       .filter((p) => !p.landmark && focus.has(p.region))
       .filter((p) => {
         const w = project(p.lat, p.lng);
-        return spread.some((e) => insideEllipse(e, w.x, w.z));
+        return dayAt(w.x, w.z) >= 0;
       })
       .sort((a, b) => b.pop - a.pop);
   }, [spread, places, focus]);

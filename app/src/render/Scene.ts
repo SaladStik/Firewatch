@@ -276,6 +276,13 @@ export class Scene {
 
   private bindInput() {
     const c = this.canvas;
+    // Dev: Ctrl+Shift+D tints hexes by detail level (L3 red, L4 yellow, L5 cyan…), stand-ins magenta.
+    window.addEventListener("keydown", (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        sharedUniforms.uDebug.value = sharedUniforms.uDebug.value ? 0 : 1;
+      }
+    });
     c.addEventListener("pointermove", (e) => {
       const r = c.getBoundingClientRect();
       this.pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);

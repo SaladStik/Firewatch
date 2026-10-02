@@ -57,7 +57,7 @@ export function ForecastBar({ engine }: { engine: Engine | null }) {
       </div>
       <div className="scroll-thin hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto px-2 py-1.5 lg:flex">
         <span className="label-xs mr-1 shrink-0">Communities at risk</span>
-        {atRisk.length === 0 && <span className="shrink-0 text-[10.5px] text-ink-mute">None: no fires near towns and no high fire weather</span>}
+        {atRisk.length === 0 && <span className="shrink-0 text-[10.5px] text-ink-mute">None: no fires near towns and no very high fire danger</span>}
         {atRisk.slice(0, MAX_SHOWN).map(({ place: p, score, reason }) => (
           <button
             key={`${p.region}-${p.name}-${p.lat}`}

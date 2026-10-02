@@ -33,6 +33,8 @@ export const sharedUniforms = {
   uRainTex: { value: emptyRainTex() },
   /** Rain texture placement: x0, z0, size (km), on (0/1). */
   uRain: { value: new Vector4(0, 0, 1, 0) },
+  /** Dev: Ctrl+Shift+D tints hexes by detail level and stand-in chunks magenta (render/Scene.ts). */
+  uDebug: { value: 0 },
 };
 
 function emptyRainTex() {
@@ -80,6 +82,8 @@ export interface LevelUniforms {
   uRadius: { value: number };
   uInnerFocus: { value: Vector2 };
   uInnerRadius: { value: number };
+  /** Which detail level this is (debug tint). */
+  uLevelIdx: { value: number };
 }
 
 const COMMON_VERT = /* glsl */ `
@@ -178,6 +182,17 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
       uniform vec3 uTarget;
       uniform sampler2D uRainTex;
       uniform vec4 uRain;
+      uniform float uDebug;
+      uniform float uLevelIdx;
+      uniform float uHoleOn;
+      // Dev view: each detail level its own colour; chunks standing in for unloaded finer ones magenta.
+      vec3 debugTint(vec3 c) {
+        if (uDebug < 0.5) return c;
+        int l = int(uLevelIdx + 0.5);
+        vec3 k = l == 0 ? vec3(0.6, 0.6, 0.6) : l == 1 ? vec3(0.3, 0.4, 1.0) : l == 2 ? vec3(0.2, 1.0, 0.3) : l == 3 ? vec3(1.0, 0.2, 0.2) : l == 4 ? vec3(1.0, 0.9, 0.1) : vec3(0.1, 0.9, 1.0);
+        c = mix(c, k * 0.6, 0.55);
+        return uHoleOn < 0.5 ? mix(c, vec3(1.0, 0.0, 1.0), 0.5) : c;
+      }
       varying vec3 vW;
       varying vec3 vLine;
       varying vec4 vStyle;
@@ -295,7 +310,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           // Same tint inside the x-ray zone as around it, so the zone never shows as a patch in the rain.
           float wetK = rainAt(vW.xz);
           if (top) col = mix(col, vec3(0.16, 0.36, 0.7) * (0.4 + vStyle.x), wetK * 0.3);
-          gl_FragColor = vec4(col * vFade, 1.0);
+          gl_FragColor = vec4(debugTint(col * vFade), 1.0);
         } else {
           // LIGHT — cartographic: soft tinted land, darker walls for depth, ink outlines.
           float m = max(max(vLine.r, vLine.g), vLine.b);
@@ -314,7 +329,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           col = mix(col, ink, pat * 0.12 * strength * solid);
           col = mix(col, hue * 0.5, vHL * (top ? 0.25 : 0.12));
           if (top) col = mix(col, vec3(0.42, 0.62, 0.88), rainAt(vW.xz) * 0.25);
-          gl_FragColor = vec4(mix(uBg, col, vFade), 1.0);
+          gl_FragColor = vec4(debugTint(mix(uBg, col, vFade)), 1.0);
         }
       }
     `,

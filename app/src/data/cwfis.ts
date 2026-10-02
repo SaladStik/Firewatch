@@ -30,6 +30,10 @@ export interface Hotspot {
   agency: string;
   /** Workspace index of the region it falls in. */
   region?: number;
+  /** FWI moisture codes CWFIS computed at this point (NaN when missing). */
+  ffmc?: number;
+  dmc?: number;
+  dc?: number;
 }
 
 export interface Perimeter {
@@ -55,8 +59,34 @@ export async function fetchHotspots(bbox: BBox, signal?: AbortSignal): Promise<H
       lat: Number(p.lat), lng: Number(p.lon), time: String(p.rep_date),
       frp: Number(p.frp ?? 0), fwi: Number(p.fwi ?? 0), hfi: Number(p.hfi ?? 0),
       fuel: String(p.fuel ?? "?"), sensor: String(p.sensor ?? "?"), agency: String(p.agency ?? "?"),
+      // CWFIS's own FWI moisture codes at the hotspot (from its interpolated FWI grids).
+      ffmc: Number(p.ffmc), dmc: Number(p.dmc), dc: Number(p.dc),
     };
   });
+}
+
+/** A CWFIS fire weather station's latest observed FWI moisture codes (CFFDRS). */
+export interface FwiStation {
+  lat: number;
+  lng: number;
+  date: string;
+  ffmc: number;
+  dmc: number;
+  dc: number;
+}
+
+/** Every reporting station's current FFMC / DMC / DC (one small request, Canada-wide). */
+export async function fetchFwiStations(signal?: AbortSignal): Promise<FwiStation[]> {
+  const p = new URLSearchParams({
+    service: "WFS", version: "1.0.0", request: "GetFeature", outputFormat: "application/json",
+    typeName: "public:firewx_stns_current", propertyName: "lat,lon,rep_date,ffmc,dmc,dc",
+  });
+  const res = await fetch(`${WFS}?${p}`, { signal });
+  if (!res.ok) throw new Error(`CWFIS stations ${res.status}`);
+  const json = await res.json();
+  return ((json.features ?? []) as { properties: Record<string, unknown> }[])
+    .map(({ properties: q }) => ({ lat: Number(q.lat), lng: Number(q.lon), date: String(q.rep_date), ffmc: Number(q.ffmc), dmc: Number(q.dmc), dc: Number(q.dc) }))
+    .filter((s) => [s.lat, s.lng, s.ffmc, s.dmc, s.dc].every(Number.isFinite));
 }
 
 export async function fetchPerimeters(bbox: BBox, signal?: AbortSignal): Promise<Perimeter[]> {

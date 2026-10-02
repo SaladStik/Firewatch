@@ -97,7 +97,10 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
             <KV k="Wind" v={`${fx(wx.wind)} km/h${Number.isFinite(wx.windFrom) ? ` from ${compass(wx.windFrom)} (${Math.round(wx.windFrom)}°)` : ""}`} />
             <KV k="Rain (day)" v={`${fx(wx.rainMm, 1)} mm`} />
             <KV k="Days since rain" v={wx.daysSinceRain > PAST_DAYS ? `${PAST_DAYS}+` : String(wx.daysSinceRain)} />
-            <KV k="Fosberg FFWI" v={fx(wx.ffwi, 1)} />
+            <KV k="Fire danger (FWI)" v={`${fx(wx.fwi, 1)} · ${wx.danger}`} accent={wx.fwi >= 20 ? "var(--color-risk-ext)" : wx.fwi >= 10 ? "var(--color-risk-high)" : undefined} />
+            <KV k="FFMC / DMC / DC" v={`${fx(wx.ffmc, 1)} / ${fx(wx.dmc, 1)} / ${fx(wx.dc)}`} />
+            <KV k="ISI / BUI" v={`${fx(wx.isi, 1)} / ${fx(wx.bui, 1)}`} />
+            <KV k="Fosberg (sensor comparison)" v={fx(wx.ffwi, 1)} />
           </>
         )}
       </div>

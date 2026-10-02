@@ -7,7 +7,7 @@ import {
   type ShaderMaterial,
 } from "three";
 import { GRID } from "../config/grid";
-import { chunkWorldBounds, hash01, hexKey } from "../hex/hexMath";
+import { chunkWorldBounds, hash01, hexKey, SQRT3, worldToHex } from "../hex/hexMath";
 import { NODE_TYPES, type NodeOverride, type PropKind } from "../hex/nodeTypes";
 import { LandClass } from "../geo/landClass";
 import type { NodeStatus } from "../hex/nodeTypes";
@@ -294,16 +294,25 @@ export class ChunkMesh {
   }
 
   /**
-   * Rebuild the wall instances: a wall is drawn only where the neighbour is lower or open
-   * (contour bit), or for lifted hexes (hazard pop-up) where every wall can show.
+   * Rebuild the wall instances: a wall is drawn only where it can be seen — the neighbour is
+   * lower or open (contour bit), or this hex is lifted (hazard pop-up) higher than the
+   * neighbour on that side. Walls between equally lifted neighbours are buried, so skipped.
    */
   private syncWalls() {
     const d = this.data, style = this.aStyle.array as Float32Array;
+    const size = GRID.levels[d.level].size;
     const list: number[] = []; // pairs: hex index, side
     for (let i = 0; i < d.count; i++) {
-      const lifted = style[i * 4 + 2] > 0.001;
+      const lift = style[i * 4 + 2];
       const c = d.contours[i];
-      for (let k = 0; k < 6; k++) if (lifted || c & (1 << k)) list.push(i, k);
+      for (let k = 0; k < 6; k++) {
+        if (c & (1 << k)) { list.push(i, k); continue; }
+        if (lift <= 0.001) continue;
+        // Side k faces the neighbour at angle k·60° (same order as the worker's contour bits).
+        const ang = (Math.PI / 3) * k;
+        const j = this.indexAt(d.x[i] + Math.cos(ang) * SQRT3 * size, d.z[i] + Math.sin(ang) * SQRT3 * size, size);
+        if (j < 0 || lift > style[j * 4 + 2] + 0.001) list.push(i, k);
+      }
     }
     const m = list.length / 2;
     const g = this.wallsGeo;
@@ -331,6 +340,17 @@ export class ChunkMesh {
     for (let j = 0; j < m; j++) sd[j] = list[j * 2 + 1];
     side.needsUpdate = true;
     g.instanceCount = m;
+  }
+
+  private byQR: Map<number, number> | null = null;
+  /** Index of the hex in this chunk at a world point, or -1 (outside the chunk). */
+  private indexAt(x: number, z: number, size: number): number {
+    if (!this.byQR) {
+      this.byQR = new Map();
+      for (let i = 0; i < this.data.count; i++) this.byQR.set(this.data.q[i] * 100_003 + this.data.r[i], i);
+    }
+    const h = worldToHex(x, z, size);
+    return this.byQR.get(h.q * 100_003 + h.r) ?? -1;
   }
 
   /** Replay the build-in animation (e.g. when a cached chunk re-enters view). */

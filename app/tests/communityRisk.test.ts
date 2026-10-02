@@ -14,7 +14,7 @@ const grid = (risk: number): WeatherGrid => ({
 const town = { name: "Town", lat: 54.5, lng: -115, pop: 5000, region: 0 };
 const at = (dxKm: number) => { const { x, z } = project(54.5, -115); return unproject(x + dxKm, z); };
 const run = (risk: number, hotspots: { lat: number; lng: number }[]) =>
-  communityThreats({ places: [town], hotspots, perimeters: [], weather: [grid(risk)], day: 0, boost: 1, spread: [] });
+  communityThreats({ places: [town], hotspots, perimeters: [], weather: [grid(risk)], day: 0, boost: 1, spread: null });
 
 test("a quiet day lists nobody, even with moderate fire weather", () => {
   assert.equal(run(0.45, []).length, 0);
@@ -22,7 +22,7 @@ test("a quiet day lists nobody, even with moderate fire weather", () => {
 
 test("high fire weather alone lists a town", () => {
   const [t] = run(0.75, []);
-  assert.equal(t?.reason, "high fire weather");
+  assert.equal(t?.reason, "very high fire danger");
 });
 
 test("a nearby fire lists a town with its distance and direction; a far one doesn't", () => {

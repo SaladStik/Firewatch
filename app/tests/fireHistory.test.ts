@@ -6,7 +6,7 @@ import { setProjection } from "../src/geo/projection.ts";
 
 setProjection({ lat0: 54.5, lng0: -115, lat1: 49, lat2: 77 });
 
-const wx = (risk: number, wind = 15): DayWeather => ({ temp: 25, rh: 25, wind, windFrom: 270, rainMm: 0, daysSinceRain: 6, ffwi: 40, risk });
+const wx = (risk: number, wind = 15): DayWeather => ({ temp: 25, rh: 25, wind, windFrom: 270, rainMm: 0, daysSinceRain: 6, ffwi: 40, ffmc: 90, dmc: 40, dc: 300, isi: 20 * risk, bui: 60, fwi: 30 * risk, danger: "High", risk });
 const dates = ["2026-09-26", "2026-09-27", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"];
 const hist = (growthKm: number[]): FireHistory => ({ id: "f", lastDate: "2026-10-01", days: dates.map((date, i) => ({ date, areaHa: 0, growthKm: growthKm[i] ?? 0 })) });
 
