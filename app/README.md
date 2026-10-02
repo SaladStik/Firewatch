@@ -208,7 +208,7 @@ Fires, weather, labels, borders, focus and the Explore menu all pick the new pro
 
 ## Loading screen (test page)
 
-The boot screen is **EMBER//WATCH**: a fire lookout tower that draws itself as the app loads (legs, bracing, platform, cab, roof, antenna). When loading finishes, the cab lights up and the beacon sweeps. The firefly orbits the tower in 3D: behind the cab, in front of the lattice. Open **`/loading.html`** to replay it as often as you like. Its controls are replay, load time, a progress scrubber, firefly speed, loop, error state and light theme. Code: `src/ui/loading/LoadingScreen.tsx` (used by the app's boot overlay) and `src/ui/loading/preview.tsx` (the test page).
+The boot screen is **EMBER//WATCH**: a fire lookout tower that draws itself as the app loads (legs, bracing, platform, cab, roof, antenna). The firefly (the standard mascot, small) flies up around the tower in a smooth spiral as loading progresses, with a short fading comet tail. When loading finishes he reaches the top and lights the tower: a flash at the beacon, then the cab windows glow and the beacon sweeps. A **system check** frame ticks off what's loading: terrain, roads and towns, live fires, weather and forecast, fire danger, fire growth. Open **`/loading.html`** to replay it as often as you like. Its controls are replay, load time, a progress scrubber, loop, firefly on/off, error state and light theme. Code: `src/ui/loading/LoadingScreen.tsx` (used by the app's boot overlay) and `src/ui/loading/preview.tsx` (the test page).
 
 ## Firefly mascot (preview)
 

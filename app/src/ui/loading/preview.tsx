@@ -20,7 +20,6 @@ function Preview() {
   const [running, setRunning] = useState(true);
   const [loop, setLoop] = useState(true);
   const [firefly, setFirefly] = useState(true);
-  const [speed, setSpeed] = useState(1);
   const [error, setError] = useState(false);
   const [light, setLight] = useState(false);
   const [run, setRun] = useState(0); // bump to restart (remounts the screen, like a fresh page load)
@@ -49,14 +48,13 @@ function Preview() {
 
   return (
     <div className="flex h-full w-full items-center justify-center bg-void">
-      <LoadingScreen key={run} progress={progress} stage={stageAt(progress)} error={error ? "Couldn't load the map data. Retrying…" : null} firefly={firefly} orbitSpeed={speed} />
+      <LoadingScreen key={run} progress={progress} stage={stageAt(progress)} error={error ? "Couldn't load the map data. Retrying…" : null} firefly={firefly} />
 
       <div className="panel absolute top-4 right-4 flex w-[260px] flex-col gap-2 p-3 text-[11px] text-ink-dim">
         <div className="label-xs text-phos">LOADING SCREEN · TEST</div>
         <Row><Btn onClick={replay}>↻ Replay</Btn><Btn on={running} onClick={() => setRunning((r) => !r)}>{running ? "❚❚ Pause" : "▶ Play"}</Btn></Row>
         <Range label={`Load time ${seconds}s`} min={1} max={30} step={1} value={seconds} set={setSeconds} />
         <Range label={`Progress ${Math.round(progress * 100)}%`} min={0} max={1} step={0.005} value={progress} set={(v) => { setRunning(false); setProgress(v); }} />
-        <Range label={`Firefly speed ×${speed.toFixed(1)}`} min={0.2} max={3} step={0.1} value={speed} set={setSpeed} />
         <Check on={loop} set={setLoop}>Loop</Check>
         <Check on={firefly} set={setFirefly}>Firefly</Check>
         <Check on={error} set={setError}>Error state</Check>
