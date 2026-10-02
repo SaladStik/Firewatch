@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 
 const appDir = path.dirname(fileURLToPath(import.meta.url))
 
@@ -44,16 +44,23 @@ function instrumentServer(): Plugin {
 }
 
 // Static site: `npm run build` → dist/ (deploy anywhere). Set BASE for sub-path hosting (e.g. GitHub Pages).
-export default defineConfig({
-  base: process.env.BASE ?? '/',
-  plugins: [react(), tailwindcss(), instrumentServer()],
-  worker: { format: 'es' },
-  // Don't watch the bake cache (GBs of downloads). public/data stays watched so newly baked files are served.
-  server: { watch: { ignored: ['**/scripts/.cache/**'] } },
-  build: {
-    rollupOptions: {
-      // Main app + the standalone mascot preview page.
-      input: { main: path.resolve(appDir, 'index.html'), firefly: path.resolve(appDir, 'firefly.html'), loading: path.resolve(appDir, 'loading.html') },
+export default defineConfig(({ mode }) => {
+  // Optional shared data server (server/index.ts): in dev the page calls its own /api and it's
+  // forwarded here, so every device on the network only needs to reach this dev server.
+  const dataServer = (loadEnv(mode, appDir, 'VITE_').VITE_DATA_SERVER ?? '').trim()
+  const proxy = /^https?:\/\//.test(dataServer) ? { '/api': { target: dataServer, changeOrigin: true } } : undefined
+  return {
+    base: process.env.BASE ?? '/',
+    plugins: [react(), tailwindcss(), instrumentServer()],
+    worker: { format: 'es' },
+    // Don't watch the bake cache (GBs of downloads). public/data stays watched so newly baked files are served.
+    server: { watch: { ignored: ['**/scripts/.cache/**'] }, proxy },
+    preview: { proxy },
+    build: {
+      rollupOptions: {
+        // Main app + the standalone mascot preview page.
+        input: { main: path.resolve(appDir, 'index.html'), firefly: path.resolve(appDir, 'firefly.html'), loading: path.resolve(appDir, 'loading.html') },
+      },
     },
-  },
+  }
 })
