@@ -18,8 +18,8 @@ function facingName(heading: number) {
 
 /**
  * North arrow. Reads the camera heading every frame and rotates the dial directly (no React
- * re-renders), eased along the shortest way round so it glides instead of stepping. Fixed size:
- * the facing label changes text, never the panel's width.
+ * re-renders), eased along the shortest way round so it glides instead of stepping. Fixed size,
+ * wide enough for the longest label ("Northwest"): the label changes text, never the panel's width.
  */
 export function CompassRose({ engine }: { engine: Engine | null }) {
   const dial = useRef<SVGSVGElement>(null);
@@ -43,7 +43,7 @@ export function CompassRose({ engine }: { engine: Engine | null }) {
     return () => cancelAnimationFrame(raf);
   }, [engine]);
   return (
-    <div className="panel pointer-events-none flex w-[84px] flex-col items-center gap-1 px-2 py-2" title="Compass" data-tour="compass">
+    <div className="panel pointer-events-none flex w-[100px] flex-col items-center gap-1 px-2 py-2" title="Compass" data-tour="compass">
       <div className="relative h-14 w-14">
         <svg ref={dial} viewBox="0 0 64 64" className="h-14 w-14" style={{ willChange: "transform" }} aria-hidden>
           <circle cx="32" cy="32" r="30" fill="var(--color-panel)" stroke="var(--color-line)" strokeWidth="1.5" />
@@ -56,7 +56,7 @@ export function CompassRose({ engine }: { engine: Engine | null }) {
           <circle cx="32" cy="32" r="2.5" fill="var(--color-ink)" />
         </svg>
       </div>
-      <span ref={label} className="label-xs block w-full truncate text-center">North</span>
+      <span ref={label} className="label-xs block w-full whitespace-nowrap text-center">North</span>
     </div>
   );
 }
