@@ -6,10 +6,10 @@
  *  • exposes a node-level API: getNode / pick / setOverride / setStyler
  */
 import gsap from "gsap";
-import { Group, Ray, Vector3 } from "three";
+import { Box3, Frustum, Group, Matrix4, Ray, Vector2, Vector3, type Camera } from "three";
 import { GRID, levelForDistance } from "../config/grid";
 import { unproject } from "../geo/projection";
-import { axialToOffset, chunkKey, chunksInRadius, hexKey, worldToHex, SQRT3 } from "../hex/hexMath";
+import { axialToOffset, chunkKey, chunksInRadius, chunkWorldBounds, hexKey, worldToHex, SQRT3 } from "../hex/hexMath";
 import { NODE_STATUSES, type NodeOverride } from "../hex/nodeTypes";
 import type { LandClass } from "../geo/landClass";
 import type { NodeStatus } from "../hex/nodeTypes";
@@ -27,6 +27,7 @@ interface LevelState {
   mats: ChunkMaterials;
   chunks: Map<string, ChunkMesh>;
   lastUsed: Map<string, number>;
+  fadingOut: boolean;
 }
 
 export interface WorldStats {
@@ -46,22 +47,27 @@ export class HexWorld {
   private active = 0;
   private frame = 0;
   private style: StyleSource = { overrides: new Map(), styler: null, focus: new Set([0]) };
-  private visibleKeys = new Set<string>();
+  private visibleKeys = new Map<number, Set<string>>();
   onStats?: (s: WorldStats) => void;
   onChunkLoaded?: (c: ChunkData) => void;
 
   constructor(private client: WorldClient) {
+    this.maxPending = 8 * client.size;
     this.levels = GRID.levels.map((cfg, i) => {
       const uniforms: LevelUniforms = {
         uSize: { value: cfg.size },
-        uGap: { value: GRID.hexScale },
+        uGap: { value: cfg.gap ?? GRID.hexScale },
         uLevelAlpha: { value: i === 0 ? 1 : 0 },
+        uFocusL: { value: new Vector2() },
+        uRadius: { value: 1000 },
+        uInnerFocus: { value: new Vector2() },
+        uInnerRadius: { value: 0 },
       };
       const group = new Group();
       group.visible = i === 0;
       this.root.add(group);
       return {
-        group, uniforms, chunks: new Map(), lastUsed: new Map(),
+        group, uniforms, chunks: new Map(), lastUsed: new Map(), fadingOut: false,
         mats: {
           hex: createHexMaterial(uniforms), prop: createPropMaterial(uniforms),
           building: createBuildingMaterial(uniforms),
@@ -81,51 +87,143 @@ export class HexWorld {
    */
   hold = false;
 
-  update(focusX: number, focusZ: number, dist: number) {
+  private frustum = new Frustum();
+  private projView = new Matrix4();
+  private box = new Box3();
+
+  /**
+   * View-aware, multi-resolution streaming.
+   *
+   *  - Ring 0: the active level (finest for this zoom) around what you're looking at.
+   *  - Rings 1..N: progressively COARSER levels drawn only outside the previous ring, out to a
+   *    much larger radius — at L3/L4 you still see far (a fire on the horizon) at lower detail,
+   *    without paying for millions of tiny far-away hexes.
+   *  - While a finer chunk is still loading, the coarser chunk under it stays drawn (no holes).
+   *  - Rings are pushed forward along the view direction; only on-screen chunks get built;
+   *    nearest chunks (and finer rings) are built first.
+   */
+  update(targetX: number, targetZ: number, dist: number, camera?: Camera) {
     this.frame++;
     if (this.hold) return;
     this.switchLevel(dist);
     const L = this.active;
-    const size = GRID.levels[L].size;
-    const radius = Math.min(dist * GRID.viewRadiusFactor, GRID.maxRadiusHexes * size * SQRT3);
-    sharedUniforms.uFocus.value.set(focusX, focusZ);
-    sharedUniforms.uRadius.value = radius;
 
-    const st = this.levels[L];
-    const needed = chunksInRadius(focusX, focusZ, radius, GRID.chunkCells, size);
+    // Ground-plane view direction (none when looking straight down).
+    let fx = 0, fz = 0;
+    if (camera) {
+      const dx = targetX - camera.position.x, dz = targetZ - camera.position.z, h = Math.hypot(dx, dz);
+      const tilt = h / Math.max(1e-6, Math.hypot(h, camera.position.y));
+      if (h > 1e-6) { fx = (dx / h) * tilt; fz = (dz / h) * tilt; }
+      this.projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+      this.frustum.setFromProjectionMatrix(this.projView);
+    }
+
+    // Rings: each coarser ring reaches farRingReach× further (its own hex cap applies).
+    const rings: { level: number; reach: number }[] = [];
+    let reach = Math.min(dist * GRID.viewRadiusFactor, GRID.maxRadiusHexes * GRID.levels[L].size * SQRT3);
+    rings.push({ level: L, reach });
+    for (let j = L - 1; j >= Math.max(0, L - GRID.farRings); j--) {
+      const r = Math.min(reach * GRID.farRingReach, GRID.maxRadiusHexes * GRID.levels[j].size * SQRT3);
+      if (r <= reach * 1.05) break;
+      rings.push({ level: j, reach: r });
+      reach = r;
+    }
+
     const now = sharedUniforms.uTime.value;
-    const nextVisible = new Set<string>();
     let requested = 0;
-    for (const { cx, cz } of needed) {
-      const key = chunkKey(L, cx, cz);
-      if (this.empty.has(key)) continue;
-      nextVisible.add(key);
-      const cm = st.chunks.get(key);
-      if (cm && this.stale.has(key) && !this.pending.has(key) && requested < GRID.maxChunkRequestsPerFrame) {
-        requested++;
-        this.request(L, cx, cz, key);
-      }
-      if (cm) {
-        if (!cm.group.visible) {
-          cm.group.visible = true;
-          cm.rebirth(now);
-        }
-        st.lastUsed.set(key, this.frame);
-      } else if (!this.pending.has(key) && requested < GRID.maxChunkRequestsPerFrame && this.pending.size < 16) {
-        requested++;
-        this.request(L, cx, cz, key);
-      }
-    }
-    for (const key of this.visibleKeys) {
-      if (!nextVisible.has(key)) {
+    const want = new Map<number, Set<string>>();
+    type Box = { minX: number; maxX: number; minZ: number; maxZ: number };
+    let missing: Box[] = []; // finer-ring chunks wanted but not built yet
+    let inner: { x: number; z: number; r: number } | null = null;
+
+    for (const { level, reach: r } of rings) {
+      const size = GRID.levels[level].size;
+      const st = this.levels[level];
+      const back = Math.min(r, dist * 0.6);
+      const radius = (r + back) / 2, off = (r - back) / 2;
+      const focusX = targetX + fx * off, focusZ = targetZ + fz * off;
+      st.uniforms.uFocusL.value.set(focusX, focusZ);
+      st.uniforms.uRadius.value = radius;
+      st.uniforms.uInnerFocus.value.set(inner?.x ?? 0, inner?.z ?? 0);
+      st.uniforms.uInnerRadius.value = inner?.r ?? 0;
+      if (level === L) sharedUniforms.uFocus.value.set(focusX, focusZ);
+      sharedUniforms.uRadius.value = radius; // outermost ring (ground grid, labels)
+
+      const keys = new Set<string>();
+      want.set(level, keys);
+      const nowMissing: Box[] = [];
+      const needed = chunksInRadius(focusX, focusZ, radius, GRID.chunkCells, size)
+        .map((c) => {
+          const bx = chunkWorldBounds(c.cx, c.cz, GRID.chunkCells, size);
+          let hole = true;
+          if (inner) {
+            const fill = missing.some((m) => m.minX < bx.maxX && m.maxX > bx.minX && m.minZ < bx.maxZ && m.maxZ > bx.minZ);
+            const corners = [[bx.minX, bx.minZ], [bx.maxX, bx.minZ], [bx.minX, bx.maxZ], [bx.maxX, bx.maxZ]];
+            const far = Math.max(...corners.map(([x, z]) => Math.hypot(x - inner!.x, z - inner!.z)));
+            if (far < inner.r * 0.9 && !fill) return null; // fully covered by the finer ring
+            if (fill) hole = false; // stand in for finer chunks that are still loading
+          }
+          let inView = true;
+          if (camera) {
+            this.box.min.set(bx.minX, -1, bx.minZ);
+            this.box.max.set(bx.maxX, 300, bx.maxZ);
+            inView = this.frustum.intersectsBox(this.box);
+          }
+          return { ...c, bx, hole, inView, d: Math.hypot((bx.minX + bx.maxX) / 2 - targetX, (bx.minZ + bx.maxZ) / 2 - targetZ) };
+        })
+        .filter((c): c is NonNullable<typeof c> => !!c)
+        .sort((a, b) => a.d - b.d);
+      for (const { cx, cz, bx, hole, inView } of needed) {
+        const key = chunkKey(level, cx, cz);
+        if (this.empty.has(key)) continue;
+        if (!inView && !st.chunks.has(key)) continue; // off-screen: don't build it
+        keys.add(key);
         const cm = st.chunks.get(key);
-        if (cm) cm.group.visible = false;
+        const canRequest = requested < GRID.maxChunkRequestsPerFrame && this.pending.size < this.maxPending && !this.pending.has(key);
+        if (cm && this.stale.has(key) && canRequest) { requested++; this.request(level, cx, cz, key); }
+        if (cm) {
+          cm.holeOn = hole ? 1 : 0;
+          if (!cm.group.visible) { cm.group.visible = true; cm.rebirth(now); }
+          st.lastUsed.set(key, this.frame);
+        } else {
+          if (inView) nowMissing.push(bx);
+          if (canRequest) { requested++; this.request(level, cx, cz, key); }
+        }
       }
+      missing = nowMissing;
+      inner = { x: focusX, z: focusZ, r: radius };
     }
-    this.visibleKeys = nextVisible;
+
+    // Levels in use fade in, others fade out; chunks no longer wanted are hidden.
+    this.levels.forEach((st, level) => {
+      const keys = want.get(level);
+      if (keys) {
+        if (!st.group.visible || st.fadingOut) {
+          st.fadingOut = false;
+          st.group.visible = true;
+          gsap.to(st.uniforms.uLevelAlpha, { value: 1, duration: 0.45, ease: "power2.out", overwrite: true });
+        }
+      } else if (st.group.visible && !st.fadingOut) {
+        st.fadingOut = true;
+        gsap.to(st.uniforms.uLevelAlpha, {
+          value: 0, duration: 0.35, ease: "power2.in", overwrite: true,
+          onComplete: () => {
+            if (!st.fadingOut) return;
+            st.group.visible = false;
+            for (const cm of st.chunks.values()) cm.group.visible = false;
+          },
+        });
+        return;
+      }
+      if (!st.fadingOut) for (const [key, cm] of st.chunks) if (cm.group.visible && !keys?.has(key)) cm.group.visible = false;
+    });
+    this.visibleKeys = want;
     if (this.frame % 30 === 0) this.evict();
     if (this.frame % 10 === 0) this.emitStats();
   }
+
+  /** Chunk builds in flight at once (scales with the worker pool). */
+  maxPending = 16;
 
   private request(level: number, cx: number, cz: number, key: string) {
     this.pending.add(key);
@@ -140,35 +238,33 @@ export class HexWorld {
         return;
       }
       // A rebuilt chunk replaces its predecessor in place (no build-in animation).
-      const cm = new ChunkMesh(data, st.mats, this.style, wasStale ? -100 : sharedUniforms.uTime.value);
-      cm.group.visible = level === this.active && this.visibleKeys.has(key);
+      let cm: ChunkMesh;
+      try {
+        cm = new ChunkMesh(data, st.mats, this.style, wasStale ? -100 : sharedUniforms.uTime.value);
+      } catch (e) {
+        // Never retry a chunk that fails to build (that would loop every frame).
+        console.error(`[world] chunk ${key} failed`, e);
+        this.empty.add(key);
+        return;
+      }
+      cm.group.visible = !!this.visibleKeys.get(level)?.has(key);
       st.chunks.set(key, cm);
       st.lastUsed.set(key, this.frame);
       st.group.add(cm.group);
       this.onChunkLoaded?.(data);
+    }).catch((e) => {
+      this.pending.delete(key);
+      console.error(`[world] chunk ${key} request failed`, e);
+      this.empty.add(key);
     });
   }
 
+  /** Active (finest) level for this camera distance, with hysteresis. */
   private switchLevel(dist: number) {
     const target = levelForDistance(dist);
     if (target === this.active) return;
-    // Hysteresis: only switch once we're clearly past the threshold.
     const edge = GRID.levels[Math.min(target, this.active)].minDist;
     if (Math.abs(dist - edge) < edge * GRID.hysteresis) return;
-    const prev = this.levels[this.active];
-    const next = this.levels[target];
-    gsap.to(prev.uniforms.uLevelAlpha, {
-      value: 0, duration: 0.35, ease: "power2.in", overwrite: true,
-      onComplete: () => { prev.group.visible = false; },
-    });
-    next.group.visible = true;
-    gsap.to(next.uniforms.uLevelAlpha, { value: 1, duration: 0.5, ease: "power2.out", overwrite: true });
-    for (const key of this.visibleKeys) {
-      const cm = prev.chunks.get(key);
-      if (cm) setTimeout(() => (cm.group.visible = false), 360);
-    }
-    this.visibleKeys = new Set();
-    for (const cm of next.chunks.values()) cm.group.visible = false;
     this.active = target;
   }
 
@@ -186,11 +282,13 @@ export class HexWorld {
   }
 
   private emitStats() {
-    const st = this.levels[this.active];
     let hexes = 0, chunks = 0;
-    for (const key of this.visibleKeys) {
-      const c = st.chunks.get(key);
-      if (c) { hexes += c.data.count; chunks++; }
+    for (const [level, keys] of this.visibleKeys) {
+      const st = this.levels[level];
+      for (const key of keys) {
+        const c = st.chunks.get(key);
+        if (c) { hexes += c.data.count; chunks++; }
+      }
     }
     this.onStats?.({ level: this.active, hexSizeKm: GRID.levels[this.active].size, chunks, hexes, pending: this.pending.size });
   }

@@ -48,6 +48,8 @@ export default defineConfig({
   base: process.env.BASE ?? '/',
   plugins: [react(), tailwindcss(), instrumentServer()],
   worker: { format: 'es' },
+  // Don't watch the bake cache (GBs of downloads). public/data stays watched so newly baked files are served.
+  server: { watch: { ignored: ['**/scripts/.cache/**'] } },
   build: {
     rollupOptions: {
       // Main app + the standalone mascot preview page.

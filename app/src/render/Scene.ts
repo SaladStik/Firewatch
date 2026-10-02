@@ -61,6 +61,10 @@ export class Scene {
   private client: WorldClient;
   private ro: ResizeObserver;
   private disposed = false;
+  /** Adaptive resolution: render scale drops when fps sags, recovers when there's headroom. */
+  private maxPixelRatio = Math.min(window.devicePixelRatio, 2);
+  private pixelRatio = Math.min(window.devicePixelRatio, 2);
+  private resCheckAt = 0;
   private gridColor = { value: new Vector3(0.02, 0.16, 0.08) };
   private borderMat = new LineBasicMaterial({ color: new Color("#1d8f55") });
   private borderMatDim = new LineBasicMaterial({ color: new Color("#3a4a42") });
@@ -78,7 +82,7 @@ export class Scene {
   ) {
     this.client = client;
     this.renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(this.maxPixelRatio);
     this.renderer.setClearColor(new Color("#010403"));
 
     this.camera = new PerspectiveCamera(34, 1, 0.5, 20000);
@@ -265,6 +269,20 @@ export class Scene {
     });
   }
 
+  private adaptResolution(now: number) {
+    if (now < this.resCheckAt) return;
+    this.resCheckAt = now + 1000; // re-evaluate once a second (fps is smoothed)
+    const min = Math.max(0.6, this.maxPixelRatio * 0.5);
+    let next = this.pixelRatio;
+    if (this.fps < 48) next = Math.max(min, this.pixelRatio - 0.15);
+    else if (this.fps > 70) next = Math.min(this.maxPixelRatio, this.pixelRatio + 0.1);
+    if (Math.abs(next - this.pixelRatio) < 0.01) return;
+    this.pixelRatio = next;
+    this.renderer.setPixelRatio(next);
+    this.composer.setPixelRatio(next);
+    this.resize();
+  }
+
   private resize() {
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     if (!w || !h) return;
@@ -283,6 +301,7 @@ export class Scene {
     const dt = (now - this.lastT) / 1000;
     this.lastT = now;
     this.fps = this.fps * 0.95 + (1 / Math.max(dt, 1e-3)) * 0.05;
+    this.adaptResolution(now);
     sharedUniforms.uTime.value = now / 1000;
 
     this.controls.update();
@@ -294,7 +313,8 @@ export class Scene {
     this.camera.updateProjectionMatrix();
 
     const t = this.controls.target;
-    this.world.update(t.x, t.z, dist);
+    this.camera.updateMatrixWorld();
+    this.world.update(t.x, t.z, dist, this.camera);
     this.followTerrain();
     this.keepCameraAboveTerrain();
     sharedUniforms.uCam.value.copy(this.camera.position);

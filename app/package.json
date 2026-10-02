@@ -11,7 +11,8 @@
     "bake": "tsx scripts/bake-terrain.ts",
     "bake:osm": "tsx scripts/bake-osm.ts",
     "bake:all": "for r in alberta british-columbia saskatchewan manitoba ontario quebec new-brunswick nova-scotia prince-edward-island newfoundland-and-labrador yukon northwest-territories nunavut; do tsx scripts/bake-terrain.ts $r || exit 1; done",
-    "bake:osm:all": "for r in alberta british-columbia saskatchewan manitoba ontario quebec new-brunswick nova-scotia prince-edward-island newfoundland-and-labrador yukon northwest-territories nunavut; do tsx scripts/bake-osm.ts $r || exit 1; done"
+    "bake:osm:all": "for r in alberta british-columbia saskatchewan manitoba ontario quebec new-brunswick nova-scotia prince-edward-island newfoundland-and-labrador yukon northwest-territories nunavut; do tsx scripts/bake-osm.ts $r || exit 1; done",
+    "bake:pbf": "tsx scripts/export-regions.ts && python scripts/bake_osm_pbf.py"
   },
   "dependencies": {
     "@fontsource/jetbrains-mono": "^5.3.0",

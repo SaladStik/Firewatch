@@ -7,12 +7,12 @@ npm install
 npm run dev          # http://localhost:5173
 npm run build        # static site in dist/ (deploy anywhere; set BASE=/sub/path/ for sub-path hosting)
 npm run bake -- alberta       # terrain + land-cover raster for a region
-npm run bake:osm -- alberta   # OSM rivers, roads, rail, buildings, places for a region
+npm run bake:pbf -- alberta   # OSM (Geofabrik extract): every road, river, stream, rail line, town, building ≥4 storeys
 npm run bake:all              # terrain for every province and territory
-npm run bake:osm:all          # OSM for every province and territory (slow: public Overpass servers)
+npm run bake:pbf              # OSM for every province and territory (needs `pip install osmium`; ~3 GB of downloads, cached)
 ```
 
-The baked files for every region ship in `public/data/<region>/`, so you only need the bake scripts to add a province or refresh data. Downloads are cached in `scripts/.cache`. The public Overpass servers can be busy; the OSM bake retries across mirrors.
+The baked files for every region ship in `public/data/<region>/`, so you only need the bake scripts to add a province or refresh data. Downloads are cached in `scripts/.cache`. (`npm run bake:osm` is the older Overpass-API bake, kept as a fallback; the public Overpass servers couldn't handle full-Canada volumes.)
 
 **Controls:**
 - Left-drag pans; right-drag, middle-drag or Ctrl+drag rotates and tilts; scroll zooms toward the cursor.
@@ -26,7 +26,7 @@ The baked files for every region ship in `public/data/<region>/`, so you only ne
 
 ## Data sources
 
-All data is openly licensed and free, with no API keys. **Baked** data is downloaded once by the build scripts (`npm run bake`, `npm run bake:osm`) and ships as static files in `public/data/<region>/`. **Live** data is fetched by the browser and refreshed every 10 minutes.
+All data is openly licensed and free, with no API keys. **Baked** data is downloaded once by the build scripts (`npm run bake`, `npm run bake:pbf`) and ships as static files in `public/data/<region>/`. **Live** data is fetched by the browser and refreshed every 10 minutes.
 
 ### Baked
 
@@ -35,8 +35,9 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 | Elevation | [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (Tilezen/Mapzen Terrarium; in Canada built from NRCan CDEM, SRTM and others: [source list](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | Open, attribution required ([details](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | Zoom 6–8 tiles (matched to each region's raster resolution) resampled to a 0.3–1.6 km raster; hex heights |
 | Land cover | [ESA WorldCover 2021 v200](https://esa-worldcover.org/en) ([AWS mirror](https://registry.opendata.aws/esa-worldcover-vito/)) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | 10 m classes, majority-voted per raster pixel; hex land types (incl. ice / glacier, tundra, wetland) |
 | Province & territory boundaries | [click_that_hood `canada.geojson`](https://github.com/codeforgermany/click_that_hood) | Open-source repository (MIT) | Region masks and border lines (all 13) |
-| Buildings, rivers, roads, rail | [OpenStreetMap](https://www.openstreetmap.org/copyright) via the [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) | [ODbL](https://opendatacommons.org/licenses/odbl/) | Rivers become true-width channels on hex tops; roads and rail become hex connections; building heights and footprints become towers |
-| Community names and populations | [OpenStreetMap](https://www.openstreetmap.org/copyright) (`place=city/town`) | [ODbL](https://opendatacommons.org/licenses/odbl/) | Map labels and quick-jump |
+| Roads (motorway → residential, plus forest / resource tracks), rivers, streams and canals, rail | [OpenStreetMap](https://www.openstreetmap.org/copyright), per-province extracts from [OpenStreetMap France](https://download.openstreetmap.fr/extracts/north-america/canada/) (fallback [Geofabrik](https://download.geofabrik.de/north-america/canada.html)), processed locally with [pyosmium](https://osmcode.org/pyosmium/) | [ODbL](https://opendatacommons.org/licenses/odbl/) | Become River / Road / Rail hex nodes. All lines ship as 1° tiles fetched on demand at street zoom (the realism rule means they can't show further out); only rivers ≥ 50 m wide ship with each region |
+| Buildings ≥ ~4 storeys | Same OSM extracts (`height` / `building:levels` tags) | [ODbL](https://opendatacommons.org/licenses/odbl/) | Towers standing on their hexes |
+| Community names and populations | Same OSM extracts (`place=city/town/village/hamlet`, `population`), clipped to each province's boundary | [ODbL](https://opendatacommons.org/licenses/odbl/) | Map labels, Places list and quick-jump |
 | Landmark positions | [OpenStreetMap](https://www.openstreetmap.org/copyright), looked up by name | [ODbL](https://opendatacommons.org/licenses/odbl/) | Positions of hand-drawn wireframe landmark models (the shapes are our own) |
 
 ### Live
@@ -104,10 +105,17 @@ Rivers, roads and rail aren't drawn on top of the map; they are hexes. Every hex
 - **Glow is reserved for hazards.** Bloom only picks up statuses with high `emphasis` (active fire, perimeter, high/extreme risk).
 
 ### Why it stays fast
-- **Chunks are built off the main thread** in a worker and arrive as typed arrays (struct-of-arrays).
-- **One draw call per chunk.** Hexes are instanced prisms, and the outlines are computed in the fragment shader from a hex distance field, so there is no line geometry and no extra draw calls.
-- **Only one grid level is live at a time.** It's chosen by camera distance, and only chunks inside the view ring are shown. Chunks outside the ring fade to black, cached chunks are reused, and old ones are evicted.
-- **Picking is analytic.** It ray-marches the height field with an O(1) lookup per cell, so there are no per-instance raycasts.
+- **Chunks are built off the main thread** by a pool of web workers: up to 3, one per spare CPU core, each holding the region data. Chunks arrive as typed arrays.
+- **One small draw per chunk.** Hex tops are instanced 4-triangle hexagons. **Walls are instanced separately, and only the walls that can actually be seen are included** (neighbour lower, or open edge), which removes most of the geometry. Outlines and patterns are computed in the fragment shader, so there's no line geometry.
+- **Interior edges vanish at a distance.** Outlines between same-type, same-height hexes only appear when each hex is big on screen, and coarse levels have no gap between hexes.
+- **The view drives streaming.**
+  - The loaded area is pushed forward along the camera's view direction.
+  - Off-screen chunks are never built.
+  - The nearest chunks are built first.
+- **Multi-resolution rings.** The active level is drawn near you, and up to `farRings` coarser levels are drawn in rings beyond it, each `farRingReach`× further out. You see the horizon at lower detail instead of paying for millions of tiny distant hexes. While a fine chunk is still loading, the coarse chunk under it stands in, so there are no holes.
+- **Street-level data is lazy.** Every road, river, stream and rail line loads per 1° tile only when a street-zoom chunk needs it. Start-up carries only buildings, places and very wide rivers: about 1 MB of line data for all of Canada.
+- **Adaptive resolution.** If fps drops below about 48 the render scale steps down, and it climbs back when fps is above about 70.
+- **Picking is analytic.** It ray-marches the height field with an O(1) lookup per cell.
 - **Restyling is cheap.** Hazard updates rewrite instance attributes in place.
 
 ## Regions and focus
@@ -164,7 +172,7 @@ Landmarks (hand-drawn models for specific buildings) are listed per region in `c
 **LOD tuner (dev).** Press **Ctrl+Shift+L** in dev builds, or on a page opened once with `?fireflydev`, to tune the map live:
 - each level's switch distance, with a **go** button that flies the camera to it;
 - switch hysteresis;
-- render distance (view radius × camera distance, and the max radius in hexes);
+- render distance (view radius × camera distance, the max radius in hexes, plus the number of far rings and how far each reaches);
 - height exaggeration (close / province / national, and the ramp curve).
 
 A live readout shows the camera distance, active level, cell size, exaggeration, hex count and fps. Tweaks persist in that browser until **Reset**. **Copy config** copies paste-ready values for `config/grid.ts`. Hex sizes and terraces aren't live-editable; they're used by the worker, so change them in the file.
@@ -178,7 +186,7 @@ A live readout shows the camera distance, active level, cell size, exaggeration,
    - the `iso` code (ISO 3166-2, used to find it in OSM);
    - a bbox and a raster resolution;
    - optionally landmarks and demo sites.
-2. Run `npm run bake -- <id>` and `npm run bake:osm -- <id>`. For big regions the OSM bake splits line queries into 5° tiles, each cached, so an interrupted bake resumes where it left off.
+2. Run `npm run bake -- <id>` and `npm run bake:pbf -- <id>`. The Geofabrik extract name must match the region id (it does for every province and territory).
 3. Add the id to `WORKSPACE.regions`, in the position you want it to load.
 
 Fires, weather, labels, borders, focus and the Explore menu all pick the new province up automatically.

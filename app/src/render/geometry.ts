@@ -8,33 +8,39 @@ import { hexCorner } from "../hex/hexMath";
 import type { PropKind } from "../hex/nodeTypes";
 import type { BuildingKind } from "../hex/overlayStyles";
 
-export function hexPrism(): BufferGeometry {
-  const pos: number[] = [], nrm: number[] = [], face: number[] = [], uv: number[] = [];
-  const push = (x: number, y: number, z: number, nx: number, nz: number, f: number, u: number, v: number) => {
-    pos.push(x, y, z); nrm.push(nx, f ? 0 : 1, nz); face.push(f); uv.push(u, v);
-  };
-  // Top face (fan).
-  for (let i = 0; i < 6; i++) {
-    const [ax, az] = hexCorner(i), [bx, bz] = hexCorner((i + 1) % 6);
-    push(0, 1, 0, 0, 0, 0, 0, 0);
-    push(bx, 1, bz, 0, 0, 0, 0, 0);
-    push(ax, 1, az, 0, 0, 0, 0, 0);
-  }
-  // Sides.
-  for (let i = 0; i < 6; i++) {
-    const [ax, az] = hexCorner(i), [bx, bz] = hexCorner((i + 1) % 6);
-    const nx = (ax + bx) / 2, nz = (az + bz) / 2, l = Math.hypot(nx, nz);
-    const q = [
-      [ax, 0, az, 0, 0], [bx, 0, bz, 1, 0], [bx, 1, bz, 1, 1],
-      [ax, 0, az, 0, 0], [bx, 1, bz, 1, 1], [ax, 1, az, 0, 1],
-    ];
-    for (const [x, y, z, u, v] of q) push(x, y, z, nx / l, nz / l, 1, u, v);
-  }
+/**
+ * Hex top: the unit pointy-top hexagon at y = 1 as 4 triangles (12 verts — vs 18 for a centre fan).
+ * `aSide` = -1 marks it as a top for the shared hex shader.
+ */
+export function hexTop(): BufferGeometry {
+  const c = Array.from({ length: 6 }, (_, i) => hexCorner(i));
+  const pos: number[] = [];
+  for (let j = 1; j <= 4; j++) for (const k of [0, j + 1, j]) pos.push(c[k][0], 1, c[k][1]);
+  const n = pos.length / 3;
   const g = new BufferGeometry();
   g.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
-  g.setAttribute("normal", new BufferAttribute(new Float32Array(nrm), 3));
-  g.setAttribute("aFace", new BufferAttribute(new Float32Array(face), 1));
-  g.setAttribute("aUV", new BufferAttribute(new Float32Array(uv), 2));
+  g.setAttribute("normal", new BufferAttribute(new Float32Array(n * 3).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+  g.setAttribute("aFace", new BufferAttribute(new Float32Array(n), 1));
+  g.setAttribute("aUV", new BufferAttribute(new Float32Array(n * 2), 2));
+  g.setAttribute("aSide", new BufferAttribute(new Float32Array(n).fill(-1), 1));
+  return g;
+}
+
+/**
+ * One hex wall (side 0, under the edge whose normal points at 0°), y ∈ [0, 1]. Instanced once
+ * per VISIBLE wall with an `aSide` instance attribute; the shader rotates it to side k.
+ */
+export function hexWall(): BufferGeometry {
+  const [ax, az] = hexCorner(0), [bx, bz] = hexCorner(1);
+  const q = [
+    [ax, 0, az, 0, 0], [bx, 0, bz, 1, 0], [bx, 1, bz, 1, 1],
+    [ax, 0, az, 0, 0], [bx, 1, bz, 1, 1], [ax, 1, az, 0, 1],
+  ];
+  const g = new BufferGeometry();
+  g.setAttribute("position", new BufferAttribute(new Float32Array(q.flatMap((v) => [v[0], v[1], v[2]])), 3));
+  g.setAttribute("normal", new BufferAttribute(new Float32Array(q.flatMap(() => [1, 0, 0])), 3));
+  g.setAttribute("aFace", new BufferAttribute(new Float32Array(6).fill(1), 1));
+  g.setAttribute("aUV", new BufferAttribute(new Float32Array(q.flatMap((v) => [v[3], v[4]])), 2));
   return g;
 }
 

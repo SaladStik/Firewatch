@@ -16,6 +16,8 @@ export interface GridLevel {
   majorityLandClass: boolean;
   /** Build 3D props (trees, houses). */
   decorations: boolean;
+  /** Hex scale (1 = touching, <1 = visible gap). Defaults to GRID.hexScale. */
+  gap?: number;
   /** OSM buildings at least this tall (m) are drawn (Infinity = none). Landmarks follow `landmarks`. */
   buildingMinHeight: number;
   landmarks: boolean;
@@ -28,20 +30,24 @@ export const GRID = {
   hexScale: 0.965,
   /** Visible radius around the focus point = camera distance × this. */
   viewRadiusFactor: 2.6,
+  /** Coarser rings drawn beyond the active level (far-distance, lower detail). */
+  farRings: 2,
+  /** Each far ring reaches this many times further than the ring inside it. */
+  farRingReach: 3,
   /** Hard cap on visible radius, in hexes of the current level. */
   maxRadiusHexes: 300,
   /** Max chunk builds requested per frame (keeps the main thread smooth). */
-  maxChunkRequestsPerFrame: 6,
+  maxChunkRequestsPerFrame: 10,
   /** Chunks kept in memory per level after leaving view (LRU). */
   cacheChunks: 400,
   /** Switch level only once the camera is this fraction past a threshold (avoids flicker). */
   hysteresis: 0.03,
   levels: [
     // National view (all of Canada).
-    { size: 22, minDist: 4329, terrace: 250, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
-    { size: 7.0, minDist: 995, terrace: 150, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
-    { size: 2.2, minDist: 480, terrace: 100, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
-    { size: 0.7, minDist: 184, terrace: 50, majorityLandClass: false, decorations: false, buildingMinHeight: 80, landmarks: true },
+    { size: 22, minDist: 4329, gap: 1, terrace: 250, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
+    { size: 7.0, minDist: 995, gap: 1, terrace: 150, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
+    { size: 2.2, minDist: 480, gap: 1, terrace: 100, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
+    { size: 0.7, minDist: 184, gap: 1, terrace: 50, majorityLandClass: false, decorations: false, buildingMinHeight: 80, landmarks: true },
     { size: 0.22, minDist: 34, terrace: 20, majorityLandClass: false, decorations: true, buildingMinHeight: 12, landmarks: true },
     { size: 0.075, minDist: 0, terrace: 10, majorityLandClass: false, decorations: true, buildingMinHeight: 12, landmarks: true },
   ] satisfies GridLevel[],

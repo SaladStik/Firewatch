@@ -22,6 +22,8 @@ interface Tuning {
   hysteresis: number;
   viewRadiusFactor: number;
   maxRadiusHexes: number;
+  farRings: number;
+  farRingReach: number;
   vscale: typeof VSCALE;
 }
 
@@ -34,6 +36,8 @@ function snapshot(): Tuning {
     hysteresis: GRID.hysteresis,
     viewRadiusFactor: GRID.viewRadiusFactor,
     maxRadiusHexes: GRID.maxRadiusHexes,
+    farRings: GRID.farRings,
+    farRingReach: GRID.farRingReach,
     vscale: { ...VSCALE },
   };
 }
@@ -43,6 +47,8 @@ function apply(t: Tuning) {
   GRID.hysteresis = t.hysteresis;
   GRID.viewRadiusFactor = t.viewRadiusFactor;
   GRID.maxRadiusHexes = t.maxRadiusHexes;
+  if (t.farRings !== undefined) GRID.farRings = t.farRings;
+  if (t.farRingReach !== undefined) GRID.farRingReach = t.farRingReach;
   Object.assign(VSCALE, t.vscale);
 }
 
@@ -99,11 +105,13 @@ function LodTuner({ engine }: { engine: () => { scene: { zoomBy: (f: number) => 
   };
 
   const copy = async () => {
-    const lv = GRID.levels.map((l) => `    { size: ${l.size}, minDist: ${l.minDist}, terrace: ${l.terrace}, majorityLandClass: ${l.majorityLandClass}, decorations: ${l.decorations}, buildingMinHeight: ${l.buildingMinHeight === Infinity ? "Infinity" : l.buildingMinHeight}, landmarks: ${l.landmarks} },`).join("\n");
+    const lv = GRID.levels.map((l) => `    { size: ${l.size}, minDist: ${l.minDist},${l.gap !== undefined ? ` gap: ${l.gap},` : ""} terrace: ${l.terrace}, majorityLandClass: ${l.majorityLandClass}, decorations: ${l.decorations}, buildingMinHeight: ${l.buildingMinHeight === Infinity ? "Infinity" : l.buildingMinHeight}, landmarks: ${l.landmarks} },`).join("\n");
     const text = `// config/grid.ts — tuned with the LOD tuner
 // GRID fields:
   viewRadiusFactor: ${t.viewRadiusFactor},
   maxRadiusHexes: ${t.maxRadiusHexes},
+  farRings: ${t.farRings},
+  farRingReach: ${t.farRingReach},
   hysteresis: ${t.hysteresis},
   levels: [
 ${lv}
@@ -160,7 +168,9 @@ export const VSCALE = ${JSON.stringify(t.vscale).replace(/"(\w+)":/g, "$1: ").re
 
       <Label>Render distance</Label>
       <Slider label="View radius (× camera distance)" value={t.viewRadiusFactor} min={0.5} max={4} step={0.05} fmt={(v) => v.toFixed(2)} set={(v) => update({ ...t, viewRadiusFactor: v })} />
-      <Slider label="Max radius (hexes of the active level)" value={t.maxRadiusHexes} min={20} max={300} step={5} fmt={(v) => `${v}`} set={(v) => update({ ...t, maxRadiusHexes: v })} />
+      <Slider label="Max radius (hexes of the active level)" value={t.maxRadiusHexes} min={20} max={800} step={10} fmt={(v) => `${v}`} set={(v) => update({ ...t, maxRadiusHexes: v })} />
+      <Slider label="Far rings (coarser levels beyond)" value={t.farRings} min={0} max={4} step={1} fmt={(v) => `${v}`} set={(v) => update({ ...t, farRings: v })} />
+      <Slider label="Far ring reach (× ring inside it)" value={t.farRingReach} min={1.5} max={8} step={0.25} fmt={(v) => `×${v}`} set={(v) => update({ ...t, farRingReach: v })} />
       <div style={S.note}>
         Now drawing {stats?.hexes?.toLocaleString() ?? "–"} hexes in {stats?.chunks ?? "–"} chunks · {Math.round(stats?.fps ?? 0)} fps
       </div>
