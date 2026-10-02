@@ -224,7 +224,7 @@ function Flight({ p, arrived }: { p: number; arrived: boolean }) {
   const pathRef = useRef<SVGPathElement>(null);
   const [len, setLen] = useState(0);
   useLayoutEffect(() => { setLen(pathRef.current?.getTotalLength() ?? 0); }, []);
-  const [view, setView] = useState<{ x: number; y: number; tail: number; u: number; sparks: Spark[] }>({ x: 30, y: 312, tail: 0, u: 0, sparks: [] });
+  const [view, setView] = useState<{ x: number; y: number; tail: number; u: number; depth: number; sparks: Spark[] }>({ x: 30, y: 312, tail: 0, u: 0, depth: 1, sparks: [] });
   const progress = useRef(p);
   const arrivedRef = useRef(arrived);
   useEffect(() => { progress.current = p; arrivedRef.current = arrived; }, [p, arrived]);
@@ -233,6 +233,11 @@ function Flight({ p, arrived }: { p: number; arrived: boolean }) {
     let raf = 0, last = performance.now();
     let sparks: Spark[] = [];
     let tail = 0;
+    // Depth along the spiral: sweeping right = the near side (in front of the tower), sweeping
+    // left = the far side (behind it). Eased so he doesn't flicker at the turns; the final
+    // approach to the beacon is always in front.
+    let depth = 1;
+    const att = { bank: 0, turn: 0, squash: 0 };
     const prev = { x: 30, y: 312 };
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
@@ -250,8 +255,24 @@ function Flight({ p, arrived }: { p: number; arrived: boolean }) {
         // Tail grows while he's moving, shrinks away when he stops (and after he arrives).
         const want = arrivedRef.current ? 0 : Math.min(TAIL, u, speed > 0.05 ? TAIL : 0);
         tail += (want - tail) * Math.min(1, dt * 3);
-        // A gentle lean into the direction of travel; never a spin.
-        ctl.override = { ...ctl.override, turn: 0, rotation: arrivedRef.current ? 0 : Math.max(-15, Math.min(15, vx * 6)) };
+        const wantDepth = arrivedRef.current || u > 0.9 ? 1 : vx < -0.04 ? -1 : vx > 0.04 ? 1 : depth;
+        depth += (wantDepth - depth) * Math.min(1, dt * 5);
+        // Fly like a creature, not a sticker: bank into the motion, yaw a little toward where he's
+        // heading (never a full spin), pitch with climb / dive, stretch with speed. Low-passed so
+        // it flows through the curves.
+        const sp = dt > 0 ? { x: vx / dt, y: vy / dt } : { x: 0, y: 0 };
+        const cruise = 180; // px/s, typical speed along the spiral
+        const k = Math.min(1, dt * 6);
+        const flying = !arrivedRef.current;
+        const aim = {
+          bank: flying ? clamp((sp.x / cruise) * 26 + (sp.y / cruise) * 6 * Math.sign(sp.x || 1), -32, 32) : 0,
+          turn: flying ? clamp((sp.x / cruise) * 42, -48, 48) : 0,
+          squash: flying ? -clamp((Math.hypot(sp.x, sp.y) / cruise) * 0.07, 0, 0.12) : 0,
+        };
+        att.bank += (aim.bank - att.bank) * k;
+        att.turn += (aim.turn - att.turn) * k;
+        att.squash += (aim.squash - att.squash) * k;
+        ctl.override = { ...ctl.override, turn: att.turn, rotation: att.bank, squash: att.squash };
         if (speed > 0.2 && Math.random() < 0.5) {
           sparks.push({ x: x + (Math.random() - 0.5) * 4, y: y + SPRITE * 0.25, vx: (Math.random() - 0.5) * 10, vy: 8 + Math.random() * 12, life: 1, r: 0.6 + Math.random() * 1.1 });
         }
@@ -260,7 +281,7 @@ function Flight({ p, arrived }: { p: number; arrived: boolean }) {
         .map((s) => ({ ...s, x: s.x + s.vx * dt, y: s.y + s.vy * dt, vy: s.vy + 20 * dt, life: s.life - dt * 1.4 }))
         .filter((s) => s.life > 0)
         .slice(-40);
-      setView({ x, y, tail, u, sparks });
+      setView({ x, y, tail, u, depth, sparks });
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -273,9 +294,13 @@ function Flight({ p, arrived }: { p: number; arrived: boolean }) {
     return { strokeDasharray: `${l} 2`, strokeDashoffset: -(view.u - l) };
   };
 
+  // Behind the tower (layer 1, under the tower's layer 2) he's a touch smaller and dimmer.
+  const behind = view.depth < 0;
+  const far = (1 - view.depth) / 2; // 0 = near side, 1 = far side
+  const layer = behind ? 1 : 3;
   return (
     <>
-      <svg className="pointer-events-none absolute inset-0" width={STAGE_W} height={STAGE_H} style={{ overflow: "visible", zIndex: 3 }}>
+      <svg className="pointer-events-none absolute inset-0" width={STAGE_W} height={STAGE_H} style={{ overflow: "visible", zIndex: layer, opacity: 1 - far * 0.35 }}>
         <defs><filter id="ew-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2" /></filter></defs>
         <path ref={pathRef} d={FLIGHT} fill="none" stroke="none" pathLength={1} />
         <path d={FLIGHT} fill="none" stroke="#ffd93b" strokeOpacity="0.18" strokeWidth="5" strokeLinecap="round" filter="url(#ew-soft)" pathLength={1} style={dash(1)} />
@@ -283,11 +308,12 @@ function Flight({ p, arrived }: { p: number; arrived: boolean }) {
         <path d={FLIGHT} fill="none" stroke="#fff3a6" strokeOpacity="0.85" strokeWidth="1.2" strokeLinecap="round" pathLength={1} style={dash(0.25)} />
         {view.sparks.map((s, i) => <circle key={i} cx={s.x} cy={s.y} r={s.r * s.life} fill="#fff3a6" opacity={s.life} />)}
       </svg>
-      <div className="pointer-events-none absolute" style={{ left: view.x - SPRITE / 2, top: view.y - SPRITE / 2, width: SPRITE, zIndex: 4 }}>
+      <div className="pointer-events-none absolute" style={{ left: view.x - SPRITE / 2, top: view.y - SPRITE / 2, width: SPRITE, zIndex: behind ? 1 : 4, transform: `scale(${1 - far * 0.2})`, opacity: 1 - far * 0.3 }}>
         <Firefly pose={ctl.pose} size={SPRITE} />
       </div>
     </>
   );
 }
 
+const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const easeInOut = (u: number) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2);
