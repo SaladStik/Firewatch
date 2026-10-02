@@ -10,13 +10,16 @@ import { GRID } from "../config/grid";
 import { chunkWorldBounds, hash01, hexKey, SQRT3, worldToHex } from "../hex/hexMath";
 import { NODE_TYPES, type NodeOverride, type PropKind } from "../hex/nodeTypes";
 import { LandClass } from "../geo/landClass";
-import type { NodeStatus } from "../hex/nodeTypes";
+import { NodeStatus } from "../hex/nodeTypes";
 import type { ChunkData } from "../world/types";
 import { BUILDING_BRIGHTNESS, BUILDING_KINDS, FOOTPRINT_SCALE } from "../hex/overlayStyles";
 import { BLD_STRIDE } from "../world/overlays";
 import { MIN_THICKNESS, reliefKm } from "./heights";
 import { buildingLines, hexTop, hexWall, propLines } from "./geometry";
 import { resolveStyle, type NodeStyler } from "./nodeStyle";
+
+/** Building colour at the closest zoom level (linear RGB; × BUILDING_BRIGHTNESS in the shader feed). */
+const WHITE_BUILDING = 1.0;
 
 let topGeo: BufferGeometry | null = null;
 let wallGeo: BufferGeometry | null = null;
@@ -251,6 +254,7 @@ export class ChunkMesh {
     const line = this.aLine.array as Float32Array, style = this.aStyle.array as Float32Array;
     const edges = this.aEdges.array as Float32Array;
     const propCol = new Float32Array(d.count * 3), bldCol = new Float32Array(d.count * 3), lift = new Float32Array(d.count);
+    const whiteBuildings = d.level === GRID.levels.length - 1;
     for (let i = 0; i < d.count; i++) {
       const key = hexKey(d.level, d.q[i], d.r[i]);
       const s = resolveStyle(
@@ -271,9 +275,12 @@ export class ChunkMesh {
       const bs = land === LandClass.Road || land === LandClass.Rail
         ? resolveStyle({ key, land: LandClass.Urban, status: d.status[i] as NodeStatus, risk: d.risk[i], dimmed: !this.src.focus.has(d.region[i]) }, this.src.overrides.get(key), this.src.styler)
         : s;
-      bldCol[i * 3] = bs.prop[0] * bs.emphasis;
-      bldCol[i * 3 + 1] = bs.prop[1] * bs.emphasis;
-      bldCol[i * 3 + 2] = bs.prop[2] * bs.emphasis;
+      // At the closest zoom, buildings are white (clean 3D city blocks); a hazard status keeps
+      // its colour so a burning block still reads red, and unfocused regions stay greyed.
+      const white = whiteBuildings && d.status[i] === NodeStatus.Normal && this.src.focus.has(d.region[i]);
+      bldCol[i * 3] = white ? WHITE_BUILDING : bs.prop[0] * bs.emphasis;
+      bldCol[i * 3 + 1] = white ? WHITE_BUILDING : bs.prop[1] * bs.emphasis;
+      bldCol[i * 3 + 2] = white ? WHITE_BUILDING : bs.prop[2] * bs.emphasis;
       lift[i] = s.lift;
     }
     this.aLine.needsUpdate = true;

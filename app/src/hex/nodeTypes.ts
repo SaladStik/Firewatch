@@ -104,13 +104,13 @@ export interface StatusStyle {
 
 export const NODE_STATUSES: Record<NodeStatus, StatusStyle> = {
   [NodeStatus.Normal]: { id: NodeStatus.Normal, label: "Nominal", pulse: 0, lift: 0 },
-  [NodeStatus.Elevated]: { id: NodeStatus.Elevated, label: "Elevated danger", line: "#d4a017", fill: 0.28, emphasis: 0.7, pulse: 0, lift: 0 },
-  [NodeStatus.High]: { id: NodeStatus.High, label: "High danger", line: "#c46a10", fill: 0.38, emphasis: 0.85, pulse: 0.08, lift: 0 },
-  [NodeStatus.Extreme]: { id: NodeStatus.Extreme, label: "Extreme danger", line: "#c44b12", fill: 0.48, emphasis: 1.0, pulse: 0.1, lift: 0.04, propColor: "#c44b12" },
-  [NodeStatus.Burning]: { id: NodeStatus.Burning, label: "Out of control", line: "#c41e3a", fill: 0.72, emphasis: 1.35, pulse: 0.35, lift: 0.08, propColor: "#c41e3a" },
-  [NodeStatus.Perimeter]: { id: NodeStatus.Perimeter, label: "Being held", line: "#e07020", fill: 0.55, emphasis: 1.15, pulse: 0.15, lift: 0.04, propColor: "#e07020" },
+  [NodeStatus.Elevated]: { id: NodeStatus.Elevated, label: "Elevated danger", line: "#ffb000", fill: 0.9, emphasis: 0.95, pulse: 0.15, lift: 0 },
+  [NodeStatus.High]: { id: NodeStatus.High, label: "High danger", line: "#ff6d00", fill: 0.92, emphasis: 1.05, pulse: 0.25, lift: 0 },
+  [NodeStatus.Extreme]: { id: NodeStatus.Extreme, label: "Extreme danger", line: "#ff1f1f", fill: 0.95, emphasis: 1.15, pulse: 0.3, lift: 0.06, propColor: "#ff1f1f" },
+  [NodeStatus.Burning]: { id: NodeStatus.Burning, label: "Out of control", line: "#ff1744", fill: 0.98, emphasis: 1.6, pulse: 0.9, lift: 0.2, propColor: "#ff1744" },
+  [NodeStatus.Perimeter]: { id: NodeStatus.Perimeter, label: "Being held", line: "#ff2fa0", fill: 0.9, emphasis: 1.3, pulse: 0.35, lift: 0.08, propColor: "#ff2fa0" },
   [NodeStatus.Burned]: { id: NodeStatus.Burned, label: "Burn scar (season)", line: "#6b4a36", fill: 0.4, emphasis: 0.75, pulse: 0, lift: 0, propColor: "#5a3a30" },
-  [NodeStatus.Projected]: { id: NodeStatus.Projected, label: "Projected spread (scenario)", line: "#6b3d8a", fill: 0.38, emphasis: 0.9, pulse: 0.12, lift: 0.02, propColor: "#6b3d8a" },
+  [NodeStatus.Projected]: { id: NodeStatus.Projected, label: "Projected spread (scenario)", line: "#b44dff", fill: 0.9, emphasis: 1.15, pulse: 0.35, lift: 0.04, propColor: "#b44dff" },
 };
 
 /** Risk score (0..1) → status, when no direct fire observation applies. */

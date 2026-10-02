@@ -34,7 +34,7 @@ function initialTheme(): Theme {
     const t = localStorage.getItem("firewatch.theme");
     if (t === "dark" || t === "light") return t;
   } catch { /* storage unavailable */ }
-  return "light";
+  return "dark";
 }
 
 /** A community label, tagged with the workspace region it belongs to. */

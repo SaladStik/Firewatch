@@ -27,8 +27,8 @@ export const sharedUniforms = {
   uCam: { value: new Vector3() },
   uTarget: { value: new Vector3() },
   /** Theme: 0 = dark (night ops), 1 = light (cartographic). uBg = background, linear RGB. */
-  uLight: { value: 1 },
-  uBg: { value: new Vector3(0.91, 0.925, 0.902) },
+  uLight: { value: 0 },
+  uBg: { value: new Vector3(0, 0, 0) },
   /** Rain intensity over the view (render/RainParticles.ts): tints wet hex tops blue. */
   uRainTex: { value: emptyRainTex() },
   /** Rain texture placement: x0, z0, size (km), on (0/1). */
@@ -307,7 +307,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           if (top) col *= 1.0 + vStyle.y * pulseWave * 0.35;
           col += vLine * vHL * (top ? 0.22 : 0.1);
           float wetK = rainAt(vW.xz);
-          if (top) col = mix(col, vec3(0.22, 0.4, 0.62) * (0.5 + vStyle.x), wetK * 0.28);
+          if (top) col = mix(col, vec3(0.2, 0.45, 0.95) * (0.55 + 0.45 * vStyle.x), wetK * 0.55);
           gl_FragColor = vec4(debugTint(col * vFade), 1.0);
         } else {
           // LIGHT — GIS land-cover map: lakes, forest and rock use their true colours.
@@ -321,7 +321,7 @@ export function createHexMaterial(level: LevelUniforms): ShaderMaterial {
           col = mix(face, ink, clamp(line * 0.55 * strength, 0.0, 0.55));
           col = mix(col, ink, pat * 0.1 * strength * solid);
           col = mix(col, vLine * 0.7, vHL * (top ? 0.2 : 0.1));
-          if (top) col = mix(col, vec3(0.48, 0.68, 0.86), rainAt(vW.xz) * 0.22);
+          if (top) col = mix(col, vec3(0.3, 0.55, 0.92), rainAt(vW.xz) * 0.48);
           gl_FragColor = vec4(debugTint(mix(uBg, col, vFade)), 1.0);
         }
       }
