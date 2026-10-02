@@ -12,6 +12,7 @@ import { downwind } from "../world/spread";
 import type { Hotspot, Perimeter } from "./cwfis";
 import { isPerimeterActive } from "./hazards";
 import { weatherAt, type WeatherGrid } from "./openMeteo";
+import { blobDamping, blobRain, type RainBlob } from "./rain";
 
 /** Head spread (km/day) at the maximum weather risk. */
 const HEAD_MAX_KM_DAY = 30;
@@ -103,8 +104,11 @@ export function fireSources(hotspots: Pick<Hotspot, "lat" | "lng">[], perimeters
   return out;
 }
 
-/** Daily spread ellipses for every source, days 0..`day`. `boost` = demo-mode risk multiplier. */
-export function spreadEllipses(sources: FireSource[], weather: WeatherGrid[], day: number, boost = 1): SpreadEllipse[] {
+/**
+ * Daily spread ellipses for every source, days 0..`day`. `boost` = demo-mode risk multiplier.
+ * Rain: real rain is already in each day's risk; `rainOn(d)` adds demo storms for day d.
+ */
+export function spreadEllipses(sources: FireSource[], weather: WeatherGrid[], day: number, boost = 1, rainOn?: (d: number) => RainBlob[]): SpreadEllipse[] {
   const out: SpreadEllipse[] = [];
   for (const s of sources) {
     const cell = weatherAt(weather, s.lat, s.lng);
@@ -114,7 +118,8 @@ export function spreadEllipses(sources: FireSource[], weather: WeatherGrid[], da
       const w = cell.days[d];
       if (!w) break;
       const kmh = Number.isFinite(w.wind) ? w.wind : 0;
-      const h = headKmPerDay(Math.min(1, w.risk * boost));
+      const wet = rainOn ? blobDamping(blobRain(rainOn(d), s.x, s.z)) : 1;
+      const h = headKmPerDay(Math.min(1, w.risk * boost * wet));
       const lb = lengthToBreadth(kmh);
       head += h;
       back += h / headBackRatio(lb);

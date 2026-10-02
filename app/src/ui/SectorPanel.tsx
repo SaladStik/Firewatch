@@ -74,6 +74,7 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
           <>
             <div className="mt-2 mb-1 label-xs">Weather · Open-Meteo · {dayLabel(day, weather[0]?.dates)}</div>
             {day === 0 && cell?.now && <KV k="Live now" v={`${fx(cell.now.temp)}°C / ${fx(cell.now.rh)}% · ${fx(cell.now.wind)} km/h`} />}
+            {day === 0 && cell?.now && Number.isFinite(cell.now.rain) && cell.now.rain > 0 && <KV k="Raining now" v={`${fx(cell.now.rain, 1)} mm/h`} />}
             <KV k="Max temp / min RH" v={`${fx(wx.temp)}°C / ${fx(wx.rh)}%`} />
             <KV k="Wind" v={`${fx(wx.wind)} km/h${Number.isFinite(wx.windFrom) ? ` from ${compass(wx.windFrom)} (${Math.round(wx.windFrom)}°)` : ""}`} />
             <KV k="Rain (day)" v={`${fx(wx.rainMm, 1)} mm`} />

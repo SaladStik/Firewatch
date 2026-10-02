@@ -3,10 +3,12 @@
  *
  * Risk model (transparent + tweakable, NOT the Canadian FWI):
  *   risk = weatherRisk(lat,lng) × fuel(landType) + wind-shaped boost near hotspots
- * weatherRisk = Fosberg FFWI / 100 × days-since-rain dryness (data/fosberg.ts).
+ * weatherRisk = Fosberg FFWI / 100 × days-since-rain dryness × the day's rain damping.
+ * Demo rainstorms damp the whole score under them (data/rain.ts).
  * Direct observations override: inside an active perimeter / a hotspot in the hex.
  */
 import { insideEllipse } from "../data/fireSpread";
+import { blobDamping, blobRain } from "../data/rain";
 import { unproject } from "../geo/projection";
 import { NODE_TYPES, NodeStatus, statusForRisk } from "../hex/nodeTypes";
 import type { LandClass } from "../geo/landClass";
@@ -93,6 +95,8 @@ export class HazardField {
     let risk = this.weatherRisk(x, z) * fuel;
     const spread = this.spreadAt(x, z);
     if (spread > 0) risk += 0.55 * spread * Math.max(0.3, fuel);
+    // Rain under a demo storm wets everything, fire-adjacent hexes included.
+    if (this.snap.rain.length) risk *= blobDamping(blobRain(this.snap.rain, x, z));
     risk = Math.min(1, risk);
     // Projected spread only marks burnable ground outside existing burn scars.
     if (perim === 0 && fuel > 0 && this.inSpread(x, z)) return { status: NodeStatus.Projected, risk };

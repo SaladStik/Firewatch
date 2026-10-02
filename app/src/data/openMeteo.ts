@@ -6,6 +6,7 @@
  * dryness factor (data/fosberg.ts).
  */
 import { daysSinceRain, fireWeatherRisk, fosbergFFWI, FULLY_DRY_DAYS } from "./fosberg";
+import { rainDamping } from "./rain";
 
 /** Days after today on the forecast slider (day 0 = today). */
 export const FORECAST_DAYS = 7;
@@ -33,7 +34,7 @@ export interface WeatherCell {
   /** Index 0 = today, 1..FORECAST_DAYS = upcoming days. */
   days: DayWeather[];
   /** Live conditions right now (display only; risk uses the daily peaks). */
-  now: { temp: number; rh: number; wind: number; windFrom: number };
+  now: { temp: number; rh: number; wind: number; windFrom: number; /** mm in the last hour */ rain: number };
 }
 
 export interface WeatherGrid {
@@ -51,7 +52,7 @@ export interface WeatherGrid {
 type Num = number | null;
 
 interface Row {
-  current: { temperature_2m: Num; relative_humidity_2m: Num; wind_speed_10m: Num; wind_direction_10m: Num };
+  current: { temperature_2m: Num; relative_humidity_2m: Num; wind_speed_10m: Num; wind_direction_10m: Num; precipitation: Num };
   daily: {
     time: string[];
     temperature_2m_max: Num[];
@@ -68,7 +69,8 @@ const num = (v: Num | undefined) => v ?? NaN;
 function scoreDay(tempIn: Num | undefined, rhIn: Num | undefined, windIn: Num | undefined, windFromIn: Num | undefined, rainMm: number, dry: number): DayWeather {
   const temp = num(tempIn), rh = num(rhIn), wind = num(windIn), windFrom = num(windFromIn);
   const ffwi = fosbergFFWI(temp, rh, wind);
-  return { temp, rh, wind, windFrom, rainMm, daysSinceRain: dry, ffwi, risk: fireWeatherRisk(ffwi, dry) };
+  // Fosberg × days-since-rain dryness, damped by the day's own rain (data/rain.ts).
+  return { temp, rh, wind, windFrom, rainMm, daysSinceRain: dry, ffwi, risk: fireWeatherRisk(ffwi, dry) * rainDamping(rainMm) };
 }
 
 export async function fetchWeatherGrid(bbox: [number, number, number, number], signal?: AbortSignal): Promise<WeatherGrid> {
@@ -85,7 +87,7 @@ export async function fetchWeatherGrid(bbox: [number, number, number, number], s
   }
   const p = new URLSearchParams({
     latitude: lats.join(","), longitude: lngs.join(","),
-    current: "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m",
+    current: "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation",
     daily: "temperature_2m_max,relative_humidity_2m_min,wind_speed_10m_max,wind_direction_10m_dominant,precipitation_sum",
     past_days: String(PAST_DAYS), forecast_days: String(FORECAST_DAYS + 1), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
@@ -101,7 +103,7 @@ export async function fetchWeatherGrid(bbox: [number, number, number, number], s
       const i = PAST_DAYS + n;
       days.push(scoreDay(d.temperature_2m_max[i], d.relative_humidity_2m_min[i], d.wind_speed_10m_max[i], d.wind_direction_10m_dominant[i], rain[i] ?? 0, daysSinceRain(rain, i)));
     }
-    const now = { temp: num(c.temperature_2m), rh: num(c.relative_humidity_2m), wind: num(c.wind_speed_10m), windFrom: num(c.wind_direction_10m) };
+    const now = { temp: num(c.temperature_2m), rh: num(c.relative_humidity_2m), wind: num(c.wind_speed_10m), windFrom: num(c.wind_direction_10m), rain: num(c.precipitation) };
     return { lat: lats[k], lng: lngs[k], days, now };
   });
   const dates = (rows[0]?.daily.time ?? []).slice(PAST_DAYS, PAST_DAYS + FORECAST_DAYS + 1);

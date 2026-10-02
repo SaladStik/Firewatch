@@ -22,7 +22,9 @@ import type { WorldClient } from "../world/WorldClient";
 import type { HexNodeInfo, TerrainMeta } from "../world/types";
 import { HexWorld, type WorldStats } from "./HexWorld";
 import { sharedUniforms } from "./materials";
+import type { RainField } from "../data/rain";
 import type { WindField } from "../data/wind";
+import { RainParticles } from "./RainParticles";
 import { WindParticles } from "./WindParticles";
 
 export interface SceneEvents {
@@ -58,7 +60,8 @@ export class Scene {
   private beacons: LineSegments | null = null;
   private beaconMat: ShaderMaterial;
   private wind = new WindParticles();
-  /** Drawn after bloom, so nothing in it glows (wind streamlines). */
+  private rain = new RainParticles();
+  /** Drawn after bloom, so nothing in it glows (wind streamlines, rain). */
   private overlayScene = new ThreeScene();
   private labels: { place: Place; region: number; el: HTMLDivElement; pos: Vector3; elevM: number; width: number; shown: boolean }[] = [];
   private labelMinPop = 0;
@@ -119,6 +122,7 @@ export class Scene {
     this.scene.add(this.world.root);
     this.scene.add(this.makeGround());
     this.beaconMat = this.makeBeaconMaterial();
+    this.overlayScene.add(this.rain.lines);
     this.overlayScene.add(this.wind.lines);
 
     // 4× MSAA on the composer's target — without it the post-processed image has no
@@ -334,7 +338,9 @@ export class Scene {
     sharedUniforms.uCam.value.copy(this.camera.position);
     sharedUniforms.uTarget.value.copy(t);
     (this.beaconMat.uniforms.uH.value as number) = Math.max(3, dist * 0.09);
-    this.wind.update(dt, t, dist, (x, z) => this.world.nodeAt(x, z)?.elevation ?? null);
+    const groundElev = (x: number, z: number) => this.world.nodeAt(x, z)?.elevation ?? null;
+    this.wind.update(dt, t, dist, groundElev);
+    this.rain.update(dt, t, dist, groundElev);
 
     if (this.pointerDirty) {
       this.pointerDirty = false;
@@ -486,6 +492,11 @@ export class Scene {
     this.wind.setField(field);
   }
 
+  /** Animated rain where the field says it's raining (null hides it). */
+  setRain(field: RainField | null) {
+    this.rain.setField(field);
+  }
+
   setBloom(on: boolean) {
     this.bloomWanted = on;
     this.bloom.enabled = on && !this.light;
@@ -505,6 +516,7 @@ export class Scene {
     this.beaconMat.blending = this.light ? NormalBlending : AdditiveBlending;
     this.beaconMat.needsUpdate = true;
     this.wind.setTheme(this.light);
+    this.rain.setTheme(this.light);
     this.bloom.enabled = this.bloomWanted && !this.light;
   }
 
@@ -516,6 +528,7 @@ export class Scene {
     this.world.dispose();
     for (const l of this.labels) l.el.remove();
     this.wind.dispose();
+    this.rain.dispose();
     this.composer.dispose();
     this.renderer.dispose();
   }

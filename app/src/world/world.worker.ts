@@ -25,7 +25,7 @@ const terrain = new TerrainStack();
 const overlays: OverlayIndex[] = [];
 /** Per-region street-level lines, fetched as tiles on demand. */
 const details: DetailTiles[] = [];
-let hazards = new HazardField({ hotspots: [], perimeters: [], weather: [], spread: [] });
+let hazards = new HazardField({ hotspots: [], perimeters: [], weather: [], spread: [], rain: [] });
 
 async function decode(blob: Blob): Promise<Uint8ClampedArray> {
   const bmp = await createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });

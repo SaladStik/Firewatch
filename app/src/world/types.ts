@@ -3,6 +3,7 @@
  * Everything that crosses the worker boundary is plain data / typed arrays.
  */
 import type { SpreadEllipse } from "../data/fireSpread";
+import type { RainBlob } from "../data/rain";
 import type { LandClass } from "../geo/landClass";
 import type { NodeStatus } from "../hex/nodeTypes";
 import type { Landmark } from "../hex/overlayStyles";
@@ -44,6 +45,8 @@ export interface HazardSnapshot {
   weather: { lat0: number; lng0: number; step: number; nLat: number; nLng: number; risk: number[] }[];
   /** Projected fire spread ellipses for the selected day (empty when the layer is off). */
   spread: SpreadEllipse[];
+  /** Demo-scenario rain cells (real rain is already in the weather risk grid). */
+  rain: RainBlob[];
 }
 
 export interface TerrainMeta {

@@ -11,10 +11,10 @@ import { reliefKm } from "./heights";
 import { sharedUniforms } from "./materials";
 
 /** Most particles alive at once (far zoom). Kept low so the streams never hide the map. */
-const MAX = 260;
+const MAX = 160;
 /** Stream opacity (dark / light theme): a light touch over the hexes, not a curtain. */
-const OPACITY_DARK = 0.32;
-const OPACITY_LIGHT = 0.3;
+const OPACITY_DARK = 0.2;
+const OPACITY_LIGHT = 0.22;
 /** Trail points kept per particle (more = smoother curves). */
 const TRAIL_PTS = 24;
 /** Trail length and drift speed scale with camera distance so they look the same at every zoom. */
@@ -88,7 +88,7 @@ export class WindParticles {
     // Clamp: after a stall (hidden tab, hitch) particles shouldn't all expire at once.
     dt = Math.min(dt, 0.1);
     // Grows with zoom-out but slower than the visible area does, so far views stay sparse.
-    const active = Math.round(Math.min(MAX, 30 + Math.sqrt(dist) * 5));
+    const active = Math.round(Math.min(MAX, 20 + Math.sqrt(dist) * 3.5));
     const radius = dist * 0.8, step = SPEED_FRAC * dist * dt, lift = dist * 0.003;
     // A new trail point is laid every `seg` km travelled, so trail shape doesn't depend on fps.
     const seg = (dist * TRAIL_FRAC) / (TRAIL_PTS - 1);

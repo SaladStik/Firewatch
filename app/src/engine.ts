@@ -8,6 +8,7 @@ import { fetchHotspots, fetchPerimeters } from "./data/cwfis";
 import { fireSources, spreadEllipses } from "./data/fireSpread";
 import { buildSnapshot, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
 import { FORECAST_DAYS, fetchWeatherGrid, type WeatherGrid } from "./data/openMeteo";
+import { demoStorms, RainField, type RainBlob } from "./data/rain";
 import { WindField } from "./data/wind";
 import type { Place } from "./data/places";
 import { project, setProjection } from "./geo/projection";
@@ -196,10 +197,18 @@ export class Engine {
     const s = app.get();
     const hotspots = this.allHotspots();
     const weatherBoost = s.simulation ? SIM_WEATHER_BOOST : 1;
-    const spread = s.layers.spread ? spreadEllipses(fireSources(hotspots, s.perimeters), s.weather, s.forecastDay, weatherBoost) : [];
+    // Demo scenario: a rainstorm drifting downwind day by day (one per focused region's demo sites).
+    const storms: RainBlob[][] = [];
+    for (let d = 0; d <= s.forecastDay; d++) storms.push(s.simulation ? this.demoStorms(d) : []);
+    const rain = storms[s.forecastDay];
+    // Projected spread is a scenario model, so it only runs in the demo scenario (real + simulated fires).
+    const spread = s.simulation && s.layers.spread
+      ? spreadEllipses(fireSources(hotspots, s.perimeters), s.weather, s.forecastDay, weatherBoost, (d) => storms[d] ?? [])
+      : [];
     app.set({ spread });
+    this.rainBlobs = rain;
     await this.client.setHazards(buildSnapshot({
-      hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost, spread,
+      hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost, spread, rain,
     }));
     await this.scene.world.refreshStatus();
     // The open sector panel shows status/risk from click time; re-read it for the new hazards.
@@ -212,9 +221,24 @@ export class Engine {
     }));
     this.scene.setBeacons(app.get().layers.beacons ? beacons : []);
     this.pushWind();
+    this.pushRain();
   }
 
-  /** Wind streamlines for the selected day. */
+  private rainBlobs: RainBlob[] = [];
+
+  private demoStorms(day: number): RainBlob[] {
+    const s = app.get();
+    const sites = s.regions.filter((r) => s.focus.includes(r.id)).map((r) => r.demoSites);
+    return demoStorms(sites, s.weather, day);
+  }
+
+  /** Rain animation for the selected day: real rain + demo storms. */
+  private pushRain() {
+    const s = app.get();
+    this.scene.setRain(s.layers.rain ? new RainField(s.weather, s.forecastDay, this.rainBlobs) : null);
+  }
+
+  /** Wind streamlines for the selected day (today = live wind). */
   private pushWind() {
     const s = app.get();
     this.scene.setWind(s.layers.wind ? new WindField(s.weather, s.forecastDay) : null);
@@ -249,6 +273,7 @@ export class Engine {
     this.applyLayers(app.get().layers);
     if (key === "beacons" || key === "spread") void this.pushHazards();
     if (key === "wind") this.pushWind();
+    if (key === "rain") this.pushRain();
   }
 
   private applyLayers(l: Layers) {
@@ -303,7 +328,7 @@ function readStoredWeather(id: string): { at: number; grid: WeatherGrid } | unde
   try {
     const v = JSON.parse(localStorage.getItem(WX_KEY(id)) ?? "null");
     // Ignore entries written by an older data shape.
-    return v?.grid?.cells?.[0]?.days?.length === FORECAST_DAYS + 1 && v.grid.cells[0].now ? v : undefined;
+    return v?.grid?.cells?.[0]?.days?.length === FORECAST_DAYS + 1 && v.grid.cells[0].now && "rain" in v.grid.cells[0].now ? v : undefined;
   } catch { return undefined; }
 }
 function storeWeather(id: string, entry: { at: number; grid: WeatherGrid }) {

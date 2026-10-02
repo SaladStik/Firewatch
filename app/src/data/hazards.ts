@@ -7,6 +7,7 @@ import { downwind } from "../world/spread";
 import type { HazardSnapshot } from "../world/types";
 import type { Hotspot, Perimeter } from "./cwfis";
 import type { SpreadEllipse } from "./fireSpread";
+import type { RainBlob } from "./rain";
 import { weatherAt, type WeatherGrid } from "./openMeteo";
 
 export interface HazardInputs {
@@ -19,6 +20,8 @@ export interface HazardInputs {
   weatherBoost: number;
   /** Projected spread ellipses (data/fireSpread.ts); computed by the engine. */
   spread: SpreadEllipse[];
+  /** Demo-scenario rain cells for the selected day (data/rain.ts). */
+  rain: RainBlob[];
 }
 
 const ACTIVE_PERIMETER_DAYS = 5;
@@ -57,6 +60,7 @@ export function buildSnapshot(inp: HazardInputs): HazardSnapshot {
       risk: w.cells.map((c) => Math.min(1, (c.days[inp.day]?.risk ?? 0) * inp.weatherBoost)),
     })),
     spread: inp.spread,
+    rain: inp.rain,
   };
 }
 

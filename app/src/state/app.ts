@@ -15,6 +15,7 @@ export interface Layers {
   spread: boolean;
   beacons: boolean;
   wind: boolean;
+  rain: boolean;
   bloom: boolean;
 }
 
@@ -80,7 +81,7 @@ export const app = createStore<AppState>({
   hover: null,
   selected: null,
   selectedSample: null,
-  layers: { risk: true, fires: true, spread: true, beacons: true, wind: true, bloom: true },
+  layers: { risk: true, fires: true, spread: true, beacons: true, wind: true, rain: true, bloom: true },
   hotspots: [],
   perimeters: [],
   weather: [],
