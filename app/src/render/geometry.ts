@@ -32,9 +32,11 @@ export function hexTop(): BufferGeometry {
  */
 export function hexWall(): BufferGeometry {
   const [ax, az] = hexCorner(0), [bx, bz] = hexCorner(1);
+  // Wound counter-clockwise as seen from OUTSIDE the hex (+x), so the front face points outward
+  // (the other order faced inward and back-face culling hid every wall you could see).
   const q = [
-    [ax, 0, az, 0, 0], [bx, 0, bz, 1, 0], [bx, 1, bz, 1, 1],
-    [ax, 0, az, 0, 0], [bx, 1, bz, 1, 1], [ax, 1, az, 0, 1],
+    [ax, 0, az, 0, 0], [bx, 1, bz, 1, 1], [bx, 0, bz, 1, 0],
+    [ax, 0, az, 0, 0], [ax, 1, az, 0, 1], [bx, 1, bz, 1, 1],
   ];
   const g = new BufferGeometry();
   g.setAttribute("position", new BufferAttribute(new Float32Array(q.flatMap((v) => [v[0], v[1], v[2]])), 3));
