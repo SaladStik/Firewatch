@@ -10,6 +10,7 @@ const LAYERS: { key: keyof Layers; label: string; color?: string; hint: string }
   { key: "risk", label: "Fire risk", color: "var(--color-risk-high)", hint: "Fosberg FFWI × dryness × fuel, stretched downwind of fires" },
   { key: "fires", label: "Fires + perimeters", color: "var(--color-fire)", hint: "CWFIS satellite hotspots + M3 perimeters" },
   { key: "beacons", label: "Hotspot beacons", color: "var(--color-fire)", hint: "Vertical markers visible from any zoom" },
+  { key: "wind", label: "Wind", color: "var(--color-water)", hint: "Animated arrows: wind direction + speed for the selected day (cyan light → amber strong)" },
   { key: "bloom", label: "Glow", hint: "Bloom post-processing (turn off on slow devices)" },
 ];
 

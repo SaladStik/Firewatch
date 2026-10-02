@@ -19,6 +19,7 @@ import type { WorldClient } from "../world/WorldClient";
 import type { HexNodeInfo, TerrainMeta } from "../world/types";
 import { HexWorld, type WorldStats } from "./HexWorld";
 import { sharedUniforms } from "./materials";
+import { WindArrows, type WindArrow } from "./WindArrows";
 
 export interface SceneEvents {
   onHover?: (n: HexNodeInfo | null) => void;
@@ -52,6 +53,7 @@ export class Scene {
   private fps = 60;
   private beacons: LineSegments | null = null;
   private beaconMat: ShaderMaterial;
+  private wind = new WindArrows();
   private labels: { place: Place; region: number; el: HTMLDivElement; pos: Vector3; elevM: number; width: number }[] = [];
   private labelMinPop = 0;
   private focus = new Set<number>([0]);
@@ -102,6 +104,7 @@ export class Scene {
     this.scene.add(this.world.root);
     this.scene.add(this.makeGround());
     this.beaconMat = this.makeBeaconMaterial();
+    this.scene.add(this.wind.mesh);
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -298,6 +301,7 @@ export class Scene {
     sharedUniforms.uCam.value.copy(this.camera.position);
     sharedUniforms.uTarget.value.copy(t);
     (this.beaconMat.uniforms.uH.value as number) = Math.max(3, dist * 0.09);
+    this.wind.update(dist);
 
     if (this.pointerDirty) {
       this.pointerDirty = false;
@@ -432,6 +436,11 @@ export class Scene {
     this.scene.add(this.beacons);
   }
 
+  /** Animated wind arrows (empty list hides them). */
+  setWind(list: WindArrow[]) {
+    this.wind.set(list);
+  }
+
   setBloom(on: boolean) {
     this.bloomWanted = on;
     this.bloom.enabled = on && !this.light;
@@ -450,6 +459,7 @@ export class Scene {
     this.borderMatDim.color.set(this.light ? "#9aa7b3" : "#3a4a42");
     this.beaconMat.blending = this.light ? NormalBlending : AdditiveBlending;
     this.beaconMat.needsUpdate = true;
+    this.wind.setTheme(this.light);
     this.bloom.enabled = this.bloomWanted && !this.light;
   }
 
@@ -460,6 +470,7 @@ export class Scene {
     this.controls.dispose();
     this.world.dispose();
     for (const l of this.labels) l.el.remove();
+    this.wind.dispose();
     this.composer.dispose();
     this.renderer.dispose();
   }

@@ -7,6 +7,7 @@ import { PROJECTION, type Region } from "./config/regions";
 import { fetchHotspots, fetchPerimeters } from "./data/cwfis";
 import { buildSnapshot, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
 import { FORECAST_DAYS, fetchWeatherGrid, type WeatherGrid } from "./data/openMeteo";
+import { windVectors } from "./data/wind";
 import type { Place } from "./data/places";
 import { project, setProjectionCenter } from "./geo/projection";
 import { NodeStatus } from "./hex/nodeTypes";
@@ -32,6 +33,8 @@ export class Engine {
   private timer = 0;
   private disposed = false;
   private weatherCache = new Map<string, { at: number; grid: WeatherGrid }>();
+  /** Ground under each weather cell (elevation + province), sampled once for the wind arrows. */
+  private windGround = new Map<string, { elev: number; region: number }>();
 
   async boot(canvas: HTMLCanvasElement, overlay: HTMLDivElement) {
     const stage = (s: string) => app.set({ boot: { stage: s, done: false } });
@@ -180,6 +183,25 @@ export class Engine {
       return { x: w.x, z: w.z, elev: smp.elevation, simulated: h.agency === "SIMULATION" };
     }));
     this.scene.setBeacons(app.get().layers.beacons ? beacons : []);
+    await this.pushWind();
+  }
+
+  /** Wind arrows for the selected day, on cells inside a loaded province. */
+  private async pushWind() {
+    const s = app.get();
+    if (!s.layers.wind) return this.scene.setWind([]);
+    const arrows = await Promise.all(windVectors(s.weather, s.forecastDay).map(async (v) => {
+      const key = `${v.x.toFixed(1)},${v.z.toFixed(1)}`;
+      let ground = this.windGround.get(key);
+      if (!ground) {
+        const smp = await this.client.sample(v.x, v.z);
+        this.windGround.set(key, (ground = { elev: smp.elevation, region: smp.region }));
+      }
+      return ground.region < 0 ? [] : [{ ...v, elev: ground.elev }];
+    }));
+    // A newer day/layer change may have landed while we were sampling.
+    const now = app.get();
+    if (now.forecastDay === s.forecastDay && now.layers.wind) this.scene.setWind(arrows.flat());
   }
 
   setSimulation(on: boolean) {
@@ -210,6 +232,7 @@ export class Engine {
     app.set((s) => ({ layers: { ...s.layers, [key]: on } }));
     this.applyLayers(app.get().layers);
     if (key === "beacons") void this.pushHazards();
+    if (key === "wind") void this.pushWind();
   }
 
   private applyLayers(l: Layers) {
