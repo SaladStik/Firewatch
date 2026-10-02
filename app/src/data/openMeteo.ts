@@ -118,7 +118,7 @@ export async function fetchWeatherGrid(bbox: [number, number, number, number], s
     current: "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,precipitation",
     daily: "temperature_2m_max,relative_humidity_2m_min,wind_speed_10m_max,wind_direction_10m_dominant,precipitation_sum",
     hourly: "temperature_2m,relative_humidity_2m,wind_speed_10m",
-    past_days: String(PAST_DAYS), forecast_days: String(FORECAST_DAYS + 1), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    past_days: String(PAST_DAYS), forecast_days: String(FORECAST_DAYS + 1), timezone: "auto", // each location's own local time (FWI noon readings; same answer on the data server)
   });
   const res = await fetch(`https://api.open-meteo.com/v1/forecast?${p}`, { signal });
   if (!res.ok) {

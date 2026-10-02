@@ -6,6 +6,7 @@ Wildfire risk intelligence on a 3D hex grid, built entirely on open data. It cov
 npm install
 npm run dev          # http://localhost:5173
 npm run build        # static site in dist/ (deploy anywhere; set BASE=/sub/path/ for sub-path hosting)
+npm run server       # optional shared data server (http://localhost:8787); use it with VITE_DATA_SERVER=http://localhost:8787 npm run dev (see RUNBOOK.md)
 npm test             # unit tests for the risk math (node:test via tsx)
 npm run bake -- alberta       # terrain + land-cover raster for a region
 npm run bake:pbf -- alberta   # OSM (Geofabrik extract): every road, river, stream, rail line, town, building ≥4 storeys
@@ -54,6 +55,38 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 | Fire weather stations: observed FWI moisture codes (FFMC, DMC, DC) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) `public:firewx_stns_current` | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Seeds the FWI System per weather cell with official values (with the FWI codes CWFIS attaches to each hotspot). Refreshed at most hourly |
 | Fire growth history (per fire) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) hotspot archive (`public:hotspots`, every detection since 2012), queried per active perimeter since its start date | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Each fire's daily burned-area growth; calibrates how far that fire is projected to spread. Fetched for active fires in focused provinces, at most hourly |
 | Weather (12:00 local hourly temperature, humidity and wind for the FWI System; daily peaks and rain totals; 14 past days + today + 7-day forecast; live current conditions incl. wind and precipitation) | [Open-Meteo](https://open-meteo.com/) | Data [CC BY 4.0](https://open-meteo.com/en/license); free API for non-commercial use | 1.5° grid (coarser for very large provinces, ≤ ~90 points each), focused provinces only; Canadian FWI System per day (with Fosberg for comparison), wind direction for spread, live wind and rain animation. Refreshed at most hourly |
+
+### Data server (optional)
+
+By default every visitor's browser fetches the live data above itself. Running `npm run server` (`server/index.ts`, port 8787) and starting or building the app with `VITE_DATA_SERVER=<server address>` changes that:
+- The server fetches each source once and the app reads only from the server (`src/data/liveData.ts`).
+  - CWFIS fire data covers all of Canada and refreshes every 10 minutes.
+  - Stations, weather and fire history refresh hourly.
+  - Weather is fetched per province when first requested. `FIREWATCH_PREWARM` (default `alberta`) lists the provinces kept warm.
+- The server caches everything in memory and in `server/.cache/`, so the data survives restarts.
+- Every visitor sees the same data, and the Open-Meteo quota is spent once rather than once per browser.
+- If a source fails or rate-limits, the server keeps serving the last good copy and waits 5 minutes before retrying.
+- The server computes FWI seeding with the same code as the browser (`src/data/fwiSeed.ts`).
+- **Many devices at once:**
+  - Each data set is serialised and gzipped once per refresh, not per request.
+  - Every response carries an ETag, so a device that already has the latest copy gets an empty 304.
+  - Stale data is served instantly while one background refresh runs.
+  - Simultaneous requests share one upstream fetch.
+  - Upstream calls are queued: one Open-Meteo request and two hotspot-archive queries at a time. However many devices connect, the sources see the same traffic.
+  - Perimeter outlines are rounded to about 1 m, which is a third smaller to send.
+  - Only known province and fire ids are accepted, and old fire histories are dropped, so memory stays bounded.
+  - Load test: 300 devices booting at once (5,100 requests) all succeeded, with each data set fetched from its source once.
+- **Addresses:**
+  - In dev, the page calls its own `/api`, and Vite forwards that to `VITE_DATA_SERVER`. Phones and other computers on the network only need to reach the dev server (`npm run dev -- --host`).
+  - In a build, the page calls `<VITE_DATA_SERVER>/api`. Use `same-origin` when the data server also serves the built site from `dist/`, which it does whenever a build exists.
+
+API endpoints:
+- `/api/health`
+- `/api/cwfis/hotspots`
+- `/api/cwfis/perimeters`
+- `/api/cwfis/stations`
+- `/api/weather/<region id>`
+- `/api/fire-history/<perimeter id>`
 
 ### Not from a source (our own)
 
