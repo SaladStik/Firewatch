@@ -1,29 +1,63 @@
-import type { ReactNode } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
+/** Remembered per panel (by its tour id or title) so a minimized panel stays minimized. */
+const collapsedKey = (id: string) => `firewatch.panel.${id}.collapsed`;
+function readCollapsed(id: string) {
+  try { return localStorage.getItem(collapsedKey(id)) === "1"; } catch { return false; }
+}
+
+/**
+ * A HUD panel with a title bar. Panels with a title can be minimized to just that bar (click the
+ * title or the chevron); the state is remembered across reloads.
+ */
 export function Panel({
   children,
   className = "",
   title,
   right,
   tour,
+  collapsible = true,
 }: {
   children: ReactNode;
   className?: string;
   title?: string;
   right?: ReactNode;
   tour?: string;
+  collapsible?: boolean;
 }) {
+  const id = tour ?? title ?? "";
+  const canCollapse = collapsible && !!title && !!id;
+  const [collapsed, setCollapsed] = useState(() => canCollapse && readCollapsed(id));
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    try { localStorage.setItem(collapsedKey(id), next ? "1" : "0"); } catch { /* storage unavailable */ }
+  };
   return (
-    <section className={`panel pointer-events-auto ${className}`} data-tour={tour}>
+    <section className={`panel pointer-events-auto ${collapsed ? "" : className}`} data-tour={tour}>
       {title && (
-        <header className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
-          <span className="flex min-w-0 items-center gap-2">
+        <header className={`flex items-center justify-between gap-2 px-3 py-2 ${collapsed ? "" : "border-b border-line"}`}>
+          <button
+            type="button"
+            onClick={canCollapse ? toggle : undefined}
+            className={`flex min-w-0 items-center gap-2 text-left ${canCollapse ? "cursor-pointer" : "cursor-default"}`}
+            aria-expanded={canCollapse ? !collapsed : undefined}
+            title={canCollapse ? (collapsed ? `Show ${title}` : `Minimize ${title}`) : undefined}
+          >
             <span className="label-xs truncate">{title}</span>
+          </button>
+          <span className="flex shrink-0 items-center gap-1">
+            {right}
+            {canCollapse && (
+              <button type="button" onClick={toggle} className="text-ink-mute transition hover:text-phos" aria-label={collapsed ? `Show ${title}` : `Minimize ${title}`}>
+                {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+              </button>
+            )}
           </span>
-          {right}
         </header>
       )}
-      {children}
+      {!collapsed && children}
     </section>
   );
 }
