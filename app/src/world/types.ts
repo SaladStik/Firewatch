@@ -2,7 +2,8 @@
  * Data contracts between the main thread, the world worker and the renderer.
  * Everything that crosses the worker boundary is plain data / typed arrays.
  */
-import type { SpreadEllipse } from "../data/fireSpread";
+import type { GrowthField, GrowthSource } from "./fireGrowth";
+import type { RainBlob } from "../data/rain";
 import type { LandClass } from "../geo/landClass";
 import type { NodeStatus } from "../hex/nodeTypes";
 import type { Landmark } from "../hex/overlayStyles";
@@ -38,12 +39,14 @@ export interface ChunkData {
 /** Hazard data after projection into world km. Sent to the worker. */
 export interface HazardSnapshot {
   /** dx/dz/stretch: the day's downwind direction at the hotspot (see world/spread.ts). */
-  hotspots: { x: number; z: number; frp: number; fwi: number; dx: number; dz: number; stretch: number }[];
+  hotspots: { x: number; z: number; frp: number; fwi: number; dx: number; dz: number; stretch: number; scale: number }[];
   perimeters: { active: boolean; minX: number; maxX: number; minZ: number; maxZ: number; rings: number[][] }[];
   /** Regular lat/lng grids of weather risk (0..1), one per region. */
   weather: { lat0: number; lng0: number; step: number; nLat: number; nLng: number; risk: number[] }[];
   /** Projected fire spread ellipses for the selected day (empty when the layer is off). */
-  spread: SpreadEllipse[];
+  spread: GrowthField | null;
+  /** Demo-scenario rain cells (real rain is already in the weather risk grid). */
+  rain: RainBlob[];
 }
 
 export interface TerrainMeta {
@@ -82,6 +85,7 @@ export type WorkerRequest =
   | { id: number; type: "chunk"; level: number; cx: number; cz: number }
   | { id: number; type: "restatus"; level: number; cx: number; cz: number }
   | { id: number; type: "hazards"; hazards: HazardSnapshot }
+  | { id: number; type: "growth"; sources: GrowthSource[]; horizon: number; size: number }
   | { id: number; type: "sample"; x: number; z: number };
 
 export type WorkerResponse =

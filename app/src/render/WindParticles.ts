@@ -11,10 +11,10 @@ import { reliefKm } from "./heights";
 import { sharedUniforms } from "./materials";
 
 /** Most particles alive at once (far zoom). Kept low so the streams never hide the map. */
-const MAX = 260;
+const MAX = 160;
 /** Stream opacity (dark / light theme): a light touch over the hexes, not a curtain. */
-const OPACITY_DARK = 0.32;
-const OPACITY_LIGHT = 0.3;
+const OPACITY_DARK = 0.2;
+const OPACITY_LIGHT = 0.22;
 /** Trail points kept per particle (more = smoother curves). */
 const TRAIL_PTS = 24;
 /** Trail length and drift speed scale with camera distance so they look the same at every zoom. */
@@ -26,7 +26,14 @@ const GROUND_EVERY = 8;
  * How fast a stream eases toward the ground under it (1/s). Hexes are terraced, so
  * snapping to each hex's height made streams jolt up and down on screen.
  */
-const GROUND_EASE = 1.2;
+const GROUND_EASE = 0.6;
+/** Seconds a stream takes to fade in after spawning, and out before it's removed. */
+const FADE_S = 0.8;
+/**
+ * Streams float over the highest ground within this fraction of camera distance, not the hex
+ * right under them: following every terraced, exaggerated mountain hex made them zig-zag.
+ */
+const FLOOR_SPREAD = 0.03;
 
 type GroundElev = (x: number, z: number) => number | null;
 
@@ -40,6 +47,9 @@ export class WindParticles {
   private elevTarget = new Float32Array(MAX);
   private age = new Float32Array(MAX);
   private life = new Float32Array(MAX).fill(-1); // < 0 = needs spawning
+  /** Last wind each stream moved with: it keeps drifting on it while fading out. */
+  private wvx = new Float32Array(MAX);
+  private wvz = new Float32Array(MAX);
   /** Trail history, newest first: x, z, elevation (m) per point; `count` points in use. */
   private hx = new Float32Array(MAX * TRAIL_PTS);
   private hz = new Float32Array(MAX * TRAIL_PTS);
@@ -88,26 +98,47 @@ export class WindParticles {
     // Clamp: after a stall (hidden tab, hitch) particles shouldn't all expire at once.
     dt = Math.min(dt, 0.1);
     // Grows with zoom-out but slower than the visible area does, so far views stay sparse.
-    const active = Math.round(Math.min(MAX, 30 + Math.sqrt(dist) * 5));
+    const active = Math.round(Math.min(MAX, 20 + Math.sqrt(dist) * 3.5));
     const radius = dist * 0.8, step = SPEED_FRAC * dist * dt, lift = dist * 0.003;
     // A new trail point is laid every `seg` km travelled, so trail shape doesn't depend on fps.
     const seg = (dist * TRAIL_FRAC) / (TRAIL_PTS - 1);
     const vScale = sharedUniforms.uVScale.value, ease = Math.min(1, dt * GROUND_EASE);
     const y = (e: number) => reliefKm(e) * vScale + lift;
+    const sp = dist * FLOOR_SPREAD;
+    // Highest ground around a point (null off the map).
+    const floor = (x: number, z: number) => {
+      const c = groundElev(x, z);
+      if (c == null) return null;
+      let m = c;
+      for (const [ox, oz] of [[sp, 0], [-sp, 0], [0, sp], [0, -sp]]) m = Math.max(m, groundElev(x + ox, z + oz) ?? m);
+      return m;
+    };
     let v = 0; // vertices written
-    for (let i = 0; i < active; i++) {
-      this.age[i] += dt;
-      let w = this.life[i] > 0 ? f.at(this.x[i], this.z[i]) : null;
-      const far = Math.abs(this.x[i] - target.x) > radius * 1.2 || Math.abs(this.z[i] - target.z) > radius * 1.2;
-      if (!w || far || this.age[i] > this.life[i]) w = this.spawn(i, target, radius, groundElev);
-      else if ((i + this.frame) % GROUND_EVERY === 0) {
-        const e = groundElev(this.x[i], this.z[i]);
-        if (e == null) w = null; // drifted off the map
-        else this.elevTarget[i] = e;
+    // Streams never pop out: leaving the view, drifting off the map or out of the wind data, or
+    // being surplus after zooming in all start the same fade, and the stream keeps drifting meanwhile.
+    const dying = (i: number) => { this.life[i] = Math.min(this.life[i], this.age[i] + FADE_S); };
+    for (let i = 0; i < MAX; i++) {
+      if (this.life[i] <= 0) {
+        if (i >= active) continue;
+        const w0 = this.spawn(i, target, radius, floor);
+        if (!w0) { this.life[i] = -1; continue; }
+        this.wvx[i] = w0.vx; this.wvz[i] = w0.vz;
+      } else {
+        this.age[i] += dt;
+        if (this.age[i] > this.life[i]) { this.life[i] = -1; i--; continue; } // faded out: respawn this slot now
+        if (i >= active) dying(i);
+        const far = Math.abs(this.x[i] - target.x) > radius * 1.2 || Math.abs(this.z[i] - target.z) > radius * 1.2;
+        if (far) dying(i);
+        const w = f.at(this.x[i], this.z[i]);
+        if (w) { this.wvx[i] = w.vx; this.wvz[i] = w.vz; } else dying(i);
+        if ((i + this.frame) % GROUND_EVERY === 0) {
+          const e = floor(this.x[i], this.z[i]);
+          if (e == null) dying(i); // drifted off the map: keep its height, fade out
+          else this.elevTarget[i] = e;
+        }
       }
-      if (!w) { this.life[i] = -1; continue; }
-      this.x[i] += w.vx * step;
-      this.z[i] += w.vz * step;
+      this.x[i] += this.wvx[i] * step;
+      this.z[i] += this.wvz[i] * step;
       this.elev[i] += (this.elevTarget[i] - this.elev[i]) * ease;
 
       // Lay a trail point once the head has moved a segment's length from the newest one.
@@ -122,7 +153,7 @@ export class WindParticles {
       }
 
       // Fade the whole stream in after spawning and out before dying; each point fades toward the tail.
-      const fade = Math.max(0, Math.min(1, this.age[i] / 0.8, (this.life[i] - this.age[i]) / 0.8));
+      const fade = Math.max(0, Math.min(1, this.age[i] / FADE_S, (this.life[i] - this.age[i]) / FADE_S));
       let px = this.x[i], pz = this.z[i], py = y(this.elev[i]), pa = fade;
       for (let k = 0; k < this.count[i]; k++) {
         const qx = this.hx[o + k], qz = this.hz[o + k], qy = y(this.he[o + k]);
@@ -133,7 +164,6 @@ export class WindParticles {
         px = qx; pz = qz; py = qy; pa = qa;
       }
     }
-    for (let i = active; i < MAX; i++) this.life[i] = -1;
     const g = this.lines.geometry;
     g.setDrawRange(0, v);
     g.attributes.position.needsUpdate = true;

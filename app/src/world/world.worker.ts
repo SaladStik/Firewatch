@@ -13,6 +13,7 @@ import { setProjection } from "../geo/projection";
 import { axialToOffset, chunkWorldBounds, hexToWorld, offsetToAxial, SQRT3, worldToHex } from "../hex/hexMath";
 import { NODE_TYPES, type NodeStatus } from "../hex/nodeTypes";
 import type { Landmark } from "../hex/overlayStyles";
+import { simulateGrowth } from "./fireGrowth";
 import { HazardField } from "./hazardField";
 import { DetailTiles } from "./detailTiles";
 import { OverlayIndex, type OsmData } from "./overlays";
@@ -25,7 +26,7 @@ const terrain = new TerrainStack();
 const overlays: OverlayIndex[] = [];
 /** Per-region street-level lines, fetched as tiles on demand. */
 const details: DetailTiles[] = [];
-let hazards = new HazardField({ hotspots: [], perimeters: [], weather: [], spread: [] });
+let hazards = new HazardField({ hotspots: [], perimeters: [], weather: [], spread: null, rain: [] });
 
 async function decode(blob: Blob): Promise<Uint8ClampedArray> {
   const bmp = await createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
@@ -235,6 +236,9 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
         reply(c, transferables(c));
         break;
       }
+      case "growth":
+        reply(simulateGrowth(msg.sources, msg.horizon, msg.size, (x, z) => terrain.landAt(x, z), (x, z) => terrain.elevation(x, z)));
+        break;
       case "hazards":
         hazards = new HazardField(msg.hazards);
         reply(true);

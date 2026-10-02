@@ -21,7 +21,8 @@ export class WindField {
     this.grids = grids.map((g) => {
       const vx = new Float32Array(g.cells.length), vz = new Float32Array(g.cells.length);
       g.cells.forEach((c, i) => {
-        const w = c.days[day];
+        // Today: the live (measured/analysed) wind right now; forecast days: the day's peak.
+        const w = day === 0 && Number.isFinite(c.now.wind) && Number.isFinite(c.now.windFrom) ? c.now : c.days[day];
         if (!w || !Number.isFinite(w.wind) || !Number.isFinite(w.windFrom)) return;
         const d = downwind(w.windFrom, w.wind);
         vx[i] = d.dx * w.wind;

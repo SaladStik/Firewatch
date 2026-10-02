@@ -11,7 +11,7 @@ const day = (wind: number, windFrom: number): DayWeather => ({ temp: 20, rh: 30,
 /** One row of cells along latitude 54.5, 1.5° apart, starting at -115. */
 const grid = (days: DayWeather[][]): WeatherGrid => ({
   lat0: 54.5, lng0: -115, step: 1.5, nLat: 1, nLng: days.length, dates: [], fetchedAt: "",
-  cells: days.map((d, i) => ({ lat: 54.5, lng: -115 + i * 1.5, days: d, now: { temp: 0, rh: 0, wind: 0, windFrom: 0 } })),
+  cells: days.map((d, i) => ({ lat: 54.5, lng: -115 + i * 1.5, days: d, now: { temp: 0, rh: 0, wind: NaN, windFrom: NaN, rain: 0 } })),
 });
 const near = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) < eps;
 
@@ -31,4 +31,13 @@ test("WindField is null outside every grid and treats missing wind as calm", () 
   const f = new WindField([grid([[day(NaN, 90)], [day(10, NaN)]])], 0);
   assert.equal(f.at(5000, 5000), null);
   assert.ok(near(f.at(0, 0)!.kmh, 0));
+});
+
+test("WindField uses the live wind for today when there is one", () => {
+  const g = grid([[day(30, 90)], [day(30, 90)]]);
+  for (const c of g.cells) c.now = { temp: 0, rh: 0, wind: 12, windFrom: 270, rain: 0 };
+  const today = new WindField([g], 0).at(0, 0)!;
+  assert.ok(near(today.kmh, 12, 1e-3) && today.vx > 0, JSON.stringify(today)); // live: from west, 12 km/h
+  const tomorrowish = new WindField([grid([[day(30, 90), day(30, 90)], [day(30, 90), day(30, 90)]])], 1).at(0, 0)!;
+  assert.ok(near(tomorrowish.kmh, 30, 1e-3)); // forecast days keep the daily peak
 });

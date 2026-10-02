@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { downwind, spreadInfluence, SPREAD_BASE_KM, SPREAD_MAX_KM } from "../src/world/spread.ts";
+import { downwind, MAX_REACH_SCALE, spreadInfluence, SPREAD_BASE_KM, SPREAD_MAX_KM } from "../src/world/spread.ts";
 
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;
 
@@ -31,7 +31,9 @@ test("strong west wind reaches further east than west", () => {
   const w = downwind(270, 40);
   assert.ok(spreadInfluence(40, 0, w) > 0); // 40 km downwind still affected
   assert.equal(spreadInfluence(-40, 0, w), 0); // 40 km upwind is not
-  assert.ok(spreadInfluence(SPREAD_MAX_KM - 0.1, 0, w) > 0);
+  // SPREAD_MAX_KM is the search radius: the furthest a fire at the largest growth scale reaches.
+  assert.ok(spreadInfluence(SPREAD_MAX_KM - 0.1, 0, { ...w, scale: MAX_REACH_SCALE }) > 0);
+  assert.equal(spreadInfluence(SPREAD_MAX_KM + 0.1, 0, { ...w, scale: MAX_REACH_SCALE }), 0);
 });
 
 test("the hotspot's own cell has full influence", () => {

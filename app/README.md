@@ -23,9 +23,10 @@ The baked files for every region ship in `public/data/<region>/`, so you only ne
   - **Places:** search every community and click one to fly there.
   - It also sets label density. **Auto** (the default) shows major cities from afar and adds smaller towns as you zoom in; All / Some / Major / Off are fixed settings.
 - The **Light / Dark** button switches between the dark theme and a government-style light theme.
-- The **Forecast** bar switches the map between today and each of the next 7 days, and lists the communities most at risk that day (one per weather cell). Fires stay as observed now.
-- The **Wind** layer animates thin streamlines drifting with the selected day's wind (interpolated between the weather grid points): faster and longer in stronger wind, fewer as you zoom in, and never glowing (`data/wind.ts`, `render/WindParticles.ts`).
-- The **Projected spread** layer (violet hexes) shows where each active fire could reach by the selected forecast day, and the strip above the forecast bar lists communities inside that area. It is a simplified **scenario**, not an official forecast (see below).
+- The **Forecast** bar switches the map between today and each of the next 7 days, and lists the **communities at risk** that day: only towns with a fire nearby, in a projected path, or under High fire weather, each with its reason (e.g. "fire 18 km W"). Fires stay as observed now.
+- The **Wind** layer animates faint, continuous streams that curve with the wind (interpolated between the weather grid points). **Today uses the live measured wind**; later days use each day's peak wind. Streams float over the highest ground nearby so they don't zig-zag over mountains, and they never glow (`data/wind.ts`, `render/WindParticles.ts`).
+- The **Rain** layer animates falling rain wherever it's raining: Open-Meteo's **live precipitation** today, and each day's forecast total on later days. A soft blue wash marks the rain area on the ground, and the drops drift and lean with the same wind as the streams (`data/rain.ts`, `render/RainParticles.ts`).
+- The **Projected spread** layer (violet hexes) shows where each active fire could reach by the selected forecast day (simulated fires too, in the demo scenario). The strip above the forecast bar lists communities inside that area. It's a simplified **scenario** model, not an official forecast (see below).
 - `?focus=ab,bc` opens with specific provinces in focus.
 
 ## Data sources
@@ -49,14 +50,20 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 | Data | Source | Licence | How we use it |
 |---|---|---|---|
 | Satellite fire hotspots (last 24 h) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/), Natural Resources Canada ([datamart](https://cwfis.cfs.nrcan.gc.ca/datamart)); detections from MODIS/VIIRS/SLSTR satellites | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Burning hexes, beacons, hotspot list, proximity risk |
-| Fire perimeters (current season) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) M3 perimeters | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Active-perimeter and burn-scar hexes, burned-area total |
-| Weather (today + 7-day forecast as daily peaks: temperature, humidity, wind speed and direction; live current conditions; 14 days of rain history) | [Open-Meteo](https://open-meteo.com/) | Data [CC BY 4.0](https://open-meteo.com/en/license); free API for non-commercial use | 1.5° grid (coarser for very large provinces, ≤ ~90 points each), focused provinces only; Fosberg index per day, days since rain, wind direction for spread. Refreshed at most hourly |
+| Fire perimeters (current season) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) M3 perimeters (`public:m3_polygons_current`) | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Active-perimeter and burn-scar hexes, burned-area total |
+| Fire weather stations: observed FWI moisture codes (FFMC, DMC, DC) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) `public:firewx_stns_current` | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Seeds the FWI System per weather cell with official values (with the FWI codes CWFIS attaches to each hotspot). Refreshed at most hourly |
+| Fire growth history (per fire) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) hotspot archive (`public:hotspots`, every detection since 2012), queried per active perimeter since its start date | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Each fire's daily burned-area growth; calibrates how far that fire is projected to spread. Fetched for active fires in focused provinces, at most hourly |
+| Weather (12:00 local hourly temperature, humidity and wind for the FWI System; daily peaks and rain totals; 14 past days + today + 7-day forecast; live current conditions incl. wind and precipitation) | [Open-Meteo](https://open-meteo.com/) | Data [CC BY 4.0](https://open-meteo.com/en/license); free API for non-commercial use | 1.5° grid (coarser for very large provinces, ≤ ~90 points each), focused provinces only; Canadian FWI System per day (with Fosberg for comparison), wind direction for spread, live wind and rain animation. Refreshed at most hourly |
 
 ### Not from a source (our own)
 
-- **Risk score:** the **Fosberg Fire Weather Index** (Fosberg 1978: temperature, humidity and wind → 0–100) × a **dryness factor** (0.6 on a day with ≥ 2 mm of rain, rising to 1.0 after 14 dry days) × the fuel load of the land type, plus a **wind-shaped boost** near hotspots: 30 km in calm air, stretched up to ~51 km downwind and shrunk to ~9 km upwind in strong wind. Every day, including today, uses its daily peak (max temperature, min humidity, max wind, dominant direction). Code: `data/fosberg.ts`, `world/spread.ts`, `world/hazardField.ts`. The dryness factor and spread shape are our own; neither is the official Canadian Fire Weather Index.
-- **Projected spread (scenario):** each active fire (CWFIS perimeter, or satellite hotspots within 3 km of each other) grows as an ellipse per forecast day. Head spread = 30 km/day × risk^1.5 (risk = Fosberg/100 × dryness, ≈3 km/day at 0.2, ≈11 at 0.5); length:breadth from wind speed (Anderson 1983, midflame ≈ 0.4 × 10 m wind, max 8); head:back ratio from length:breadth (Alexander 1985); the head points downwind and distances add up day by day. Hexes that can't burn (water, rock, snow) and existing burn scars are never marked. It ignores slope, suppression, fuel breaks and spotting. Code: `data/fireSpread.ts`.
-- **Demo scenario:** simulated ignitions and a heatwave multiplier, labelled SIMULATION wherever it's shown.
+How every risk, projection and warning is worked out (Canadian FWI and FBP Systems, fuel-aware growth, per-fire calibration, communities at risk, limitations and references) is documented in **[METHODOLOGY.md](METHODOLOGY.md)**. In short:
+- **Fire danger:** the Canadian **FWI System** (Van Wagner 1987) from Open-Meteo 12:00 weather, seeded with CWFIS's observed moisture codes (stations, and CWFIS's FWI grids at hotspots), rated in the standard 5 danger classes. Fosberg is shown alongside for comparison with the sensor station.
+- **Hex risk:** FWI-based weather risk × the land type's fuel load, plus a proximity boost near fires (our heuristic).
+- **Projected spread:** FBP System rates of spread by fuel type (ST-X-3 / GLC-X-10), grown hex by hex over the real land cover with minimum travel time (Finney 2002): spreads in every direction through fuel, faster downwind and upslope, stops at water and rock.
+- **Per-fire calibration:** each fire's observed growth from the CWFIS hotspot archive vs. the model on the same days' weather scales its projection.
+- **Communities at risk:** only towns with a fire nearby, in a projected path, or under Very High fire danger.
+- **Demo scenario:** simulated ignitions, a heatwave multiplier, and a **rainstorm** (75 km radius) that starts over a demo fire site and drifts downwind ~55 km/day with the real wind while weakening. The storm damps risk under it (up to ×0.15) and slows any fire it covers. Everything simulated is labelled SIMULATION. Code: `data/hazards.ts`, `data/rain.ts`.
 - **Wireframe models:** tree, house and landmark shapes are drawn in code (`render/geometry.ts`).
 
 ### Attribution shown in the app
@@ -207,5 +214,5 @@ A fully customisable, individually animatable 2D mascot lives in `src/mascot/fir
 
 ## Notes
 
-- **Demo scenario** adds clearly flagged simulated ignitions plus a heatwave. It's meant for presentations when nothing is burning.
+- **Demo scenario** adds clearly flagged simulated ignitions, a heatwave and a drifting rainstorm. It's meant for presentations when nothing is burning.
 - In dev builds the engine and app state are exposed as `window.engine` and `window.app` for debugging, e.g. `engine.flyToLatLng(51.05, -114.07, 10)`.

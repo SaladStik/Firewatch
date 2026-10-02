@@ -6,7 +6,9 @@ import { project } from "../geo/projection";
 import { downwind } from "../world/spread";
 import type { HazardSnapshot } from "../world/types";
 import type { Hotspot, Perimeter } from "./cwfis";
-import type { SpreadEllipse } from "./fireSpread";
+import { perimeterAt, reachScale, type FireGrowth } from "./fireHistory";
+import type { GrowthField } from "../world/fireGrowth";
+import type { RainBlob } from "./rain";
 import { weatherAt, type WeatherGrid } from "./openMeteo";
 
 export interface HazardInputs {
@@ -17,8 +19,12 @@ export interface HazardInputs {
   day: number;
   /** Demo scenario: multiplies weather risk (1 = real data). */
   weatherBoost: number;
-  /** Projected spread ellipses (data/fireSpread.ts); computed by the engine. */
-  spread: SpreadEllipse[];
+  /** Projected burn from the fuel-aware growth model (world/fireGrowth.ts). */
+  spread: GrowthField | null;
+  /** Demo-scenario rain cells for the selected day (data/rain.ts). */
+  rain: RainBlob[];
+  /** Per-fire growth calibration by perimeter id (data/fireHistory.ts). */
+  growth?: Record<string, FireGrowth>;
 }
 
 const ACTIVE_PERIMETER_DAYS = 5;
@@ -31,12 +37,16 @@ export function isPerimeterActive(p: Perimeter, now = Date.now()) {
 
 export function buildSnapshot(inp: HazardInputs): HazardSnapshot {
   const now = Date.now();
+  const calibrated = inp.perimeters.filter((p) => inp.growth?.[p.id] && isPerimeterActive(p, now));
   return {
     hotspots: inp.hotspots.map((h) => {
       // Nearest weather cell; outside every grid or missing wind → calm (plain circle).
       const wx = weatherAt(inp.weather, h.lat, h.lng)?.days[inp.day];
       const calm = !wx || !Number.isFinite(wx.windFrom) || !Number.isFinite(wx.wind);
-      return { ...project(h.lat, h.lng), frp: h.frp, fwi: h.fwi, ...downwind(calm ? 0 : wx.windFrom, calm ? 0 : wx.wind) };
+      // A hotspot on a fire with known growth reaches further / less far, like that fire has been.
+      const fire = calibrated.length ? perimeterAt(calibrated, h.lat, h.lng) : undefined;
+      const scale = fire ? reachScale(inp.growth![fire.id].k) : 1;
+      return { ...project(h.lat, h.lng), frp: h.frp, fwi: h.fwi, ...downwind(calm ? 0 : wx.windFrom, calm ? 0 : wx.wind), scale };
     }),
     perimeters: inp.perimeters.map((p) => {
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -57,6 +67,7 @@ export function buildSnapshot(inp: HazardInputs): HazardSnapshot {
       risk: w.cells.map((c) => Math.min(1, (c.days[inp.day]?.risk ?? 0) * inp.weatherBoost)),
     })),
     spread: inp.spread,
+    rain: inp.rain,
   };
 }
 

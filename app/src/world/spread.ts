@@ -12,14 +12,18 @@ export const SPREAD_BASE_KM = 30;
 export const MAX_STRETCH = 0.7;
 /** Wind speed (km/h) at which the stretch is at its maximum. */
 const FULL_STRETCH_KMH = 40;
+/** Largest per-fire reach scale from growth calibration (data/fireHistory.ts reachScale). */
+export const MAX_REACH_SCALE = 1.6;
 /** Furthest any hotspot can reach (km); use as the search radius. */
-export const SPREAD_MAX_KM = SPREAD_BASE_KM * (1 + MAX_STRETCH);
+export const SPREAD_MAX_KM = SPREAD_BASE_KM * (1 + MAX_STRETCH) * MAX_REACH_SCALE;
 
 /** Unit vector the wind pushes fire along (world XZ, +X east, +Z south) and how strongly. */
 export interface Downwind {
   dx: number;
   dz: number;
   stretch: number;
+  /** Reach multiplier from the fire's own growth history (1 = typical). */
+  scale?: number;
 }
 
 /** `fromDeg` is meteorological: the direction the wind blows FROM, 0 = north, 90 = east. */
@@ -33,5 +37,5 @@ export function spreadInfluence(vx: number, vz: number, w: Downwind): number {
   const d = Math.sqrt(vx * vx + vz * vz);
   if (d === 0) return 1;
   const cos = (vx * w.dx + vz * w.dz) / d;
-  return Math.max(0, 1 - d / (SPREAD_BASE_KM * (1 + w.stretch * cos)));
+  return Math.max(0, 1 - d / (SPREAD_BASE_KM * (w.scale ?? 1) * (1 + w.stretch * cos)));
 }

@@ -1,6 +1,7 @@
 /** Details for the selected hex + actions. */
 import { Crosshair, Flag, X } from "lucide-react";
 import { GRID } from "../config/grid";
+import { perimeterAt } from "../data/fireHistory";
 import { PAST_DAYS, weatherAt } from "../data/openMeteo";
 import { NODE_STATUSES, NODE_TYPES, NodeStatus } from "../hex/nodeTypes";
 import type { Engine } from "../engine";
@@ -21,6 +22,8 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
   const weather = useStore(app, (s) => s.weather);
   const flagged = useStore(app, (s) => s.flagged);
   const day = useStore(app, (s) => s.forecastDay);
+  const perimeters = useStore(app, (s) => s.perimeters);
+  const growth = useStore(app, (s) => s.fireGrowth);
   const regionName = useStore(app, (s) => s.regions[n?.region ?? 0]?.name);
   if (!n) return null;
   const type = NODE_TYPES[n.land];
@@ -28,6 +31,9 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
   const cell = weatherAt(weather, n.lat, n.lng);
   const wx = cell?.days[day];
   const statusColor = status.line ?? type.line;
+  // The fire this hex is part of, and how fast it has really been growing (data/fireHistory.ts).
+  const fire = perimeterAt(perimeters.filter((p) => growth[p.id]), n.lat, n.lng);
+  const fg = fire && growth[fire.id];
   const isFlagged = flagged.includes(n.key);
   const cellM = GRID.levels[n.level].size * Math.sqrt(3) * 1000;
 
@@ -70,15 +76,31 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
           v={sample ? (Number.isFinite(sample.nearestHotspotKm) ? `${sample.nearestHotspotKm.toFixed(1)} km` : "> 500 km") : "…"}
           accent={sample && sample.nearestHotspotKm < 30 ? "var(--color-risk-high)" : undefined}
         />
+        {fire && fg && (
+          <>
+            <div className="mt-2 mb-1 label-xs">This fire · own growth history (CWFIS)</div>
+            <KV k="Burned area" v={`${Math.round(fire.areaHa).toLocaleString()} ha`} />
+            <KV k="Recent growth" v={`${fx(fg.observedKmDay, 2)} km/day (model ${fx(fg.modelKmDay, 2)})`} />
+            <KV
+              k="Projection scale"
+              v={`×${fx(fg.k, 2)} · ${Math.round(fg.confidence * 100)}% confidence`}
+              accent={fg.k > 1.3 ? "var(--color-risk-ext)" : fg.k < 0.7 ? "var(--color-phos)" : undefined}
+            />
+          </>
+        )}
         {wx && (
           <>
             <div className="mt-2 mb-1 label-xs">Weather · Open-Meteo · {dayLabel(day, weather[0]?.dates)}</div>
             {day === 0 && cell?.now && <KV k="Live now" v={`${fx(cell.now.temp)}°C / ${fx(cell.now.rh)}% · ${fx(cell.now.wind)} km/h`} />}
+            {day === 0 && cell?.now && Number.isFinite(cell.now.rain) && cell.now.rain > 0 && <KV k="Raining now" v={`${fx(cell.now.rain, 1)} mm/h`} />}
             <KV k="Max temp / min RH" v={`${fx(wx.temp)}°C / ${fx(wx.rh)}%`} />
             <KV k="Wind" v={`${fx(wx.wind)} km/h${Number.isFinite(wx.windFrom) ? ` from ${compass(wx.windFrom)} (${Math.round(wx.windFrom)}°)` : ""}`} />
             <KV k="Rain (day)" v={`${fx(wx.rainMm, 1)} mm`} />
             <KV k="Days since rain" v={wx.daysSinceRain > PAST_DAYS ? `${PAST_DAYS}+` : String(wx.daysSinceRain)} />
-            <KV k="Fosberg FFWI" v={fx(wx.ffwi, 1)} />
+            <KV k="Fire danger (FWI)" v={`${fx(wx.fwi, 1)} · ${wx.danger}`} accent={wx.fwi >= 20 ? "var(--color-risk-ext)" : wx.fwi >= 10 ? "var(--color-risk-high)" : undefined} />
+            <KV k="FFMC / DMC / DC" v={`${fx(wx.ffmc, 1)} / ${fx(wx.dmc, 1)} / ${fx(wx.dc)}`} />
+            <KV k="ISI / BUI" v={`${fx(wx.isi, 1)} / ${fx(wx.bui, 1)}`} />
+            <KV k="Fosberg (sensor comparison)" v={fx(wx.ffwi, 1)} />
           </>
         )}
       </div>
