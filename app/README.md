@@ -114,7 +114,10 @@ Rivers, roads and rail aren't drawn on top of the map; they are hexes. Every hex
   - The nearest chunks are built first.
 - **Multi-resolution rings.** The active level is drawn near you, and up to `farRings` coarser levels are drawn in rings beyond it, each `farRingReach`× further out. You see the horizon at lower detail instead of paying for millions of tiny distant hexes. While a fine chunk is still loading, the coarse chunk under it stands in, so there are no holes.
 - **Street-level data is lazy.** Every road, river, stream and rail line loads per 1° tile only when a street-zoom chunk needs it. Start-up carries only buildings, places and very wide rivers: about 1 MB of line data for all of Canada.
-- **Adaptive resolution.** If fps drops below about 48 the render scale steps down, and it climbs back when fps is above about 70.
+- **Full resolution, 4× MSAA.** The map is limited by draw calls (CPU), not pixels, so it always renders at native resolution. Lowering resolution only made it grainy.
+- **Tight culling.** Each chunk's bounding sphere fits its real relief at the current height exaggeration, so off-screen chunks are skipped. Chunk matrices are frozen, so three.js doesn't walk thousands of meshes every frame.
+- **Sub-pixel detail is dropped.** Trees, houses and buildings shrink out once they're under about 2 px. On the CPU, their whole draw calls are skipped for chunks where they'd be that small, and terrace outlines fade once hexes are only a few pixels wide. This removes the speckle at distance.
+- **Labels only re-layout when the camera moves.** With 10k+ places this used to be about 20% of every frame.
 - **Picking is analytic.** It ray-marches the height field with an O(1) lookup per cell.
 - **Restyling is cheap.** Hazard updates rewrite instance attributes in place.
 

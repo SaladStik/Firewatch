@@ -320,6 +320,19 @@ export class HexWorld {
   }
 
   /** Regions (workspace indices) in focus; the rest render slightly greyed. */
+  /** Keep every chunk's culling bounds matched to the current vertical scale. */
+  fitBounds(vScale: number) {
+    for (const st of this.levels) for (const cm of st.chunks.values()) cm.fitBounds(vScale);
+  }
+
+  /** Per-frame: drop sub-pixel prop/building draws on visible chunks. */
+  cullDetail(cam: Vector3, pxPerKm: number) {
+    for (const st of this.levels) {
+      if (!st.group.visible) continue;
+      for (const cm of st.chunks.values()) if (cm.group.visible) cm.cullDetail(cam, pxPerKm);
+    }
+  }
+
   setFocus(indices: number[]) {
     this.style.focus = new Set(indices);
     for (const st of this.levels) for (const cm of st.chunks.values()) cm.restyle();

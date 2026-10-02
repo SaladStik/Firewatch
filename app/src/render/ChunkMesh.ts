@@ -14,6 +14,7 @@ import type { NodeStatus } from "../hex/nodeTypes";
 import type { ChunkData } from "../world/types";
 import { BUILDING_BRIGHTNESS, BUILDING_KINDS, FOOTPRINT_SCALE } from "../hex/overlayStyles";
 import { BLD_STRIDE } from "../world/overlays";
+import { MIN_THICKNESS, reliefKm } from "./heights";
 import { buildingLines, hexTop, hexWall, propLines } from "./geometry";
 import { resolveStyle, type NodeStyler } from "./nodeStyle";
 
@@ -41,6 +42,8 @@ interface PropBatch {
   obj: LineSegments;
   /** Brightness multiplier on the hex's prop colour. */
   gain?: number;
+  /** Largest on-screen extent (km) of anything in this batch — for skipping sub-pixel draws. */
+  maxSizeKm: number;
 }
 
 export class ChunkMesh {
@@ -57,7 +60,11 @@ export class ChunkMesh {
   private wallCap = 0;
   /** 1 = honour the finer ring's hole; 0 = draw everywhere (standing in for loading finer chunks). */
   holeOn = 1;
-
+  /** Shared culling sphere for every draw in this chunk; refit as the vertical scale changes. */
+  private bounds: Sphere;
+  private halfDiag: number;
+  private maxRelief = 0;
+  private fitVs = -1;
 
   constructor(
     readonly data: ChunkData,
@@ -93,8 +100,12 @@ export class ChunkMesh {
     const b = chunkWorldBounds(data.cx, data.cz, GRID.chunkCells, size);
     // Generous vertical allowance: with relief shaping + national exaggeration the Rockies
     // can stand a few hundred km tall in world units; under-sized bounds would cull them.
-    const c = new Vector3((b.minX + b.maxX) / 2, 150, (b.minZ + b.maxZ) / 2);
-    g.boundingSphere = new Sphere(c, Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 400);
+    // Tight bounds (footprint × this chunk's real relief) so off-screen chunks are actually
+    // culled — each chunk is ~4 draw calls and the map is draw-call bound.
+    for (let i = 0; i < n; i++) this.maxRelief = Math.max(this.maxRelief, reliefKm(data.elev[i]));
+    this.halfDiag = Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2;
+    this.bounds = g.boundingSphere = new Sphere(new Vector3((b.minX + b.maxX) / 2, 0, (b.minZ + b.maxZ) / 2), 1);
+    this.fitBounds(1);
 
     const mesh = new Mesh(g, mats.hex);
     mesh.frustumCulled = true;
@@ -114,6 +125,11 @@ export class ChunkMesh {
     if (GRID.levels[data.level].decorations) this.buildProps(mats.prop, g.boundingSphere, born);
     if (data.buildings.length) this.buildBuildings(mats.building, g.boundingSphere, born);
     this.restyle();
+    // Chunks never move: skip three's per-frame matrix walk over thousands of meshes.
+    this.group.traverse((o) => {
+      o.matrixAutoUpdate = false;
+      o.matrixWorldAutoUpdate = false;
+    });
   }
 
   private buildProps(mat: ShaderMaterial, bounds: Sphere, born: number) {
@@ -160,7 +176,10 @@ export class ChunkMesh {
       g.boundingSphere = bounds;
       const obj = new LineSegments(g, mat);
       this.group.add(obj);
-      this.props.push({ kind, hexIndex: Int32Array.from(e.hex), color, meta: metaAttr, obj });
+      let maxScale = 0;
+      for (let j = 2; j < e.off.length; j += 4) maxScale = Math.max(maxScale, e.off[j]);
+      const maxSizeKm = maxScale * GRID.levels[d.level].size * 0.34; // matches the prop shader
+      this.props.push({ kind, hexIndex: Int32Array.from(e.hex), color, meta: metaAttr, obj, maxSizeKm });
     }
   }
 
@@ -197,8 +216,33 @@ export class ChunkMesh {
       g.boundingSphere = bounds;
       const obj = new LineSegments(g, mat);
       this.group.add(obj);
-      this.props.push({ kind: `building:${k}`, hexIndex, color, meta: metaAttr, obj, gain: BUILDING_BRIGHTNESS });
+      let maxSizeKm = 0;
+      for (let j = 0; j < m; j++) maxSizeKm = Math.max(maxSizeKm, aDim[j * 3], aDim[j * 3 + 1], aDim[j * 3 + 2] * 3);
+      this.props.push({ kind: `building:${k}`, hexIndex, color, meta: metaAttr, obj, gain: BUILDING_BRIGHTNESS, maxSizeKm });
     }
+  }
+
+  /**
+   * Skip prop / building draws whose largest item would be under ~2 px from the nearest point
+   * of this chunk (the shaders fade those out anyway — this just saves the draw calls).
+   */
+  cullDetail(cam: Vector3, pxPerKm: number) {
+    if (!this.props.length) return;
+    const c = this.bounds.center;
+    const near = Math.max(0.01, Math.hypot(cam.x - c.x, cam.y, cam.z - c.z) - this.halfDiag);
+    const minKm = (2 * near) / pxPerKm;
+    for (const p of this.props) p.obj.visible = p.maxSizeKm >= minKm;
+  }
+
+  /** Refit the culling sphere to the current vertical exaggeration. */
+  fitBounds(vScale: number) {
+    if (Math.abs(vScale - this.fitVs) < this.fitVs * 0.02) return;
+    this.fitVs = vScale;
+    const size = GRID.levels[this.data.level].size;
+    // Tallest point: relief, plus hazard lift (≤ ~2 hexes) and building height (≤ ~1 km).
+    const top = Math.max(MIN_THICKNESS * size, this.maxRelief * vScale) + size * 3 + 1;
+    this.bounds.center.y = top / 2;
+    this.bounds.radius = Math.hypot(this.halfDiag, top / 2);
   }
 
   /** Recompute colours / pulse / lift from the registry, overrides and styler. */
