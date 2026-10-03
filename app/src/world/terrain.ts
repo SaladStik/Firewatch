@@ -67,9 +67,12 @@ export class Terrain {
 /**
  * Every workspace region's raster, side by side in one projection. A point belongs
  * to the first region whose raster says it's land (provinces don't overlap).
+ * City rasters (20 m, scripts/bake-city.ts) sit in front of their province at street zoom
+ * (`street` = true): land cover and elevation come from them wherever they cover.
  */
 export class TerrainStack {
   private layers: { index: number; t: Terrain }[] = [];
+  private cities: { index: number; t: Terrain }[] = [];
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number } | null = null;
 
   add(index: number, t: Terrain) {
@@ -80,7 +83,16 @@ export class TerrainStack {
       ? { minX: Math.min(this.bounds.minX, b.minX), maxX: Math.max(this.bounds.maxX, b.maxX), minZ: Math.min(this.bounds.minZ, b.minZ), maxZ: Math.max(this.bounds.maxZ, b.maxZ) }
       : b;
   }
-  private layerAt(x: number, z: number) {
+  /** A city's street-level raster, belonging to region `index`. */
+  addCity(index: number, t: Terrain) {
+    this.cities.push({ index, t });
+  }
+  private layerAt(x: number, z: number, street = false) {
+    if (street) for (const l of this.cities) {
+      const t = l.t;
+      if (x < t.x0 || x >= t.x1 || z < t.z0 || z >= t.z1) continue;
+      if (t.landAt(x, z) !== LandClass.None) return l;
+    }
     for (const l of this.layers) {
       const t = l.t;
       if (x < t.x0 || x >= t.x1 || z < t.z0 || z >= t.z1) continue;
@@ -89,17 +101,17 @@ export class TerrainStack {
     return null;
   }
   /** Workspace index of the region at (x,z), or -1. */
-  regionAt(x: number, z: number): number {
-    return this.layerAt(x, z)?.index ?? -1;
+  regionAt(x: number, z: number, street = false): number {
+    return this.layerAt(x, z, street)?.index ?? -1;
   }
-  landAt(x: number, z: number): LandClass {
-    return this.layerAt(x, z)?.t.landAt(x, z) ?? LandClass.None;
+  landAt(x: number, z: number, street = false): LandClass {
+    return this.layerAt(x, z, street)?.t.landAt(x, z) ?? LandClass.None;
   }
-  landMajority(x: number, z: number, size: number): LandClass {
-    return this.layerAt(x, z)?.t.landMajority(x, z, size) ?? LandClass.None;
+  landMajority(x: number, z: number, size: number, street = false): LandClass {
+    return this.layerAt(x, z, street)?.t.landMajority(x, z, size) ?? LandClass.None;
   }
-  elevation(x: number, z: number): number {
-    const l = this.layerAt(x, z) ?? this.layers[0];
+  elevation(x: number, z: number, street = false): number {
+    const l = this.layerAt(x, z, street) ?? this.layers[0];
     return l ? l.t.elevation(x, z) : 0;
   }
 }

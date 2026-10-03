@@ -43,7 +43,8 @@ export interface Beacon {
   simulated?: boolean;
 }
 
-const MIN_DIST = 2.5;
+/** Closest the camera gets (km): street level at L6. */
+const MIN_DIST = 0.35;
 
 // ---------------------------------------------------------------- keyboard camera
 /**

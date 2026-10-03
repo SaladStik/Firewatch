@@ -49,7 +49,10 @@ export const GRID = {
     { size: 2.2, minDist: 688, gap: 1, terrace: 100, majorityLandClass: true, decorations: false, buildingMinHeight: Infinity, landmarks: false },
     { size: 0.7, minDist: 229, gap: 1, terrace: 50, majorityLandClass: false, decorations: false, buildingMinHeight: 80, landmarks: true },
     { size: 0.22, minDist: 57, terrace: 20, majorityLandClass: false, decorations: true, buildingMinHeight: 12, landmarks: true },
-    { size: 0.075, minDist: 0, terrace: 10, majorityLandClass: false, decorations: true, buildingMinHeight: 12, landmarks: true },
+    { size: 0.075, minDist: 13, terrace: 10, majorityLandClass: false, decorations: true, buildingMinHeight: 12, landmarks: true },
+    // L6 — street level: ~38 m hexes, narrower than a city block, so the real street grid shows
+    // (cities with a 20 m raster also get real parks, rivers and blocks: config/cities.ts).
+    { size: 0.022, minDist: 0, terrace: 4, majorityLandClass: false, decorations: true, buildingMinHeight: 12, landmarks: true },
   ] satisfies GridLevel[],
 };
 

@@ -16,6 +16,7 @@ import type { Landmark } from "../hex/overlayStyles";
 import { simulateGrowth } from "./fireGrowth";
 import { HazardField } from "./hazardField";
 import { DetailTiles } from "./detailTiles";
+import { STREET_LEVEL } from "../config/cities";
 import { OverlayIndex, type OsmData } from "./overlays";
 import { Terrain, TerrainStack } from "./terrain";
 import type { ChunkData, TerrainMeta, WorkerRequest, WorkerResponse } from "./types";
@@ -48,6 +49,19 @@ async function addRegion(url: string, index: number, landmarks: Landmark[]): Pro
   const detail = new DetailTiles(url);
   await detail.init();
   details.push(detail);
+  // Street-level city rasters (optional: most regions have none).
+  try {
+    const r = await fetch(`${url}/cities/index.json`);
+    if (r.ok) {
+      for (const id of (await r.json()) as string[]) {
+        const [cm, cb] = await Promise.all([
+          fetch(`${url}/cities/${id}.json`).then((x) => x.json() as Promise<TerrainMeta>),
+          fetch(`${url}/cities/${id}.png`).then((x) => x.blob()),
+        ]);
+        terrain.addCity(index, new Terrain(cm, await decode(cb)));
+      }
+    }
+  } catch { /* no city rasters: the province raster is used at every zoom */ }
   return meta;
 }
 
@@ -99,8 +113,10 @@ async function buildChunk(level: number, cx: number, cz: number, withBuildings =
     const cur = lineNode.get(k);
     if (!cur || nn.rank < cur.rank) lineNode.set(k, nn);
   };
-  const finest = level === GRID.levels.length - 1;
-  // Street zoom: also every tertiary / local road, forest track and stream (loaded on demand).
+  // Street zoom: also every tertiary / local road, forest track and stream (loaded on demand),
+  // and the cities' 20 m rasters in front of the province's.
+  const finest = level >= STREET_LEVEL;
+  const street = finest;
   if (finest) await Promise.all(details.map((d) => d.ensure(eb)));
   const sources = [
     ...overlays.map((ov) => ov.segments(level, size * 0.05, size, finest, eb)),
@@ -134,12 +150,14 @@ async function buildChunk(level: number, cx: number, cz: number, withBuildings =
     let c = memo.get(k);
     if (c) return c;
     const p = hexToWorld(cq, cr, size);
-    const region = terrain.regionAt(p.x, p.z);
-    let land = region < 0 ? LandClass.None : cfg.majorityLandClass ? terrain.landMajority(p.x, p.z, size) : terrain.landAt(p.x, p.z);
-    let elev = terrain.elevation(p.x, p.z);
+    const region = terrain.regionAt(p.x, p.z, street);
+    let land = region < 0 ? LandClass.None : cfg.majorityLandClass ? terrain.landMajority(p.x, p.z, size, street) : terrain.landAt(p.x, p.z, street);
+    let elev = terrain.elevation(p.x, p.z, street);
     if (cfg.terrace > 0) elev = Math.round(elev / cfg.terrace) * cfg.terrace;
     const ln = land !== LandClass.None ? lineNode.get(k) : undefined;
-    if (ln && !(ln.land === LandClass.River && land === LandClass.Water) && !(ln.minor && land === LandClass.Urban)) {
+    // Local streets don't turn a town hex into road while a hex holds a whole block (L5); at L6
+    // a hex is narrower than a block, so the town's real street grid is drawn.
+    if (ln && !(ln.land === LandClass.River && land === LandClass.Water) && !(ln.minor && land === LandClass.Urban && level <= STREET_LEVEL)) {
       land = ln.land;
       // Rivers sit one step down, as a channel in the terrain.
       if (land === LandClass.River) elev -= Math.max(cfg.terrace, 5);

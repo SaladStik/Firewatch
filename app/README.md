@@ -12,6 +12,7 @@ npm run bake -- alberta       # terrain + land-cover raster for a region
 npm run bake:pbf -- alberta   # OSM (Geofabrik extract): every road, river, stream, rail line, town, building ≥4 storeys
 npm run bake:all              # terrain for every province and territory
 npm run bake:pbf              # OSM for every province and territory (needs `pip install osmium`; ~3 GB of downloads, cached)
+npm run bake:city -- calgary  # 20 m street-level raster for a city (src/config/cities.ts; no argument = every city)
 ```
 
 The baked files for every region ship in `public/data/<region>/`, so you only need the bake scripts to add a province or refresh data. Downloads are cached in `scripts/.cache`. (`npm run bake:osm` is the older Overpass-API bake, kept as a fallback; the public Overpass servers couldn't handle full-Canada volumes.)
@@ -99,6 +100,7 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 |---|---|---|---|
 | Elevation | [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (Tilezen/Mapzen Terrarium; in Canada built from NRCan CDEM, SRTM and others: [source list](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | Open, attribution required ([details](https://github.com/tilezen/joerd/blob/master/docs/attribution.md)) | Zoom 6–8 tiles (matched to each region's raster resolution) resampled to a 0.3–1.6 km raster; hex heights |
 | Land cover | [ESA WorldCover 2021 v200](https://esa-worldcover.org/en) ([AWS mirror](https://registry.opendata.aws/esa-worldcover-vito/)) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) | 10 m classes, majority-voted per raster pixel; hex land types (incl. ice / glacier, tundra, wetland) |
+| Street-level city rasters (Calgary, Edmonton) | ESA WorldCover at its native 10 m (4-sample vote per 20 m pixel) and AWS Terrain Tiles at zoom 13 (~12 m) | as above | `public/data/<region>/cities/`: at street zoom (L5 and L6) the map samples land cover and elevation from these instead of the province's 500 m raster, so 38 m hexes follow real parks, rivers and blocks |
 | Province & territory boundaries | [click_that_hood `canada.geojson`](https://github.com/codeforgermany/click_that_hood) | Open-source repository (MIT) | Region masks and border lines (all 13) |
 | Roads (motorway → residential, plus forest / resource tracks), rivers, streams and canals, rail | [OpenStreetMap](https://www.openstreetmap.org/copyright), per-province extracts from [OpenStreetMap France](https://download.openstreetmap.fr/extracts/north-america/canada/) (fallback [Geofabrik](https://download.geofabrik.de/north-america/canada.html)), processed locally with [pyosmium](https://osmcode.org/pyosmium/) | [ODbL](https://opendatacommons.org/licenses/odbl/) | Become River / Road / Rail hex nodes. All lines ship as 1° tiles fetched on demand at street zoom (the realism rule means they can't show further out); only rivers ≥ 50 m wide ship with each region |
 | Buildings ≥ ~4 storeys | Same OSM extracts (`height` / `building:levels` tags) | [ODbL](https://opendatacommons.org/licenses/odbl/) | Towers standing on their hexes |
@@ -217,7 +219,7 @@ Rivers, roads and rail aren't drawn on top of the map; they are hexes. Every hex
 - **Rivers:** sit one terrace down as a channel. A river flowing into a lake merges with it into one water region.
 - **Roads and rail:** where a road crosses a river, the road node wins, so it reads as a crossing. Buildings never stand on river, road or rail nodes.
 - **Fidelity:** the finest zoom level uses hexes about 130 m across, so the Bow is about one hex wide and major roads form continuous one-hex chains.
-- **Realism rule:** a feature only becomes nodes at a zoom level where its real width is at least 25% of the hex width (`NODE_MIN_WIDTH_FRACTION` in `hex/overlayStyles.ts`), so a 30 m road never shows up as a 1 km band. Widths come from OSM `width` tags where present, and otherwise from typical widths per road or river class (`LINE_STYLES`). The finest level shows every feature.
+- **Realism rule:** a feature only becomes nodes at a zoom level where its real width is at least 25% of the hex width (`NODE_MIN_WIDTH_FRACTION` in `hex/overlayStyles.ts`), so a 30 m road never shows up as a 1 km band. Widths come from OSM `width` tags where present, and otherwise from typical widths per road or river class (`LINE_STYLES`). The two street levels (L5, 130 m hexes, and L6, 38 m) show every feature; at L6 local streets also cut through town hexes, so the real street grid shows.
 - **Buildings and landmarks:** each stands on the hex it's in, inherits that hex's height and fire status (a burning block turns red), and is dimmed with its region.
 
 ### Readability

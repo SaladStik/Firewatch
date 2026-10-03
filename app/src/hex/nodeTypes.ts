@@ -66,7 +66,7 @@ export const NODE_TYPES: Record<LandClass, NodeType> = {
   [LandClass.Snow]: { id: LandClass.Snow, key: "ice", label: "Ice / glacier", line: "#e4eaf0", fill: 0.7, emphasis: 0.75, pattern: Pattern.Ice, fuel: 0, family: "ice" },
   [LandClass.Wetland]: { id: LandClass.Wetland, key: "wetland", label: "Wetland", line: "#6a9a7a", fill: 0.55, pattern: Pattern.Waves, fuel: 0.35, family: "water" },
   [LandClass.River]: { id: LandClass.River, key: "river", label: "River", line: "#2f7fb4", fill: 0.9, emphasis: 1.1, pattern: Pattern.Waves, fuel: 0, family: "water" },
-  [LandClass.Road]: { id: LandClass.Road, key: "road", label: "Road", line: "#8a8176", fill: 0.55, emphasis: 0.65, pattern: Pattern.None, fuel: 0.05, family: "road" },
+  [LandClass.Road]: { id: LandClass.Road, key: "road", label: "Road", line: "#4a4744", fill: 0.7, emphasis: 0.65, pattern: Pattern.None, fuel: 0.05, family: "road" },
   [LandClass.Rail]: { id: LandClass.Rail, key: "rail", label: "Railway", line: "#7a6a58", fill: 0.5, emphasis: 0.6, pattern: Pattern.Stripes, fuel: 0.05, family: "rail" },
   [LandClass.Tundra]: { id: LandClass.Tundra, key: "tundra", label: "Tundra (moss / lichen)", line: "#b3b89a", fill: 0.48, pattern: Pattern.Dots, fuel: 0.5, family: "tundra" },
 };

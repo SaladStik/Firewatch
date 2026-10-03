@@ -2,6 +2,7 @@
  * GPU representation of one ChunkData: one instanced hex draw call plus one
  * instanced line draw call per prop kind. Restyling rewrites attributes in place.
  */
+import { STREET_LEVEL } from "../config/cities";
 import {
   BufferGeometry, Group, InstancedBufferAttribute, InstancedBufferGeometry, LineSegments, Mesh, Sphere, Vector3,
   type ShaderMaterial,
@@ -254,7 +255,7 @@ export class ChunkMesh {
     const line = this.aLine.array as Float32Array, style = this.aStyle.array as Float32Array;
     const edges = this.aEdges.array as Float32Array;
     const propCol = new Float32Array(d.count * 3), bldCol = new Float32Array(d.count * 3), lift = new Float32Array(d.count);
-    const whiteBuildings = d.level === GRID.levels.length - 1;
+    const whiteBuildings = d.level >= STREET_LEVEL;
     for (let i = 0; i < d.count; i++) {
       const key = hexKey(d.level, d.q[i], d.r[i]);
       const s = resolveStyle(
