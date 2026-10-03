@@ -1,0 +1,9 @@
+# Cloudflare Pages: the site plus the /api proxy to the Databricks data server.
+# See DEPLOY-DATABRICKS.md section 5.
+#
+# `npm run deploy:pages` builds and uploads. The function in functions/api/ is picked up
+# automatically and needs DATABRICKS_HOST, DATABRICKS_APP_URL, DATABRICKS_CLIENT_ID and
+# DATABRICKS_CLIENT_SECRET set in the Pages dashboard (the secret marked as one).
+name = "firewatch"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-02"

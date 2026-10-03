@@ -50,7 +50,7 @@ What he can do:
 
 Setup:
 1. Create an agent in the ElevenLabs dashboard from [`src/firefly/AGENT.md`](src/firefly/AGENT.md): first message, system prompt, and the 11 client tools (names and parameters must match `tools.ts`).
-2. Put its ID in `app/.env.local`: `VITE_ELEVENLABS_AGENT_ID=agent_…`, then restart `npm run dev`. Without it, the dock shows "Firefly is offline".
+2. Copy `app/.env.example` to `app/.env` and put its ID in: `VITE_ELEVENLABS_AGENT_ID=agent_…`, then restart `npm run dev`. Without it, the dock shows "Firefly is offline". `.env` is the only file it reads (Vite loads `.env` in every mode) and is gitignored, so the ID stays out of the repo.
 
 Privacy: while a session is connected, typed text and voice go to ElevenLabs. The mic stays muted unless the talk button is held, though the browser asks for mic permission once when a session starts. The agent ID is public (no API key in the app); restrict it with the dashboard's host allowlist when deploying. Projected spread is a **scenario**, and Firefly says so.
 
@@ -107,6 +107,9 @@ By default every visitor's browser fetches the live data above itself. Running `
   - In a build, the page calls `<VITE_DATA_SERVER>/api`. Use `same-origin` when the data server also serves the built site from `dist/`, which it does whenever a build exists.
 
 Baked data — terrain, land cover, roads, places and **traffic volumes** — is not affected by any of this. It ships with the site and is served from the same address as the page in both modes, so there is no traffic endpoint on the data server; only the live sources below are routed through it.
+
+Hosting it on Databricks needs a few extra parts (an app can't be reached anonymously, so the
+site proxies to it): see **[DEPLOY-DATABRICKS.md](../DEPLOY-DATABRICKS.md)**.
 
 API endpoints:
 - `/api/health`

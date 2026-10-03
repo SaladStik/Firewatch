@@ -31,3 +31,12 @@ scripts/.cache
 server/.cache/
 __pycache__/
 *.pyc
+
+# Local secrets and ids (see .env.example)
+.env
+
+# Databricks CLI sync state
+.databricks/
+
+# Wrangler local state (wrangler pages dev)
+.wrangler/

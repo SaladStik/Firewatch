@@ -1,2 +1,7 @@
 # Repo-root virtualenv. Project rules live in app/ and wildfire/.
 .venv/
+
+# Local environment files. The root .env is a reference sheet for the Cloudflare Pages
+# variables (see DEPLOY-DATABRICKS.md); app/.env holds the site's own variables.
+.env
+.env.local
