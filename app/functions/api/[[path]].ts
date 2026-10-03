@@ -22,6 +22,8 @@ interface Env {
   DATABRICKS_APP_URL: string;
   DATABRICKS_CLIENT_ID: string;
   DATABRICKS_CLIENT_SECRET: string;
+  /** Local testing escape hatch; see accessToken(). */
+  DATABRICKS_TOKEN?: string;
 }
 
 /**
@@ -31,6 +33,11 @@ interface Env {
 let cached: { token: string; expires: number } | null = null;
 
 async function accessToken(env: Env): Promise<string> {
+  // Local testing only: `wrangler pages dev` with a token from `databricks auth token`, so the
+  // forwarding below can be exercised without a service principal. No use in production — app
+  // tokens last about an hour. Note that a personal access token will NOT work here: Databricks
+  // Apps reject PATs with 401 and accept only OAuth tokens.
+  if (env.DATABRICKS_TOKEN) return env.DATABRICKS_TOKEN;
   const now = Date.now();
   // Renew a minute early, so a token can't expire mid-flight.
   if (cached && cached.expires > now + 60_000) return cached.token;

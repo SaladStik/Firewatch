@@ -115,7 +115,23 @@ curl -X POST https://<workspace-host>/oidc/v1/token \
   -d 'grant_type=client_credentials&scope=all-apis'
 ```
 
-Use the Databricks SDK in the proxy rather than this by hand, so refreshing is taken care of.
+**A personal access token will not work.** Databricks Apps reject PATs with a bare `401` and
+accept only OAuth tokens, so the `client_credentials` exchange above is the only route — there
+is no simpler credential to substitute.
+
+To exercise the proxy before the service principal exists, set `DATABRICKS_TOKEN` to the output
+of `databricks auth token` and run it locally:
+
+```bash
+cd app
+npx wrangler pages dev dist \
+  --binding DATABRICKS_APP_URL=https://<app-url> \
+  --binding DATABRICKS_TOKEN="$(databricks auth token -p <profile> | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
+curl -s localhost:8788/api/health
+```
+
+That is local-only: those tokens last about an hour, so the environment variable is no use in
+production.
 
 ## 5. The website on Cloudflare Pages
 
