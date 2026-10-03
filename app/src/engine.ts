@@ -15,6 +15,7 @@ import { FORECAST_DAYS, weatherAt, type WeatherGrid } from "./data/openMeteo";
 import { demoStorms, RainField, type RainBlob } from "./data/rain";
 import { WindField } from "./data/wind";
 import type { Place } from "./data/places";
+import { loadTraffic } from "./data/traffic";
 import { project, setProjection } from "./geo/projection";
 import { NodeStatus } from "./hex/nodeTypes";
 import type { Landmark } from "./hex/overlayStyles";
@@ -49,7 +50,7 @@ export class Engine {
     const stage = (s: string, progress: number) => app.set({ boot: { stage: s, done: false, progress } });
     try {
       // Fresh boot (also after a dev hot-reload): nothing is loaded yet.
-      app.set({ loaded: [], places: [], hotspots: [], perimeters: [], weather: [], selected: null, hover: null });
+      app.set({ loaded: [], places: [], traffic: [], hotspots: [], perimeters: [], weather: [], selected: null, hover: null });
       setProjection(PROJECTION);
       await this.client.init(PROJECTION);
       this.scene = new Scene(canvas, overlay, this.client, { onHover: (n) => app.set({ hover: n }), onSelect: (n) => this.onSelect(n), onStats: (s) => app.set({ stats: s }) });
@@ -110,10 +111,13 @@ export class Engine {
     const { places, landmarks } = await loadPlaces(url, region.places, region.landmarks);
     const meta = await this.client.addRegion(url, index, landmarks);
     this.scene.addRegion(index, meta, places);
+    // Baked highway volumes, where the province publishes them (data/traffic.ts).
+    const traffic = await loadTraffic(url, index);
     // Replace (never append) this region's entries so a reload can't duplicate them.
     app.set((s) => ({
       loaded: [...s.loaded.filter((id) => id !== region.id), region.id],
       places: [...s.places.filter((p) => p.region !== index), ...places.map((p) => ({ ...p, region: index }))],
+      traffic: [...s.traffic.filter((t) => t.region !== index), ...(traffic ? [traffic] : [])],
     }));
   }
 

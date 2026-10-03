@@ -22,6 +22,8 @@ Everything is a **decision-support view built from open data**. It is not an off
 | Hotspot archive (every detection since 2012) | CWFIS `public:hotspots` | Each active fire's daily growth history |
 | Land cover, 10 m | ESA WorldCover 2021 (CC BY 4.0) | Fuel type per hex |
 | Elevation | AWS Terrain Tiles (Tilezen) | Slope effect on spread, the 3D map |
+| Highway traffic volumes: annual and summer average daily traffic, vehicle classification, 2016-2025 history | Alberta Transportation and Economic Corridors (OGL-Alberta) | How busy each highway corridor is, and how that changes by season and year |
+| Highway geometry with highway numbers | Government of Alberta GeoSpatial (OGL-Alberta) | Where those corridors run |
 
 Sources, licences and how often each is refreshed are listed in the [README](README.md#data-sources).
 
@@ -43,12 +45,12 @@ Sources, licences and how often each is refreshed are listed in the [README](REA
   - **BUI** (Buildup Index) = DMC + DC: how much fuel is available to burn.
   - **FWI** = ISI × BUI: overall fire intensity, which is the danger rating.
 
-**How we run it.** For every weather grid cell we run the system day by day through 14 past days, today, and 7 forecast days. Today's codes come from **official CWFIS values** where possible, and the forecast runs on from them. Every rule below was chosen by testing it against CWFIS (§11):
+**How we run it.** For every weather grid cell we run the system day by day through 14 past days, today, and 7 forecast days. Today's codes come from **official CWFIS values** where possible, and the forecast runs on from them. Every rule below was chosen by testing it against CWFIS (§12):
 1. **A CWFIS fire weather station within 400 km.** Today's FFMC, DMC and DC are an **inverse-distance blend of the 4 nearest stations** (weight 1/distance², so the closest dominates). This is the most accurate case.
 2. **No station, but CWFIS fire hotspots within 400 km.** CWFIS attaches its own FWI codes to each hotspot, but fires burn where it's driest, so those codes are **biased dry** for the area around them. In testing they made stations read FFMC +9, DC +126 and FWI +9 too high. So in this case:
    - FFMC comes from local weather;
    - DMC and DC are the **average** of the blended fire codes and our own spin-up (the two err in opposite directions).
-3. **Nothing official within 400 km.** The cell spins up from the standard startup values (FFMC 85, DMC 6, DC 15). FFMC settles within days. DMC and DC read **low**: in testing, DC was about 200 too low, because two weeks can't rebuild a season of drying (§10).
+3. **Nothing official within 400 km.** The cell spins up from the standard startup values (FFMC 85, DMC 6, DC 15). FFMC settles within days. DMC and DC read **low**: in testing, DC was about 200 too low, because two weeks can't rebuild a season of drying (§11).
 3. **Rain.** Rain enters the system's own equations: FFMC needs more than 0.5 mm to change, DMC more than 1.5 mm, DC more than 2.8 mm. That's how rain lowers danger. We don't use a separate rain fudge factor.
 
 **Danger classes.** The common Canadian five-class rating on FWI (exact breakpoints vary a little by province):
@@ -198,20 +200,110 @@ A town is listed at 0.3 or more. On a quiet day the bar says so rather than nami
 
 ---
 
-## 7. Wind and rain
+## 7. Highway corridors at risk
+
+A fire beside a busy highway is a different problem from a fire beside a town: the road is an
+exposure in itself (people driving into smoke) and it is usually how everyone upstream of it
+leaves. The forecast bar lists the highways a fire has come near, worst first.
+Code: `data/traffic.ts` (volumes) and `data/trafficRisk.ts` (scoring); bake:
+`scripts/bake_traffic.py`.
+
+### 7.1 Measured volumes
+
+Alberta Transportation and Economic Corridors publishes, for every **traffic control
+section** of every numbered highway: the **annual average daily traffic** (WAADT), the
+**summer average daily traffic** (WASDT), and the split between passenger vehicles,
+recreation vehicles, buses, single-unit trucks and tractor-trailers. A second dataset gives
+the **2016-2025 AADT history** for the same sections. Both are Open Government Licence -
+Alberta. Nothing here is invented: the volumes are counts the province took.
+
+The volume datasets carry no coordinates, and Alberta's public highway-geometry layer carries
+no volumes, so the two are joined on the highway number (including suffixes, e.g. `2A`). The
+bake drops the control-section subtotal rows so sections aren't counted twice, length-weights
+each highway's sections into one figure, and keeps that highway's measured **minimum and
+maximum** section volume alongside it.
+
+### 7.2 Where along a highway the traffic is
+
+Which part of a highway each measured section covers is **not** published. Taken at face
+value that would make Highway 2 a single number from Calgary to the Peace Country, when its
+sections actually run from 500 to 172,440 vehicles a day.
+
+So the measured average is spread along the route. For every point on the route (one every
+2 km) we compute a **population accessibility** term over the baked community list,
+the sum of pop / (1 + d/10 km) squared within 150 km. That ratio spans several orders of
+magnitude, which on its own drives remote stretches of a trunk route to near zero even though
+they carry long-distance traffic, so it is raised to the power **0.6**, renormalised so the
+highway's own points still average to the volume the province measured, and **clamped to that
+highway's measured minimum and maximum**. The modelled value therefore never leaves the
+interval Alberta actually measured.
+
+The exponent was chosen against sections whose volume is published:
+
+| Stretch | Modelled | Published |
+|---|---|---|
+| Highway 2, Deerfoot Trail, Calgary | 98,000 | ~170,000 |
+| Highway 63 at Fort McMurray | 33,000 | ~55,000 |
+| Highway 2 at Red Deer | 25,000 | ~35,000 |
+| Highway 1 at Banff | 9,500 | ~20,000 |
+| Highway 16 at Edson | 6,400 | ~10,000 |
+| Highway 881, remote | 470 | ~1,000 |
+
+Typical error is a factor of about 1.8, and the **order is right** at every reference point,
+which is what the ranking needs. This redistribution is **ours, not Alberta's** - the
+measured numbers are the per-highway figures and the range, and the per-point figure is a
+model over them.
+
+### 7.3 The volume on a given day
+
+Two measured quantities turn a yearly figure into one for the day the slider is on:
+
+- **Season.** A cosine peaking in mid-July, with its amplitude set so that averaged over
+  Alberta's own June-August window it returns WASDT/WAADT, and averaged over the year it
+  returns 1. The swing is the province's measurement; only its shape between the two is ours.
+- **Growth.** Each highway's annual change is the slope of a least-squares fit through
+  log(volume) across the published 2016-2025 series - log-linear because traffic grows
+  multiplicatively. It carries the last measured year forward, capped at 15 years so an old
+  dataset can never be extrapolated far, and never run backwards.
+
+Alberta publishes no day-of-week or hour-of-day breakdown, so the prediction stops at daily
+resolution. That is the resolution the forecast slider works at anyway.
+
+### 7.4 Ranking
+
+A corridor is listed only for a concrete reason, as with communities (§6):
+
+- **Fire nearby:** a hotspot or active perimeter within the same wind-shaped, growth-scaled
+  reach used everywhere else (§3). Shown as e.g. "fire 12 km NW".
+- **In projected path:** the growth model (§4) reaches the road by the selected day.
+
+**Fire danger alone never lists a road.** A town can be listed on Very High fire weather by
+itself because it is exposed where it stands; a road is only a problem once something is
+actually burning next to it.
+
+How busy the road is then sets how much that proximity matters. Exposure is logarithmic
+(volumes span three decades): 0 at 500 vehicles/day or below, 1 at 50,000 or above. The score
+is influence × (0.55 + 0.45 × exposure) × (0.8 + 0.2 × weather risk), or ≥ 0.9 in a projected
+path, and a corridor is listed at 0.3 or more. Each highway appears once, at the point where
+a fire comes closest to it, and the commercial share is flagged above 20% - freight traffic is
+slower to clear and harder to turn around.
+
+---
+
+## 8. Wind and rain
 
 - **Wind streams** show Open-Meteo's live wind today and each day's peak wind on forecast days, interpolated between grid points. The fire models use the 12:00 wind (§2, §4).
 - **Rain** animates where Open-Meteo reports precipitation now (today) or forecasts a daily total ≥ 1 mm. Its effect on danger and spread comes through the FWI System.
 
 ---
 
-## 8. Forecast days
+## 9. Forecast days
 
-The slider re-runs everything for the chosen day: FWI values, danger, map risk, projected spread (grown day by day up to that day), and communities at risk. Fires themselves stay as observed now; the projection shows where they could go.
+The slider re-runs everything for the chosen day: FWI values, danger, map risk, projected spread (grown day by day up to that day), communities at risk, and the traffic each threatened corridor is expected to carry (§7.3). Fires themselves stay as observed now; the projection shows where they could go.
 
 ---
 
-## 9. Demo scenario
+## 10. Demo scenario
 
 For presentations when nothing is burning, the demo adds:
 - simulated ignitions;
@@ -222,21 +314,25 @@ Everything simulated is labelled **SIMULATION**. Code: `data/hazards.ts`, `data/
 
 ---
 
-## 10. Limitations
+## 11. Limitations
 
 - **Not official.** CWFIS / NRCan and provincial agencies issue the official fire danger ratings and fire behaviour forecasts. This tool reuses their standard methods on open data.
 - **Weather resolution.** Open-Meteo is sampled on a 1.5° grid (coarser for very large provinces), about 160 km. Local weather (valleys, lake effects, convective storms) is smoothed out.
-- **FWI seeding.** The CWFIS live station feed is mostly federal (MSC) stations. Alberta has one and southern BC none, so much of western Canada falls back on fire-hotspot codes (rule 2) or spin-up (rule 3), which are less accurate (§11). Provincial station networks would close this gap; they aren't in the open CWFIS feed.
+- **FWI seeding.** The CWFIS live station feed is mostly federal (MSC) stations. Alberta has one and southern BC none, so much of western Canada falls back on fire-hotspot codes (rule 2) or spin-up (rule 3), which are less accurate (§12). Provincial station networks would close this gap; they aren't in the open CWFIS feed.
 - **Our own weather runs damper than stations.** Open-Meteo's humidity makes our own FFMC about 6 points lower (wetter) than the stations, which is why official codes are used wherever they exist.
 - **Fuel types are inferred** from land cover (ESA WorldCover), not from the official FBP fuel grids. Forest is treated as M-1 mixedwood at 50 % conifer. Pure black-spruce stands (C-2) burn faster, and leafless deciduous stands in spring differ.
 - **No spotting, suppression or fuel breaks** beyond water, rock and ice. Roads and rivers narrower than a hex don't stop the model. Real fires jump barriers and are fought.
 - **Daily time step.** Burning is 4 h equivalent at the peak rate per day; overnight and diurnal changes are not modelled separately.
 - **Growth history** counts new hotspot cells, which undercounts under cloud or smoke and with gaps between satellite passes. It's scaled to the mapped perimeter area, so totals stay right, but individual days can be noisy. That's why calibration uses a 5-day window and a confidence weight.
 - **The proximity boost** (§3) is our own heuristic for flagging attention, not a standard.
+- **Traffic volumes are annual counts, not live.** No province publishes an open, keyless live traffic feed; Alberta's 511 road-event API requires a key, so closures and incidents are not in the app. What is live in a corridor warning is the fire and the weather, not the traffic.
+- **Traffic volumes are per highway, redistributed along it.** Alberta does not publish where each measured section sits, so the local figure is a model (§7.2) - typically within a factor of about 1.8 of the published section value, and lowest where traffic has a cause the population list can't see. Tourist corridors are the clearest case: Highway 1 at Banff models low because Banff is a small town carrying a national park's traffic.
+- **Only numbered provincial highways.** Forest and resource roads carry the crews and are often the only way out of a remote site, but no traffic counts are published for them.
+- **Alberta only, so far.** Each province publishes its counts in its own format under its own licence, and only Alberta's adapter is written. Other provinces load with no corridor list rather than a guessed one.
 
 ---
 
-## 11. How it's tested
+## 12. How it's tested
 
 ### Against CWFIS's published values
 
@@ -273,6 +369,8 @@ Both were worse than the official codes, which already account for the day's wea
 - **FBP:** fuel ordering (conifer faster than deciduous; cured grass faster than green); length-to-breadth grows with wind.
 - **Growth model:** spreads in every direction in calm air, runs downwind in wind, never crosses water, forest outruns shrub, the ellipse geometry is right, and a rainstorm slows it.
 - **Calibration:** daily growth reconstruction; fast fires get *k* > 1, stalled fires *k* < 1; little history keeps *k* near 1.
+- **Traffic volumes:** delta-decoding restores each point's position and its own volume; the seasonal curve reproduces the measured summer average over Alberta's June-August window and averages to 1 over the year; a highway with no summer uplift has no swing; growth compounds from the measured year and is capped rather than extrapolated.
+- **Corridors at risk:** no fires lists nothing however busy the road; a fire 10 km away lists the highway with that distance and direction and one 80 km away doesn't; the busier of two highways at the same distance scores higher; fire danger alone never lists a road; a long highway is one entry reported at its closest approach; and the same corridor reads busier in July than in January.
 - **Communities at risk, rain, wind field, Fosberg:** behaviour checks.
 
 ---
@@ -288,3 +386,6 @@ Both were worse than the official codes, which already account for the day's wea
 - Tymstra, C.; Bryce, R.W.; Wotton, B.M.; Taylor, S.W.; Armitage, O.B. 2010. *Development and Structure of Prometheus: the Canadian Wildland Fire Growth Simulation Model.* Information Report NOR-X-417.
 - Fosberg, M.A. 1978. *Weather in wildland fire management: the fire weather index.* Proceedings of the Conference on Sierra Nevada Meteorology.
 - Canadian Wildland Fire Information System (CWFIS), Natural Resources Canada: <https://cwfis.cfs.nrcan.gc.ca/>
+- Alberta Transportation and Economic Corridors. *Traffic volumes on links in the highway network.* Open Government Licence - Alberta: <https://open.alberta.ca/dataset/traffic-volumes-on-links-in-the-highway-network>
+- Alberta Transportation and Economic Corridors. *Traffic volumes at points on the highway* (AADT history). Open Government Licence - Alberta: <https://open.alberta.ca/dataset/traffic-volumes-at-points-on-the-highway>
+- Government of Alberta GeoSpatial. *Transportation: access facility roads* (highway geometry). Open Government Licence - Alberta: <https://geospatial.alberta.ca/titan/rest/services/transportation/access_facility_roads/MapServer>
