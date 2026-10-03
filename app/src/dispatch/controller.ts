@@ -174,6 +174,7 @@ export function recompute311(keepOrder = false): Promise<void> {
   if (!keepOrder && Object.keys(d.routeOrder).length) dispatch.set({ routeOrder: {} });
   const msg: ToWorker = {
     type: "plan", id, source: d.source311, at: d.at, routeOrder: keepOrder ? d.routeOrder : {},
+    needLoad: !d.load311 || d.load311.source !== d.source311,
     opts: { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption, overrides: d.overrides, weather: calgaryWeather() },
   };
   return new Promise((resolve) => { waiting.set(id, resolve); planner().postMessage(msg); });

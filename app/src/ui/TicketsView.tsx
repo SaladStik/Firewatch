@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 const ROW_H = 28;
 import { crewColor } from "../dispatch/colors";
 import { flyTo, openTickets, setOverride } from "../dispatch/controller";
-import { daysWaiting, priority, typeOf, type Ticket, type Unit } from "../dispatch/ops311";
+import { daysWaiting, priority, priorityParts, typeOf, type Ticket, type Unit } from "../dispatch/ops311";
 import { dispatch } from "../dispatch/store";
 import { useStore } from "../state/store";
 
@@ -106,11 +106,12 @@ export function TicketsView() {
         <div>
           <div className="label-xs">Calgary 311 · tickets</div>
           <p className="mt-0.5 text-[12px] text-ink-dim">
-            {load?.open.some((t) => t.approx) ? "Locations: community centres (Open Calgary doesn't publish addresses) · " : ""}{counts.open} open · {counts.today} on today's {noon ? "noon" : "8 a.m."} plan · {counts.safety} safety · {counts.urgent} urgent · {counts.held} held{p ? ` · planning ${p.today}` : ""}
+            {counts.open.toLocaleString("en-CA")} open · {counts.today} on today's {noon ? "noon" : "8 a.m."} plan · {counts.safety} safety · {counts.urgent} urgent · {counts.held} held{p ? ` · planning ${p.today}` : ""}
           </p>
         </div>
         <button type="button" onClick={() => openTickets(false)} aria-label="Close tickets" className="text-ink-mute transition hover:text-phos"><X size={16} /></button>
       </header>
+      {load?.open.some((t) => t.approx) && <p className="border-b border-line px-4 py-1.5 text-[11px] text-ink-mute">Locations are community centres: Open Calgary doesn't publish addresses (they're on the city's work orders). Hover a priority to see why.</p>}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2">
         <label className="flex min-w-[12rem] flex-1 items-center gap-1.5 border border-line px-2 py-1">
           <Search size={12} className="text-ink-mute" />
@@ -152,7 +153,7 @@ export function TicketsView() {
                 const crewIdx = r.at ? p.crews.findIndex((c) => c.id === r.at!.crew) : -1;
                 return (
                   <tr key={r.t.id} onClick={() => flyTo(r.t.lat, r.t.lng, 2.5)} style={{ height: ROW_H }} className={`cursor-pointer border-t border-line/60 hover:bg-[color-mix(in_srgb,var(--color-phos)_7%,transparent)] ${r.open ? "text-ink" : "text-ink-mute"}`}>
-                    <td className="px-2 py-1 text-right tabular-nums">{r.open ? r.pr : "–"}</td>
+                    <td className="px-2 py-1 text-right tabular-nums" title={r.open ? priorityParts(r.t, p.today, noon ? p.noonCtx : p.ctx).why.join("\n") : undefined}>{r.open ? r.pr : "–"}</td>
                     <td className="whitespace-nowrap px-2 py-1 font-mono text-[10.5px]">{r.t.simulated && <Snowflake size={10} className="mr-1 inline text-[#6cc4ff]" />}{r.t.id}</td>
                     <td className="whitespace-nowrap px-2 py-1 tabular-nums text-ink-dim">{r.t.date}{r.open ? <span className="text-ink-mute"> · {r.age}d</span> : null}</td>
                     <td className="max-w-[18rem] truncate whitespace-nowrap px-2 py-1"><span className={r.type.safety >= 4 ? "text-risk-high" : r.type.safety >= 3 ? "text-risk-elev" : ""}>{r.type.label}</span><span className="text-ink-mute"> · {r.type.unit === "WRS" ? "Waste" : r.type.unit}</span></td>

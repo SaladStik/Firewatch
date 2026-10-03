@@ -20,7 +20,7 @@ export type Source311 = "live" | "sample";
 export interface PlanOpts { roads: number; waste: number; perCrew: number; disruption: Disruption; overrides: Record<string, Override>; weather: Weather311 | null }
 export type ToWorker =
   | { type: "init"; base: string }
-  | { type: "plan"; id: number; source: Source311; opts: PlanOpts; at: "morning" | "noon"; routeOrder: Record<string, number[]> }
+  | { type: "plan"; id: number; source: Source311; opts: PlanOpts; at: "morning" | "noon"; routeOrder: Record<string, number[]>; needLoad: boolean }
   | { type: "shortest"; id: number; crew: string }
   | { type: "refresh" };
 export interface LoadInfo { source: Source311; version: number; load: Load311 }
@@ -125,7 +125,8 @@ async function plan(m: Extract<ToWorker, { type: "plan" }>) {
   const p = plan311(load, { ...m.opts, city, roadAt: roads ? (la, ln) => roads!.roadAt(la, ln) : null });
   lastPlan = { plan: p, at: m.at };
   const version = m.source === "live" ? liveVersion : sampleVersion;
-  const loadInfo = sent.get(m.source) === version ? null : { source: m.source, version, load };
+  // The ticket set travels once per version, or whenever the panel says it doesn't have it.
+  const loadInfo = !m.needLoad && sent.get(m.source) === version ? null : { source: m.source, version, load };
   sent.set(m.source, version);
   post({ type: "plan", id: m.id, plan: portable(p), routes: routesFor(p, m.at, m.routeOrder), load: loadInfo, ms: Math.round(performance.now() - t0) });
   say({ scoring: false });

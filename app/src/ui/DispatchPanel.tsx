@@ -407,8 +407,8 @@ function Ops311Tab() {
                 return (
                   <li key={t.id}>
                     {leg && <div className="pl-3 text-[10.5px] text-ink-mute">↓ {leg.km < 0.05 ? "same block" : `${leg.km.toFixed(1)} km, ${Math.max(1, Math.round(leg.minutes))} min${leg.mainRoadShare > 0.5 ? ", mostly main roads" : ""}`}</div>}
-                    <button type="button" onClick={() => flyTo(t.lat, t.lng, 1.5)} className="text-left hover:text-phos">
-                      <span className="tabular-nums text-ink-mute">{i + 1}.</span> {t.simulated && <Snowflake size={10} className="inline" />} <span className="text-ink">{typeOf(t.service).label}</span>, {title(t.community)} <span className="text-ink-mute">· p{pp.total}{pp.why.length > 1 ? ` · ${pp.why.slice(1, 3).join(", ")}` : ""}{moved.has(t.id) && noon ? " · moved here" : ""}</span>
+                    <button type="button" title={pp.why.join("\n")} onClick={() => flyTo(t.lat, t.lng, 1.5)} className="block w-full truncate text-left hover:text-phos">
+                      <span className="tabular-nums text-ink-mute">{i + 1}.</span> {t.simulated && <Snowflake size={10} className="inline" />} <span className="text-ink">{typeOf(t.service).label}</span> · {title(t.community)} <span className="text-ink-mute">· p{pp.total}{pp.why[1] ? ` · ${pp.why[1]}` : ""}{moved.has(t.id) && noon ? " · moved here" : ""}</span>
                     </button>
                   </li>
                 );

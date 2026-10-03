@@ -278,6 +278,8 @@ const PEDESTRIAN: Hazard[] = ["ice", "sidewalk", "debris", "signal", "trafficSig
 const VULNERABLE: Hazard[] = ["ice", "sidewalk", "trafficSign", "signal", "sign", "debris", "light", "pothole"];
 const EMERGENCY: Hazard[] = ["ice", "pothole", "roadway", "debris", "signal"];
 const SLOPE: Hazard[] = ["ice", "sidewalk"];
+/** Any ticket open longer than this (or 3× the type's usual time to close) is "verify first". */
+const STALE_DAYS = 365;
 /** Ice / snow reports older than this are stale unless it's freezing now. */
 const ICE_STALE_DAYS = 7;
 /** Fallback "usual time to close" (days) when the history has none for a type. */
@@ -358,15 +360,19 @@ export function priorityParts(t: Ticket, today: string, ctx: Ctx311 = NO_CTX): P
   const age = daysBetween(t.date, today);
   const freezingNow = !!ctx.weather && ctx.weather.tempC <= 1;
   let stale = 1;
-  if (h === "ice" && age > ICE_STALE_DAYS && !freezingNow) { stale = 0.15; why.push(`ice reported ${age} days ago and it isn't freezing now: likely melted, check before sending a crew`); }
+  const p90Close = Math.max(1, site?.closeP90 ?? DEFAULT_P90);
+  if (h === "ice" && age > ICE_STALE_DAYS && !freezingNow) { stale = 0.15; why.splice(1, 0, `verify first: ice reported ${age} days ago and it isn't freezing now, likely melted`); }
+  // The live queue has a long tail of tickets nobody closed (years old). Past a year, or three times
+  // the city's usual time for the type, it's more likely done or moot than urgent: verify first.
+  else if (age > Math.max(STALE_DAYS, 3 * p90Close)) { stale = 0.3; why.splice(1, 0, `verify first: open ${age} days (the city usually closes this in ${Math.round(p90Close)}), may already be fixed`); }
   const k = Math.min(3, wf.k * pk) * stale;
   const impact = Math.round(safety * (k - 1));
   const weatherPts = Math.round(safety * (Math.min(3, wf.k) * stale - 1) * (stale < 1 ? 0 : 1)), place = impact - weatherPts;
   // Waiting, against how long the city usually takes to close this type.
   const days = daysBetween(t.date, today), p90 = Math.max(1, site?.closeP90 ?? DEFAULT_P90);
   const over = Math.max(0, days - p90);
-  const waiting = Math.round(15 * Math.min(1, days / p90) + Math.min(20, over));
-  if (days) why.push(over > 0 ? `waiting ${days} days, ${Math.round(over)} past the city's usual ${Math.round(p90)}` : `waiting ${days} day${days === 1 ? "" : "s"} (city usually closes in ${Math.round(p90)})`);
+  const waiting = stale < 1 ? 0 : Math.round(15 * Math.min(1, days / p90) + Math.min(20, over));
+  if (days && stale === 1) why.push(over > 0 ? `waiting ${days} days, ${Math.round(over)} past the city's usual ${Math.round(p90)}` : `waiting ${days} day${days === 1 ? "" : "s"} (city usually closes in ${Math.round(p90)})`);
   // More reports of the same thing.
   const nearN = Math.min(4, ctx.clusters.get(t.id) ?? 0), dup = Math.min(4, t.duplicates ?? 0);
   const nearby = 3 * nearN + 3 * dup;

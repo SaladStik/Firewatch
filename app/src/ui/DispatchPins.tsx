@@ -70,6 +70,25 @@ export function DispatchPins({ engine }: { engine: Engine | null }) {
   useEffect(() => {
     if (!engine || !pins.length) return;
     const world = pins.map((p) => project(p.lat, p.lng));
+    // Pins on the same spot (311 tickets share their community's centre point) fan out in a small
+    // ring around it, planned stops first, so every one shows and can be clicked.
+    const groups = new Map<string, number[]>();
+    pins.forEach((p, i) => {
+      const k = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+      let g = groups.get(k);
+      if (!g) groups.set(k, (g = []));
+      g.push(i);
+    });
+    const offset = pins.map(() => ({ x: 0, y: 0 }));
+    groups.forEach((g) => {
+      if (g.length < 2) return;
+      g.sort((a, b) => Number(!!pins[a].small) - Number(!!pins[b].small));
+      const r = 11 + g.length * 2.2;
+      g.forEach((i, k) => {
+        const a = -Math.PI / 2 + (k / g.length) * Math.PI * 2;
+        offset[i] = { x: Math.cos(a) * r, y: Math.sin(a) * r };
+      });
+    });
     // Ground elevation per pin, so pins stay on the surface where no hex is loaded under them.
     const elev: (number | undefined)[] = [];
     let alive = true;
@@ -84,7 +103,7 @@ export function DispatchPins({ engine }: { engine: Engine | null }) {
           const s = scene.screenOf(world[i].x, world[i].z, elev[i]);
           if (!s.visible) { el.style.display = "none"; return; }
           el.style.display = "";
-          el.style.transform = `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px) translate(-50%, -50%)`;
+          el.style.transform = `translate(${(s.x + offset[i].x).toFixed(1)}px, ${(s.y + offset[i].y).toFixed(1)}px) translate(-50%, -50%)`;
         });
       }
       raf = requestAnimationFrame(tick);
