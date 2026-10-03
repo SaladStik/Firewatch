@@ -65,9 +65,12 @@ export function NavControls({ engine }: { engine: Engine | null }) {
   return (
     <div className="pointer-events-auto flex flex-col items-end gap-1" data-tour="nav">
       <CompassRose engine={engine} />
-      <div className="flex flex-col gap-1">
-        <IconButton title="Zoom in" onClick={() => engine?.scene.zoomBy(0.5)}><Plus size={15} /></IconButton>
-        <IconButton title="Zoom out" onClick={() => engine?.scene.zoomBy(2)}><Minus size={15} /></IconButton>
+      <div
+        className="flex flex-col gap-1"
+        title="Keyboard: arrows drive, Ctrl (or Shift) + arrows orbit and tilt, + / − zoom"
+      >
+        <IconButton title="Zoom in (+)" onClick={() => engine?.scene.zoomBy(0.5)}><Plus size={15} /></IconButton>
+        <IconButton title="Zoom out (−)" onClick={() => engine?.scene.zoomBy(2)}><Minus size={15} /></IconButton>
         <IconButton title="Whole province" onClick={() => engine?.scene.resetView()}><Home size={14} /></IconButton>
       </div>
     </div>
@@ -110,7 +113,7 @@ export function BootScreen() {
   const [finished, setFinished] = useState(false);
   useEffect(() => {
     if (boot.done && finished && ref.current) {
-      gsap.to(ref.current, { opacity: 0, duration: 0.6, ease: "power2.out", onComplete: () => { if (ref.current) ref.current.style.display = "none"; } });
+      gsap.to(ref.current, { opacity: 0, duration: 0.6, ease: "power2.out", onComplete: () => { if (ref.current) ref.current.style.display = "none"; app.set((s) => ({ boot: { ...s.boot, hidden: true } })); } });
     }
   }, [boot.done, finished]);
   return (
