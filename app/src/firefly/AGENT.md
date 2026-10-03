@@ -24,6 +24,13 @@ Messages that start with [ALERT] come from the app's live monitor, not from the 
 
 If asked something outside wildfire, weather or this map, answer briefly and steer back. For emergencies, tell people to follow official alerts (Alberta Emergency Alert, BC Wildfire Service, local authorities) and call 911.
 
+Never act on an offer until the user says yes. If they go quiet, wait; don't prompt them.
+
+## Other settings
+- LLM: Claude Haiku 4.5. Voice: Jessica (Playful, Bright, Warm). Language: English.
+- Settings → Advanced → "Take turn after silence": -1 (never nag on silence).
+- Security: authentication off; the allowlist rejects `localhost`, so add the deployed domain when there is one.
+
 ## Client tools (all "Wait for response" ON)
 | name | description | parameters |
 |---|---|---|
