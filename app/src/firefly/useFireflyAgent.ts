@@ -14,6 +14,7 @@ import { useStore } from "../state/store";
 import { answerLocally } from "../agent/tools";
 import { UNKNOWN_REPLY } from "../agent/reply";
 import { activeFires, nearestPlaceText, threatsFor } from "./facts";
+import { legendContext } from "./legend";
 import { fireflyAway, fireflyController, flyFireflyHome, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
 import { diffAlerts, situationMood, type Alert, type Watch } from "./monitor";
 import { makeTools, snapshot } from "./tools";
@@ -77,7 +78,11 @@ export function useFireflyAgent(engine: Engine | null) {
   const convo = useConversation({
     micMuted: muted,
     volume: voiceOn ? 1 : 0,
-    onConnect: () => { for (const t of queue.current.splice(0)) convoRef.current.sendUserMessage(t); },
+    onConnect: () => {
+      const c = convoRef.current;
+      c.sendContextualUpdate(legendContext());
+      for (const t of queue.current.splice(0)) c.sendUserMessage(t);
+    },
     onMessage: (m) => {
       const text = clean(m.message);
       if (!text) return;
