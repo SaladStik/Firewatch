@@ -18,11 +18,12 @@ import type { Place } from "./data/places";
 import { loadTraffic } from "./data/traffic";
 import { scoreTraffic } from "./data/trafficRisk";
 import { trafficScenario } from "./data/trafficSim";
+import { airThreats, AIR_HAZE_STATUSES } from "./data/airQuality";
 import { communityThreats } from "./data/communityRisk";
 import { project, setProjection } from "./geo/projection";
 import { NodeStatus } from "./hex/nodeTypes";
 import type { Landmark } from "./hex/overlayStyles";
-import { resolveStyle } from "./render/nodeStyle";
+import { resolveStyle, rgb } from "./render/nodeStyle";
 import { Scene } from "./render/Scene";
 import { app, focusIndices, LABEL_MIN_POP, regionIndex, type LabelMode, type Layers, type Theme } from "./state/app";
 import { WorldClient } from "./world/WorldClient";
@@ -30,6 +31,13 @@ import type { HexNodeInfo } from "./world/types";
 
 const RISK_STATUSES = new Set<number>([NodeStatus.Elevated, NodeStatus.High, NodeStatus.Extreme]);
 const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Burned]);
+/** Smoke-haze tint mixed into fire-possible hexes when the air layer is on. */
+const AIR_HAZE = rgb("#6b5a4a");
+const mix3 = (a: [number, number, number], b: [number, number, number], t: number): [number, number, number] => [
+  a[0] + (b[0] - a[0]) * t,
+  a[1] + (b[1] - a[1]) * t,
+  a[2] + (b[2] - a[2]) * t,
+];
 const DATA_REFRESH_MS = 10 * 60 * 1000;
 /** A fire's growth history is refetched at most this often (and only when its perimeter changed). */
 const FIRE_HISTORY_TTL_MS = 60 * 60 * 1000;
@@ -53,7 +61,7 @@ export class Engine {
     const stage = (s: string, progress: number) => app.set({ boot: { stage: s, done: false, progress } });
     try {
       // Fresh boot (also after a dev hot-reload): nothing is loaded yet.
-      app.set({ loaded: [], places: [], traffic: [], trafficThreats: [], hotspots: [], perimeters: [], weather: [], selected: null, hover: null });
+      app.set({ loaded: [], places: [], traffic: [], trafficThreats: [], airThreats: [], hotspots: [], perimeters: [], weather: [], selected: null, hover: null });
       setProjection(PROJECTION);
       await this.client.init(PROJECTION);
       this.scene = new Scene(canvas, overlay, this.client, { onHover: (n) => app.set({ hover: n }), onSelect: (n) => this.onSelect(n), onStats: (s) => app.set({ stats: s }) });
@@ -306,6 +314,32 @@ export class Engine {
     this.pushWind();
     this.pushRain();
     this.pushTraffic();
+    this.pushAir();
+  }
+
+  /**
+   * Rank communities with a wildfire-smoke air-quality advisory for the selected day
+   * (data/airQuality.ts). Same fire/wind inputs as the map haze on fire-possible hexes.
+   */
+  private pushAir() {
+    const s = app.get();
+    const focus = new Set(focusIndices());
+    if (!s.layers.air) {
+      if (s.airThreats.length) app.set({ airThreats: [] });
+      return;
+    }
+    const hotspots = this.allHotspots().filter((h) => s.simulation || h.agency !== "SIMULATION");
+    app.set({
+      airThreats: airThreats({
+        places: s.places.filter((p) => !p.landmark && p.pop >= 200 && focus.has(p.region)),
+        hotspots,
+        perimeters: s.perimeters,
+        weather: s.weather,
+        day: s.forecastDay,
+        spread: s.spread,
+        growth: s.fireGrowth,
+      }),
+    });
   }
 
   /**
@@ -390,6 +424,7 @@ export class Engine {
     app.set((s) => ({ layers: { ...s.layers, [key]: on } }));
     this.applyLayers(app.get().layers);
     if (key === "beacons" || key === "spread") void this.pushHazards();
+    if (key === "air") this.pushAir();
     if (key === "traffic") this.pushTraffic();
     if (key === "wind") this.pushWind();
     if (key === "rain") this.pushRain();
@@ -397,14 +432,31 @@ export class Engine {
 
   private applyLayers(l: Layers) {
     this.scene.setBloom(l.bloom);
-    // Layer toggles are just a styler — the same hook apps can use to customise nodes.
+    // Layer toggles are a styler — the same hook apps can use to customise nodes.
+    const needStyler = !(l.risk && l.fires) || l.air;
     this.scene.world.setStyler(
-      l.risk && l.fires
+      !needStyler
         ? null
-        : (ctx) => {
+        : (ctx, base) => {
+          let style = base;
+          let changed = false;
           if ((!l.risk && RISK_STATUSES.has(ctx.status)) || (!l.fires && FIRE_STATUSES.has(ctx.status))) {
-            return resolveStyle({ ...ctx, status: NodeStatus.Normal });
+            style = resolveStyle({ ...ctx, status: NodeStatus.Normal });
+            changed = true;
           }
+          // Haze on fire-possible ground (elevated risk, active fire, projected path).
+          if (l.air && (AIR_HAZE_STATUSES.has(ctx.status) || ctx.risk >= 0.5)) {
+            const t = ctx.status === NodeStatus.Burning || ctx.status === NodeStatus.Perimeter
+              ? 0.42
+              : 0.22 + 0.28 * Math.min(1, ctx.risk);
+            return {
+              line: mix3(style.line, AIR_HAZE, t),
+              prop: mix3(style.prop, AIR_HAZE, t * 0.7),
+              fill: Math.max(style.fill, 0.32 + 0.35 * Math.min(1, Math.max(ctx.risk, AIR_HAZE_STATUSES.has(ctx.status) ? 0.55 : 0))),
+              emphasis: Math.max(style.emphasis, 0.7),
+            };
+          }
+          return changed ? style : undefined;
         },
     );
   }

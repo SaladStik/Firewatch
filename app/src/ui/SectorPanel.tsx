@@ -1,15 +1,18 @@
 /** Details for the selected hex + actions. */
 import { Crosshair, Flag, X } from "lucide-react";
 import { GRID } from "../config/grid";
+import { airAt } from "../data/airQuality";
 import { perimeterAt } from "../data/fireHistory";
 import { PAST_DAYS, weatherAt } from "../data/openMeteo";
 import { snowShare } from "../data/rain";
+import { simulatedHotspots } from "../data/hazards";
 import { NODE_STATUSES, NODE_TYPES, NodeStatus } from "../hex/nodeTypes";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
 import { COMPASS_NAMES, compass, dayLabel, sectorOf } from "./weatherFormat";
 import { KV, Panel, SegBar, Swatch } from "./primitives";
+import { useMemo } from "react";
 
 const fx = (v: number, d = 0) => (Number.isFinite(v) ? v.toFixed(d) : "–");
 
@@ -25,7 +28,21 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
   const day = useStore(app, (s) => s.forecastDay);
   const perimeters = useStore(app, (s) => s.perimeters);
   const growth = useStore(app, (s) => s.fireGrowth);
+  const hotspots = useStore(app, (s) => s.hotspots);
+  const spread = useStore(app, (s) => s.spread);
+  const sim = useStore(app, (s) => s.simulation);
+  const regions = useStore(app, (s) => s.regions);
   const region = useStore(app, (s) => s.regions[n?.region ?? 0]);
+  const airLayer = useStore(app, (s) => s.layers.air);
+
+  const air = useMemo(() => {
+    if (!n || !airLayer) return null;
+    const fires = sim
+      ? [...hotspots, ...regions.flatMap((r) => simulatedHotspots(r.demoSites))]
+      : hotspots.filter((h) => h.agency !== "SIMULATION");
+    return airAt(n.lat, n.lng, { hotspots: fires, perimeters, weather, day, spread, growth });
+  }, [n, airLayer, hotspots, perimeters, weather, day, spread, growth, sim, regions]);
+
   if (!n) return null;
   const regionName = region?.name;
   const bearing = region ? sectorOf(n.lat, n.lng, region.bbox) : "N";
@@ -40,6 +57,9 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
   const fg = fire && growth[fire.id];
   const isFlagged = flagged.includes(n.key);
   const cellM = GRID.levels[n.level].size * Math.sqrt(3) * 1000;
+  const airAccent = air && air.advisory
+    ? (air.level === "Extreme" || air.level === "Very High" ? "var(--color-risk-ext)" : "var(--color-risk-high)")
+    : undefined;
 
   return (
     <Panel
@@ -81,6 +101,13 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
           v={sample ? (Number.isFinite(sample.nearestHotspotKm) ? `${sample.nearestHotspotKm.toFixed(1)} km` : "> 500 km") : "…"}
           accent={sample && sample.nearestHotspotKm < 30 ? "var(--color-risk-high)" : undefined}
         />
+        {air && (
+          <>
+            <div className="mt-2 mb-1 label-xs">Air quality · smoke estimate</div>
+            <KV k="Level" v={`${air.level} · AQHI ~${air.aqhi}`} accent={airAccent} />
+            <KV k="Reason" v={air.reason} accent={airAccent} />
+          </>
+        )}
         {fire && fg && (
           <>
             <div className="mt-2 mb-1 label-xs">This fire · own growth history (CWFIS)</div>

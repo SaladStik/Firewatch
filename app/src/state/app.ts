@@ -6,6 +6,7 @@ import type { GrowthField } from "../world/fireGrowth";
 import type { WeatherGrid } from "../data/openMeteo";
 import type { Place } from "../data/places";
 import type { TrafficNetwork } from "../data/traffic";
+import type { AirThreat } from "../data/airQuality";
 import type { CorridorThreat } from "../data/trafficRisk";
 import type { WorldStats } from "../render/HexWorld";
 import type { HexNodeInfo } from "../world/types";
@@ -16,6 +17,7 @@ export interface Layers {
   risk: boolean;
   fires: boolean;
   spread: boolean;
+  air: boolean;
   traffic: boolean;
   beacons: boolean;
   wind: boolean;
@@ -77,6 +79,8 @@ export interface AppState {
   traffic: TrafficNetwork[];
   /** Highway corridors threatened on the selected day, worst first (scored by the engine). */
   trafficThreats: CorridorThreat[];
+  /** Communities under a wildfire-smoke air-quality advisory for the selected day. */
+  airThreats: AirThreat[];
 }
 
 export const app = createStore<AppState>({
@@ -91,7 +95,7 @@ export const app = createStore<AppState>({
   hover: null,
   selected: null,
   selectedSample: null,
-  layers: { risk: true, fires: true, spread: true, traffic: true, beacons: true, wind: true, rain: true, bloom: false },
+  layers: { risk: true, fires: true, spread: true, air: true, traffic: true, beacons: true, wind: true, rain: true, bloom: false },
   hotspots: [],
   perimeters: [],
   weather: [],
@@ -103,6 +107,7 @@ export const app = createStore<AppState>({
   fireGrowth: {},
   traffic: [],
   trafficThreats: [],
+  airThreats: [],
 });
 
 export const regionIndex = (id: string) => app.get().regions.findIndex((r) => r.id === id);

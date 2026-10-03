@@ -5,14 +5,16 @@ import { snowShare } from "../data/rain";
 import { project } from "../geo/projection";
 import { app, type Layers } from "../state/app";
 import { dayLabel, compassName } from "../ui/weatherFormat";
-import { fireList, threatList, threatReasonAt } from "./brief";
+import { buildBrief, fireList, threatList, threatReasonAt } from "./brief";
 import { renderReply } from "./reply";
+import { ruleBrain } from "./rules";
 import type { Plan, ToolCall, ToolResult } from "./types";
 
 const LAYER_LABEL: Record<keyof Layers, string> = {
   risk: "Fire risk",
   fires: "Fires",
   spread: "Projected spread",
+  air: "Air quality",
   traffic: "Traffic corridors",
   beacons: "Beacons",
   wind: "Wind",
@@ -146,4 +148,18 @@ function runCall(engine: Engine, call: ToolCall): ToolResult {
 export function runPlan(engine: Engine, plan: Plan): { results: ToolResult[]; reply: string } {
   const results = plan.calls.map((call) => runCall(engine, call));
   return { results, reply: renderReply(plan, results) };
+}
+
+/** A map answer from data already loaded, or null when the question needs the model. */
+export function answerLocally(engine: Engine, text: string): { reply: string; threats: boolean } | null {
+  const plan = ruleBrain.plan(text, buildBrief(engine));
+  if (plan.reply === "unknown") return null;
+  try {
+    if (plan.calls.length && plan.reply !== "ambiguous") {
+      return { reply: runPlan(engine, plan).reply, threats: plan.reply === "threats" };
+    }
+    return { reply: renderReply(plan, []), threats: false };
+  } catch (err) {
+    return { reply: err instanceof Error ? err.message : "That did not run.", threats: false };
+  }
 }

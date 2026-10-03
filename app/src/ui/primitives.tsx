@@ -1,10 +1,56 @@
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 
 /** Remembered per panel (by its tour id or title) so a minimized panel stays minimized. */
 const collapsedKey = (id: string) => `firewatch.panel.${id}.collapsed`;
 function readCollapsed(id: string) {
   try { return localStorage.getItem(collapsedKey(id)) === "1"; } catch { return false; }
+}
+
+/** Dock menus rest closed. A missing key is closed; "0" is the one menu left open. */
+function readDockCollapsed(id: string) {
+  try {
+    const v = localStorage.getItem(collapsedKey(id));
+    if (v === null) return true;
+    return v === "1";
+  } catch { return true; }
+}
+
+const DOCK_IDS = ["layers", "legend", "explore"] as const;
+
+function readOpenDock(): string | null {
+  let open: string | null = null;
+  for (const id of DOCK_IDS) {
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(collapsedKey(id)); } catch { stored = null; }
+    if (stored !== "0") continue;
+    if (open === null) open = id;
+    else {
+      try { localStorage.setItem(collapsedKey(id), "1"); } catch { /* storage unavailable */ }
+    }
+  }
+  return open;
+}
+
+function writeOpenDock(openId: string | null) {
+  for (const id of DOCK_IDS) {
+    try { localStorage.setItem(collapsedKey(id), openId === id ? "0" : "1"); } catch { /* storage unavailable */ }
+  }
+}
+
+const DockMenuContext = createContext<{
+  openId: string | null;
+  setOpenId: (id: string | null) => void;
+} | null>(null);
+
+/** One open menu among the bottom-bar tools. Children stay direct flex items. */
+export function DockBar({ children }: { children: ReactNode }) {
+  const [openId, setOpen] = useState(readOpenDock);
+  const setOpenId = (id: string | null) => {
+    setOpen(id);
+    writeOpenDock(id);
+  };
+  return <DockMenuContext.Provider value={{ openId, setOpenId }}>{children}</DockMenuContext.Provider>;
 }
 
 /**
@@ -18,6 +64,7 @@ export function Panel({
   right,
   tour,
   collapsible = true,
+  dock = false,
 }: {
   children: ReactNode;
   className?: string;
@@ -25,15 +72,53 @@ export function Panel({
   right?: ReactNode;
   tour?: string;
   collapsible?: boolean;
+  /** A segment of the bottom bar. The body opens upward instead of its own card. */
+  dock?: boolean;
 }) {
   const id = tour ?? title ?? "";
   const canCollapse = collapsible && !!title && !!id;
-  const [collapsed, setCollapsed] = useState(() => canCollapse && readCollapsed(id));
+  const menu = useContext(DockMenuContext);
+  const [collapsed, setCollapsed] = useState(() => {
+    if (!canCollapse) return false;
+    return dock ? readDockCollapsed(id) : readCollapsed(id);
+  });
+  const isCollapsed = dock && menu ? menu.openId !== id : collapsed;
   const toggle = () => {
+    if (dock && menu) {
+      menu.setOpenId(menu.openId === id ? null : id);
+      return;
+    }
     const next = !collapsed;
     setCollapsed(next);
     try { localStorage.setItem(collapsedKey(id), next ? "1" : "0"); } catch { /* storage unavailable */ }
   };
+  if (dock && title) {
+    return (
+      <div className="relative flex items-center self-stretch border-r border-line px-1" data-tour={tour}>
+        {!isCollapsed && (
+          <div
+            className={`panel z-20 overflow-auto ${className}`}
+            style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, maxHeight: "min(70vh, 32rem)" }}
+          >
+            {children}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={toggle}
+          className="label-xs h-9 px-1.5"
+          aria-expanded={!isCollapsed}
+          title={isCollapsed ? `Show ${title}` : `Hide ${title}`}
+        >
+          {title}
+        </button>
+        {right}
+        <button type="button" onClick={toggle} className="px-0.5 text-ink-mute transition hover:text-phos" aria-label={isCollapsed ? `Show ${title}` : `Hide ${title}`}>
+          {isCollapsed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </button>
+      </div>
+    );
+  }
   return (
     <section className={`panel pointer-events-auto ${collapsed ? "" : className}`} data-tour={tour}>
       {title && (
