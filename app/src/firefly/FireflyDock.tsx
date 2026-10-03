@@ -63,7 +63,7 @@ export function FireflyDock({ engine }: { engine: Engine | null }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
-          placeholder={holding ? "Listening…" : "Ask Firefly, or hold the mic to talk"}
+          placeholder={holding ? "Listening…" : ff.status === "connecting" ? "Firefly is waking up…" : "Ask Firefly, or hold the mic to talk"}
           className="min-w-0 flex-1 bg-transparent text-[11.5px] text-ink outline-none placeholder:text-ink-mute"
         />
         <button aria-label="Send" onClick={submit} className="p-1 text-ink-dim hover:text-phos"><Send size={14} /></button>
@@ -77,9 +77,6 @@ export function FireflyDock({ engine }: { engine: Engine | null }) {
           {ff.voiceOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
         </button>
         <button aria-label="History" onClick={() => setOpen((o) => !o)} className={`p-1 hover:text-phos ${open ? "text-phos" : "text-ink-dim"}`}><MessageSquare size={14} /></button>
-      </div>
-      <div className="label-xs px-1 text-ink-mute">
-        {ff.connected ? (ff.speaking ? "Firefly is speaking" : holding ? "Firefly is listening" : "Firefly · connected") : ff.status === "connecting" ? "Firefly is waking up…" : "Firefly"}
       </div>
     </div>
   );

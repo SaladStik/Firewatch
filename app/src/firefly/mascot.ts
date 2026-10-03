@@ -3,8 +3,15 @@ import { getStage } from "../mascot/firefly/script";
 import type { Engine } from "../engine";
 import { project } from "../geo/projection";
 
-/** Where he rests: just above the dock (bottom-left). */
-export const homePoint = () => ({ x: 70, y: innerHeight - 190 });
+/**
+ * Where he rests: perched above the right end of the dock, clear of the Layers/Legend column
+ * (follows the dock as its chips and history drawer come and go).
+ */
+export function homePoint() {
+  const dock = document.querySelector("[data-tour=firefly]")?.getBoundingClientRect();
+  if (!dock || !dock.width) return { x: 70, y: innerHeight - 230 };
+  return { x: dock.right - 36, y: dock.top - 40 };
+}
 
 export function showFirefly() {
   const st = getStage();

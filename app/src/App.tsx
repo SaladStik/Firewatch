@@ -60,7 +60,8 @@ export default function App() {
         <div className="flex min-h-0 flex-1 flex-col justify-between p-4">
           <div className="flex min-h-0 flex-1 items-start justify-between gap-4 py-3">
             <div className="hidden max-h-full min-h-0 gap-2 md:flex">
-              <div className="flex flex-col gap-2">
+              {/* Ends above the Firefly dock: the Legend shrinks (and scrolls inside) on short screens. */}
+              <div className="flex max-h-full min-h-0 flex-col gap-2">
                 <ErrorBoundary name="LayerDock"><LayerDock engine={engine} /></ErrorBoundary>
                 <Legend />
               </div>
@@ -73,9 +74,9 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-end justify-between gap-4">
-            {/* Holds the bottom-left corner for the Firefly dock so the centre bars sit to its right. */}
-            <div className="w-9 shrink-0 md:w-[356px]" />
-            <div className="absolute bottom-4 left-4 z-20 hidden md:block">
+            <div className="w-9 shrink-0 md:hidden" />
+            {/* Firefly dock sits in the layout so the Layers/Legend column ends above it; ml clears the FF button. */}
+            <div className="hidden shrink-0 md:ml-10 md:block">
               <ErrorBoundary name="FireflyDock"><FireflyDock engine={engine} /></ErrorBoundary>
             </div>
             <div className="flex min-w-0 flex-col items-center gap-2">

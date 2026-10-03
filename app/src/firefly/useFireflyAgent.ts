@@ -10,6 +10,7 @@ import { weatherAt } from "../data/openMeteo";
 import type { Engine } from "../engine";
 import type { MoodName } from "../mascot/firefly";
 import { app } from "../state/app";
+import { useStore } from "../state/store";
 import { activeFires, nearestPlaceText, threatsFor } from "./facts";
 import { fireflyAway, fireflyController, flyFireflyHome, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
 import { diffAlerts, situationMood, type Alert, type Watch } from "./monitor";
@@ -80,14 +81,15 @@ export function useFireflyAgent(engine: Engine | null) {
   useLayoutEffect(() => { convoRef.current = convo; });
   const connected = convo.status === "connected";
 
-  // Show him once the engine exists.
+  // Show him once the map is up and the loading screen has faded out.
+  const bootHidden = useStore(app, (s) => !!s.boot.hidden);
   useEffect(() => {
-    if (!engine) return;
+    if (!engine || !bootHidden) return;
     showFirefly();
     toolsRef.current = makeTools(engine);
     const unsubscribe = keepFireflyShown();
     return () => { unsubscribe(); };
-  }, [engine]);
+  }, [engine, bootHidden]);
 
   // Mouth follows the voice; released when silent. Once he's done explaining (not speaking,
   // thinking, flying or showing a bubble) for HOME_AFTER_S, he flies back to the dock.
