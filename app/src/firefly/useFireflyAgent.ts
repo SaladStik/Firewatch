@@ -34,6 +34,10 @@ function buildWatch(): Watch {
 
 /** Seconds of quiet after explaining before he flies back to the dock. */
 const HOME_AFTER_S = 1.5;
+/** Rough speaking rate of the voice (s per character), to pace the bubble through queued lines. */
+const SECS_PER_CHAR = 0.065;
+/** With no audio for a queued line (voice off, text only), show it after this long (ms). */
+const LINE_FALLBACK_MS = 1200;
 /** How long the mic stays open after the talk button is released (ms). */
 const MIC_TAIL_MS = 600;
 
@@ -54,6 +58,8 @@ export function useFireflyAgent(engine: Engine | null) {
   const lastTyped = useRef("");
   /** Pending mic mute after the talk button is released. */
   const muteTimer = useRef(0);
+  /** Agent lines waiting for their audio, so the bubble shows what he's saying, not what's coming. */
+  const lines = useRef<{ text: string; at: number }[]>([]);
   const push = (line: ChatLine) => setHistory((h) => [...h.slice(-40), line]);
 
   const convo = useConversation({
@@ -70,10 +76,9 @@ export function useFireflyAgent(engine: Engine | null) {
         return;
       }
       push({ from: "firefly", text });
-      const ctl = fireflyController();
-      ctl.say(text, Math.max(3, text.length * 0.07));
-      ctl.setMood(moodRef.current);
+      lines.current.push({ text, at: performance.now() });
     },
+    onInterruption: () => { lines.current = []; },
     onError: (message) => push({ from: "alert", text: `Firefly hit a problem (${String(message)}).` }),
   });
   // The hook returns a new object every render: callbacks and effects read the latest through this ref.
@@ -96,9 +101,27 @@ export function useFireflyAgent(engine: Engine | null) {
   useEffect(() => {
     let raf = 0;
     let quietSince = performance.now();
+    let wasSpeaking = false, audioStarted = false, lineEndsAt = 0;
     const tick = () => {
       const c = convoRef.current, ctl = fireflyController();
       const speaking = c.status === "connected" && c.isSpeaking;
+      // Bubble follows the voice: a queued line shows when its audio starts, when the line before it
+      // has had time to be said, or (no audio: voice off / text) shortly after it arrived.
+      if (speaking && !wasSpeaking) audioStarted = true;
+      else if (!speaking) audioStarted = false;
+      wasSpeaking = speaking;
+      const next = lines.current[0];
+      if (next) {
+        const t = performance.now();
+        if (audioStarted || (speaking && t > lineEndsAt) || (!speaking && t - next.at > LINE_FALLBACK_MS)) {
+          lines.current.shift();
+          audioStarted = false;
+          const secs = Math.max(2, next.text.length * SECS_PER_CHAR);
+          lineEndsAt = t + secs * 1000;
+          ctl.say(next.text, secs + 0.5);
+          ctl.setMood(moodRef.current);
+        }
+      }
       if (speaking) ctl.override.mouthOpen = Math.min(1, c.getOutputVolume() * 3.5);
       else if ("mouthOpen" in ctl.override) delete ctl.override.mouthOpen;
       const now = performance.now();
