@@ -45,15 +45,49 @@ What he can do:
 - **Explain why:** why a town or the selected hex is rated the way it is (fuel × fire weather × nearby fire).
 - **Drive the map:** fly to places and fires, set the forecast day, toggle layers, turn the demo scenario on or off.
 - **Proactive alerts:** a new fire, a town entering a projected path, or extreme danger tomorrow. He flies there and says so (`src/firefly/monitor.ts`).
-- **Crew allocation:** "I have 3 crews, where?" ranks fires by threat to communities and growth, with reasons.
+- **Crew allocation:** "I have 3 crews, where?" or "rank the 2023 to 2025 fires for 40 crews, then cut 20%" ranks fires, compares with biggest-first and says who lost a crew (see [Dispatch](#dispatch-who-gets-the-next-crew)).
+- **311 dispatch:** "plan Calgary 311 for a blizzard" or "what if a crew calls in sick" plans the city's crews and replans at noon.
 - **Mood:** alert (red lantern) when a town is in a projected path, worried before an extreme day, curious when a town is listed, and idle when it's calm — idle is also where he starts.
 - **Look:** `src/firefly.config.ts`, pasted out of the preview page's "copy config" (`/firefly.html`). The mascot module keeps its own default; this is the one the map applies.
 
 Setup:
-1. Create an agent in the ElevenLabs dashboard from [`src/firefly/AGENT.md`](src/firefly/AGENT.md): first message, system prompt, and the 11 client tools (names and parameters must match `tools.ts`).
+1. Create an agent in the ElevenLabs dashboard from [`src/firefly/AGENT.md`](src/firefly/AGENT.md): first message, system prompt, and the 13 client tools (names and parameters must match `tools.ts`).
 2. Copy `app/.env.example` to `app/.env` and put its ID in: `VITE_ELEVENLABS_AGENT_ID=agent_…`, then restart `npm run dev`. Without it, the dock shows "Firefly is offline". `.env` is the only file it reads (Vite loads `.env` in every mode) and is gitignored, so the ID stays out of the repo.
 
 Privacy: while a session is connected, typed text and voice go to ElevenLabs. The mic stays muted unless the talk button is held, though the browser asks for mic permission once when a session starts. The agent ID is public (no API key in the app); restrict it with the dashboard's host allowlist when deploying. Projected spread is a **scenario**, and Firefly says so.
+
+## Dispatch: who gets the next crew
+
+The **Dispatch** button (top bar) opens the IEEE YP Industry Hackathon 2026 cases inside the map. Firefly drives the same plans from Ask or voice (`plan_crews`, `plan_311`, `open_dispatch`). Method and evaluation: [METHODOLOGY.md §13](METHODOLOGY.md#13-dispatch-who-gets-the-next-crew).
+
+**Wildfire crews (Case 3).** Ranks fires for N crews, either today's live fires or Alberta's real 2023–2025 fire table. **Demo scenario** replays that table on the map.
+- One-line score: `priority = size × spread × people × crown`. Spread is the faster of the observed rate and the FBP rate for that fuel and weather; people are towns and critical sites within 30 km.
+- Baseline: biggest first. Cut crews by 20% (adjustable) and see which fires lost a crew, ringed red on the map.
+- Improvement round: the weights are fitted on two seasons and tested on the third.
+- Duty-officer paragraph, which Firefly reads out on request.
+
+With 40 crews, cut to 32 (`npm run case:crews`):
+
+| Plan | Crews | Escapes reached (of 156) |
+|---|---|---|
+| Biggest first | 40 | 15 |
+| FIRE//WATCH | 40 | **28** |
+| Biggest first, after the cut | 32 | 11 |
+| FIRE//WATCH, after the cut | 32 | **21** |
+
+**Calgary 311 (Case 1).** Plans Roads and Waste & Recycling crews for one day from Open Calgary tickets.
+- Priority: `priority = 10 × safety + 2 × days waiting`. Crews work a neighbourhood instead of crossing the city.
+- Baseline: oldest first.
+- Noon disruption: a **blizzard** (ice and snow calls jump; suggested automatically when our forecast shows snow in Calgary) or a **sick crew**, then a replan that counts jobs moved.
+- **All tickets:** every ticket with its priority, crew and stop. Mark one **urgent** or **hold** it and the day replans.
+- Supervisor notes for 8 a.m. and noon.
+
+With 8 crews × 5 jobs (`npm run case:311`): 25 safety jobs instead of 19, and 112 km of driving instead of 440.
+
+```bash
+npm run case:crews              # Case 3 report (40 crews, 20% cut); -- 30 25 for 30 crews, 25% cut
+npm run case:311                # Case 1 report (blizzard at noon); -- sick for a sick crew
+```
 
 ## Data sources
 
@@ -82,6 +116,13 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 | Fire weather stations: observed FWI moisture codes (FFMC, DMC, DC) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) `public:firewx_stns_current` | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Seeds the FWI System per weather cell with official values (with the FWI codes CWFIS attaches to each hotspot). Refreshed at most hourly |
 | Fire growth history (per fire) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) hotspot archive (`public:hotspots`, every detection since 2012), queried per active perimeter since its start date | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Each fire's daily burned-area growth; calibrates how far that fire is projected to spread. Fetched for active fires in focused provinces, at most hourly |
 | Weather (12:00 local hourly temperature, humidity and wind for the FWI System; daily peaks and rain totals; 14 past days + today + 7-day forecast; live current conditions incl. wind and precipitation) | [Open-Meteo](https://open-meteo.com/) | Data [CC BY 4.0](https://open-meteo.com/en/license); free API for non-commercial use | 1.5° grid (coarser for very large provinces, ≤ ~90 points each), focused provinces only; Canadian FWI System per day (with Fosberg for comparison), wind direction for spread, live wind and rain animation. Refreshed at most hourly |
+
+### Case data (bundled, `public/data/cases/`)
+
+| Data | Source | Licence | How we use it |
+|---|---|---|---|
+| Alberta wildfires 2023–2025 (856 fires: all size class C/D/E plus a sample of A/B) | [Historical wildfire data 2006–2025](https://open.alberta.ca/opendata/wildfire-data), Government of Alberta, via the hackathon's Case 3 seed | [Open Government Licence – Alberta](https://open.alberta.ca/licence) | Crew ranking and its evaluation; the demo scenario's fires |
+| Calgary 311 service requests (200-ticket sample) | [Open Calgary 311 Service Requests](https://data.calgary.ca/Services-and-Amenities/311-Service-Requests/iahh-g8bj), via the hackathon's Case 1 seed | Open Government Licence – City of Calgary | 311 dispatch, ticket list |
 
 ### Data server (optional)
 

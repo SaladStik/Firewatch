@@ -429,6 +429,87 @@ Both were worse than the official codes, which already account for the day's wea
 
 ---
 
+## 13. Dispatch: who gets the next crew
+
+Two of the IEEE YP Industry Hackathon 2026 cases, built on the same data as the map. Code: `src/dispatch/`. Reports: `npm run case:crews`, `npm run case:311`. Tests: `tests/dispatch.test.ts`.
+
+### 13.1 Wildfire crews (Case 3)
+
+**Data.** The Alberta 2023–2025 wildfire table (856 fires). None is missing size or coordinates, so 0 rows are dropped. Missing values are filled in and counted:
+- weather (about 22 rows): the table's median, 21 °C, 35 % RH, 10 km/h;
+- fuel type (89 rows): M-2 boreal mixedwood;
+- spread rate: the FBP rate alone.
+
+Live fires come from CWFIS. Their size is the mapped perimeter, or the hotspot cluster's radius. Spread uses today's ISI and BUI at the fire, the fuel from our land-cover map, and the fire's observed growth.
+
+**Score.** One line, using only what is known when the crew is sent:
+
+$$\text{priority} = \big(1+\log_{10}(1+\text{ha})\big)^{a}\,\big(1+\tfrac{\text{ROS}}{10}\big)^{b}\,\big(1+\tfrac{\log_{10}(\text{people})}{3}\big)^{c}\,\cdot\,(\text{crown}\ ?\ d : 1)$$
+
+- **ha:** size at assessment.
+- **ROS:** the faster of the observed spread and the FBP head-fire rate of spread for that fuel type (§4.2). For history rows, the FWI codes are those the recorded weather settles to after two dry weeks.
+- **people:** distance-weighted population within 30 km, plus hospitals, schools, plants and power sites as people-equivalents (`data/criticalAssets.ts`).
+- **crown:** crown fires are far harder to hold.
+
+**Baseline.** Biggest fire first, by the size known at assessment. Ranking on the *final* size (what the starter script does) would use hindsight.
+
+**Grading.** An *escape* is a fire that was still catchable when it was assessed (≤ 200 ha) and grew past 200 ha (size class E). That is where a crew changes the outcome. A fire already past 200 ha at assessment had escaped before anyone could be sent. The final size grades a ranking afterwards; it never feeds the ranking (a unit test shuffles final sizes and checks the order doesn't move).
+
+**Improvement round.**
+- **Round 1:** hand-set weights (a, b, c, d) = (1, 1, 1, 1.5).
+- **Round 2:** a grid search over the weights, maximising escapes reached (weighted by people nearby). It leaves out one season at a time: fit on two seasons, test on the third. The tuned weights are kept only if they beat round 1 on the held-out seasons, then refit on all three.
+- **Policy floor:** the people weight never drops below 0.5. Proximity to towns doesn't predict escapes, but it decides what an escape costs, so protecting people is policy rather than something to learn away.
+
+| Held-out season (crews) | Biggest first | Round 1 | Round 2 |
+|---|---|---|---|
+| 2023 (15) | 4 | 9 | 11 |
+| 2024 (13) | 5 | 5 | 9 |
+| 2025 (12) | 2 | 7 | 8 |
+| **Total (of 156)** | **11** | **21** | **28** |
+
+All seasons together, 40 crews: biggest first reaches 15 escapes, FIRE//WATCH 28. After a 20 % cut to 32 crews it is 11 vs 21. The fires that lose a crew in the cut are the lowest-priority ones on our list; the duty-officer paragraph names them, and names the large-but-slow or remote fires biggest-first would have crewed.
+
+**Limits.** This is a ranking, not a dispatch model:
+- crews aren't moved between fires over days;
+- travel time isn't included;
+- the 2023–2025 table mixes three seasons as if they burned at once, which is what the case asks for.
+
+### 13.2 Calgary 311 (Case 1)
+
+**Data.** 200 Open Calgary tickets: 78 closed and 3 duplicates leave 119 open. The plan is for the day after the newest ticket.
+
+**Priority.** `priority = 10 × safety + 2 × days waiting`. Safety levels by service type:
+
+| Safety | Service types |
+|---|---|
+| 5 | ice and snow |
+| 4 | traffic signs and markings |
+| 3 | potholes, debris, missing or damaged signs |
+| 2 | streetlights, missed residential pickup, inspections, seniors' services |
+| 1 | parking signs, commercial collection, new carts |
+
+**Assignment.**
+- Roads crews take Roads work and Waste & Recycling crews take WRS work. Either takes the rest.
+- Crews pick in turn. Each takes the job with the best `priority − 1.5 × km from its last stop (+ 6 for the same community)`.
+- Baseline: oldest ticket first, ignoring type, with the same crews.
+
+**Disruption and replan.**
+- **Blizzard:** 18 "Snow and Ice Control" calls at existing ticket locations, seeded so the demo repeats. FIRE//WATCH suggests it when our forecast shows ≥ 1 mm of precipitation at ≤ 2 °C in Calgary within two days.
+- **Sick crew:** the busiest Roads crew is removed.
+- **Replan:** the same assignment, plus a bonus for keeping a job on its morning crew, so fewer crews' afternoons change. We count jobs that changed crew, moved to tomorrow, or are new.
+- **Overrides:** the dispatcher can mark a ticket urgent (+100 priority) or hold it (out of today's plan) in the ticket list, and the day replans.
+
+**Result** (5 Roads + 3 Waste crews × 5 jobs):
+
+| Plan | Safety jobs | Driving |
+|---|---|---|
+| Oldest first | 19 | 440 km |
+| FIRE//WATCH | 25 | 112 km |
+
+The blizzard bumps the 14 lowest-priority jobs to tomorrow for the 14 new ice calls; a sick crew bumps 5. Driving is straight-line between stops from a central depot; street routing is Case 2.
+
+---
+
 ## References
 
 - Van Wagner, C.E. 1987. *Development and Structure of the Canadian Forest Fire Weather Index System.* Forestry Technical Report 35. Canadian Forestry Service.
