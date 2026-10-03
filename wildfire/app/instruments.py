@@ -31,8 +31,8 @@ _demo_history: dict[str, list[dict[str, Any]]] = {}
 def _default_catalog() -> list[dict[str, Any]]:
     return [
         {
-            "id": "local-dht11",
-            "name": "Local DHT11",
+            "id": "local-station",
+            "name": "Local station",
             "location": "Local station",
             "latitude": None,
             "longitude": None,

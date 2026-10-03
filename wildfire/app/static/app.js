@@ -148,8 +148,10 @@ function renderStatus(data) {
     devHumidityEl.textContent = formatMeasure(sensor.humidity_pct, "%", 0);
     devWindEl.textContent = formatMeasure(wind.speed_mph, "mph", 1);
   }
-  sensorStatusEl.textContent = sensor.label || "—";
-  sensorStatusEl.className = statusClass(sensor.label);
+  if (sensorStatusEl) {
+    sensorStatusEl.textContent = sensor.label || "—";
+    sensorStatusEl.className = statusClass(sensor.label);
+  }
   lastReadingEl.textContent = formatClock(sensor.last_reading);
   sensorDetailEl.textContent = sensor.detail || "";
   sensorCard.classList.toggle("is-dim", !connected);
@@ -200,8 +202,10 @@ function renderStatus(data) {
   tickScoreEl.className = `${available ? "" : "is-unavailable"}${tone ? ` ${tone}` : ""}`.trim();
   tickBandEl.textContent = available ? prediction.category : "—";
   tickBandEl.className = `${available ? "" : "is-unavailable"}${tone ? ` ${tone}` : ""}`.trim();
-  tickSensorEl.textContent = sensor.label || "—";
-  tickSensorEl.className = statusClass(sensor.label);
+  if (tickSensorEl) {
+    tickSensorEl.textContent = sensor.label || "—";
+    tickSensorEl.className = statusClass(sensor.label);
+  }
 
   factorListEl.replaceChildren();
   for (const factor of data.not_used_by_model || []) {

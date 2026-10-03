@@ -41,11 +41,12 @@ export function Brand() {
   );
 }
 
-export function BarButton({ active, onClick, children }: { active?: boolean; onClick: () => void; children: ReactNode }) {
+export function BarButton({ active, onClick, children, askButton }: { active?: boolean; onClick: () => void; children: ReactNode; askButton?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      {...(askButton ? { "data-ask-button": "" } : {})}
       className={`pointer-events-auto flex h-9 items-center border px-3 text-[11px] tracking-wide transition ${active ? "border-white/50 bg-white/10 text-white" : "border-white/20 bg-transparent text-white/80 hover:border-white/40 hover:text-white"}`}
     >
       {children}
@@ -75,7 +76,7 @@ export function AppBar({
       <Brand />
       <div className="flex min-w-0 flex-1 justify-center">{center}</div>
       <div className="flex shrink-0 items-center gap-2">
-        {onAsk && <BarButton active={askOpen} onClick={onAsk}>Ask Firefly</BarButton>}
+        {onAsk && <BarButton active={askOpen} onClick={onAsk} askButton>Ask Firefly</BarButton>}
         <BarButton active={screen === "map"} onClick={() => onScreen("map")}>Map</BarButton>
         <BarButton active={screen === "instruments"} onClick={() => onScreen("instruments")}>Live instrument data</BarButton>
         {extra}

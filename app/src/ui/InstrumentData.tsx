@@ -3,12 +3,18 @@ import { Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import stations from "../../../wildfire/instruments.json";
 import type { Engine } from "../engine";
-import { FORECAST_DAYS, weatherAt, type DayWeather, type WeatherCell } from "../data/openMeteo";
+import { isPerimeterActive, simulatedHotspots } from "../data/hazards";
+import { perimeterAt, reachScale, type FireGrowth } from "../data/fireHistory";
+import type { Hotspot, Perimeter } from "../data/cwfis";
+import { FORECAST_DAYS, weatherAt, type DayWeather, type WeatherCell, type WeatherGrid } from "../data/openMeteo";
+import { project } from "../geo/projection";
 import { app } from "../state/app";
+import { growthLookup, type GrowthField } from "../world/fireGrowth";
+import { downwind, SPREAD_MAX_KM, spreadInfluence } from "../world/spread";
 import { useStore } from "../state/store";
 import { AppBar, BarButton } from "./Hud";
 import { KV } from "./primitives";
-import { compass, dayLabel } from "./weatherFormat";
+import { dayLabel } from "./weatherFormat";
 
 type Station = {
   id: string;
@@ -16,6 +22,7 @@ type Station = {
   location: string;
   latitude: number | null;
   longitude: number | null;
+  dashboard: string | null;
 };
 
 type Reading = {
@@ -26,6 +33,10 @@ type Reading = {
   wind_kmh: number | null;
   /** Canadian FWI for the selected forecast day. */
   fwi: number | null;
+  /** 0..1. Weather danger, raised when a fire is close or downwind. */
+  risk: number | null;
+  /** How the closeness changed the score, e.g. "fire 18 km W". */
+  near: string | null;
   /** Fosberg, kept beside FWI the same way the map does. */
   ffwi: number | null;
   category: string | null;
@@ -41,13 +52,79 @@ function finite(n: number | undefined | null): number | null {
   return n != null && Number.isFinite(n) ? n : null;
 }
 
-function readingAt(station: Station, weather: ReturnType<typeof app.get>["weather"], day: number): Reading {
+const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+const RANKS = ["Low", "Moderate", "High", "Very High", "Extreme"];
+
+type Fire = { x: number; z: number; dx: number; dz: number; stretch: number; scale: number };
+
+function buildFires(hotspots: Hotspot[], perimeters: Perimeter[], weather: WeatherGrid[], day: number, growth: Record<string, FireGrowth>): Fire[] {
+  const fires: Fire[] = [];
+  const windAt = (lat: number, lng: number) => {
+    const w = weatherAt(weather, lat, lng)?.days[day];
+    const calm = !w || !Number.isFinite(w.windFrom) || !Number.isFinite(w.wind);
+    return downwind(calm ? 0 : w.windFrom, calm ? 0 : w.wind);
+  };
+  for (const h of hotspots) {
+    const fire = perimeters.find((p) => growth[p.id] && isPerimeterActive(p) && perimeterAt([p], h.lat, h.lng));
+    fires.push({ ...project(h.lat, h.lng), ...windAt(h.lat, h.lng), scale: fire ? reachScale(growth[fire.id].k) : 1 });
+  }
+  for (const p of perimeters) {
+    if (!isPerimeterActive(p)) continue;
+    const ring = p.rings[0] ?? [];
+    const step = Math.max(1, Math.floor(ring.length / 24));
+    const scale = growth[p.id] ? reachScale(growth[p.id].k) : 1;
+    for (let i = 0; i < ring.length; i += step) fires.push({ ...project(ring[i][1], ring[i][0]), ...windAt(ring[i][1], ring[i][0]), scale });
+  }
+  return fires;
+}
+
+/** Same idea as the map: a close or downwind fire raises the weather risk. */
+function closeness(lat: number, lng: number, fires: Fire[], spread: GrowthField | null, wx: number) {
+  const { x, z } = project(lat, lng);
+  let near = Infinity, nearDx = 0, nearDz = 0, influence = 0;
+  for (const f of fires) {
+    const vx = x - f.x, vz = z - f.z;
+    if (Math.abs(vx) > SPREAD_MAX_KM || Math.abs(vz) > SPREAD_MAX_KM) continue;
+    const d = Math.hypot(vx, vz);
+    if (d < near) { near = d; nearDx = -vx; nearDz = -vz; }
+    influence = Math.max(influence, spreadInfluence(vx, vz, f));
+  }
+  let score = wx;
+  let nearLabel: string | null = null;
+  if (growthLookup(spread)(x, z) >= 0) {
+    score = Math.max(score, 0.9 + 0.1 * wx);
+    nearLabel = "in projected path";
+  }
+  if (influence > 0) {
+    const raised = influence * (0.65 + 0.35 * wx);
+    if (raised >= score) {
+      score = raised;
+      const dir = COMPASS[Math.round(((Math.atan2(nearDx, -nearDz) * 180) / Math.PI + 360) % 360 / 45) % 8];
+      nearLabel = `fire ${Math.max(1, Math.round(near))} km ${dir}`;
+    }
+  }
+  return { score, near: nearLabel };
+}
+
+function raisedCategory(weatherDanger: string, score: number) {
+  let fromScore = "Low";
+  if (score >= 0.85) fromScore = "Extreme";
+  else if (score >= 0.68) fromScore = "Very High";
+  else if (score >= 0.5) fromScore = "High";
+  else if (score >= 0.25) fromScore = "Moderate";
+  const weather = weatherDanger === "Very high" ? "Very High" : weatherDanger;
+  return RANKS.indexOf(fromScore) > RANKS.indexOf(weather) ? fromScore : weather;
+}
+
+function readingAt(station: Station, weather: WeatherGrid[], day: number, fires: Fire[], spread: GrowthField | null): Reading {
   const cell = station.latitude != null && station.longitude != null ? weatherAt(weather, station.latitude, station.longitude) : null;
   const wx = cell?.days[day];
-  if (!cell || !wx) {
-    return { ok: false, label: "No grid", temperature_c: null, humidity_pct: null, wind_kmh: null, fwi: null, ffwi: null, category: null, day: null, cell: null };
+  if (!cell || !wx || station.latitude == null || station.longitude == null) {
+    return { ok: false, label: "No grid", temperature_c: null, humidity_pct: null, wind_kmh: null, fwi: null, risk: null, near: null, ffwi: null, category: null, day: null, cell: null };
   }
   const live = day === 0 ? cell.now : null;
+  const wxRisk = Number.isFinite(wx.risk) ? wx.risk : 0;
+  const close = closeness(station.latitude, station.longitude, fires, spread, wxRisk);
   return {
     ok: true,
     label: live ? "Live" : "Forecast",
@@ -55,11 +132,19 @@ function readingAt(station: Station, weather: ReturnType<typeof app.get>["weathe
     humidity_pct: finite(live?.rh) ?? finite(wx.rh),
     wind_kmh: finite(live?.wind) ?? finite(wx.wind),
     fwi: finite(wx.fwi),
+    risk: close.score,
+    near: close.near,
     ffwi: finite(wx.ffwi),
-    category: wx.danger,
+    category: raisedCategory(wx.danger, close.score),
     day: wx,
     cell,
   };
+}
+
+function dashboardUrl(base: string, theme: "dark" | "light") {
+  const url = new URL(base);
+  url.searchParams.set("theme", theme);
+  return url.toString();
 }
 
 function coords(latitude: number | null, longitude: number | null) {
@@ -106,7 +191,7 @@ type SortId = (typeof SORTS)[number]["id"];
 
 function sortValue(item: Instrument, sort: SortId) {
   switch (sort) {
-    case "risk": return item.reading.fwi;
+    case "risk": return item.reading.risk;
     case "humidity": return item.reading.humidity_pct;
     case "temp": return item.reading.temperature_c;
     case "wind": return item.reading.wind_kmh;
@@ -122,16 +207,26 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
   const weather = useStore(app, (s) => s.weather);
   const day = useStore(app, (s) => s.forecastDay);
   const status = useStore(app, (s) => s.dataStatus);
+  const hotspots = useStore(app, (s) => s.hotspots);
+  const perimeters = useStore(app, (s) => s.perimeters);
+  const spread = useStore(app, (s) => s.spread);
+  const growth = useStore(app, (s) => s.fireGrowth);
+  const sim = useStore(app, (s) => s.simulation);
+  const regions = useStore(app, (s) => s.regions);
+  const theme = useStore(app, (s) => s.theme);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [province, setProvince] = useState<(typeof PROVINCES)[number]["id"] | null>(null);
   const [sort, setSort] = useState<SortId | null>("risk");
   const [sortDesc, setSortDesc] = useState(true);
   const rootRef = useRef<HTMLDivElement>(null);
-  const instruments = useMemo(
-    () => STATIONS.map((station) => ({ ...station, reading: readingAt(station, weather, day) })),
-    [weather, day],
-  );
+  const instruments = useMemo(() => {
+    const points = sim
+      ? [...hotspots, ...regions.flatMap((r) => simulatedHotspots(r.demoSites))]
+      : hotspots.filter((h) => h.agency !== "SIMULATION");
+    const fires = buildFires(points, perimeters, weather, day, growth);
+    return STATIONS.map((station) => ({ ...station, reading: readingAt(station, weather, day, fires, sim ? null : spread) }));
+  }, [weather, day, hotspots, perimeters, spread, growth, sim, regions]);
   const error = status.weather === "error" && !weather.length
     ? `Weather unavailable${status.weatherError ? ` · ${status.weatherError}` : ""}`
     : null;
@@ -221,6 +316,17 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
                 </button>
               );
             })}
+            {Array.from({ length: FORECAST_DAYS + 1 }, (_, d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => engine?.setForecastDay(d)}
+                aria-pressed={d === day}
+                className={`border px-2 py-1 text-[10px] tracking-[0.12em] transition ${d === day ? "border-phos text-phos" : "border-line text-ink-dim hover:border-line-strong hover:text-ink"}`}
+              >
+                {dayLabel(d, weather[0]?.dates)}
+              </button>
+            ))}
           </div>
           <div className="flex flex-wrap items-center gap-1 px-3 py-3">
             {SORTS.map((item) => {
@@ -271,17 +377,17 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
             </label>
           </div>
           {error && <p className="px-4 pb-3 text-[11px] text-fire">{error}</p>}
-          {!error && instruments.length === 0 && <p className="px-4 pb-3 text-[11px] text-ink-mute">Loading collectors…</p>}
-          {!error && instruments.length > 0 && visible.length === 0 && (
+          {!error && !weather.length && <p className="px-4 pb-3 text-[11px] text-ink-mute">Loading weather…</p>}
+          {!error && weather.length > 0 && visible.length === 0 && (
             <p className="px-4 pb-3 text-[11px] text-ink-mute">No matches.</p>
           )}
           <div className={selected ? "" : "grid sm:grid-cols-2 xl:grid-cols-3"}>
           {visible.map((item) => {
             const active = item.id === selectedId;
             const place = coords(item.latitude, item.longitude);
-            const band = item.reading.risk_score == null
+            const band = item.reading.fwi == null
               ? "—"
-              : `${item.reading.risk_score.toFixed(0)}${item.reading.category ? ` ${item.reading.category}` : ""}`;
+              : `${item.reading.fwi.toFixed(1)}${item.reading.category ? ` ${item.reading.category}` : ""}${item.reading.near ? ` · ${item.reading.near}` : ""}`;
             const tone = riskColor(item.reading.category);
             const alert = item.reading.category === "Extreme";
             return (
@@ -306,8 +412,8 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
                   <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] tracking-[0.12em] sm:grid-cols-4">
                     <span><span className="text-ink-mute">TEMP </span>{metric(item.reading.temperature_c, 1, "°C")}</span>
                     <span><span className="text-ink-mute">HUM </span>{metric(item.reading.humidity_pct, 0, "%")}</span>
-                    <span><span className="text-ink-mute">WIND </span>{metric(item.reading.wind_mph, 1, " mph")}</span>
-                    <span style={tone ? { color: tone } : undefined}><span className="text-ink-mute">FOSBERG </span>{band}</span>
+                    <span><span className="text-ink-mute">WIND </span>{metric(item.reading.wind_kmh, 0, " km/h")}</span>
+                    <span style={tone ? { color: tone } : undefined}><span className="text-ink-mute">FWI </span>{band}</span>
                   </div>
                 )}
               </button>
@@ -315,7 +421,7 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
           })}
           </div>
           <p className="mt-auto px-4 py-3 text-[10px] leading-relaxed text-ink-mute">
-            Add another collector in wildfire/instruments.json with its name, location, and status URL.
+            Same weather, fire danger, and distance to fire as the map, for {dayLabel(day, weather[0]?.dates).toLowerCase()}.
           </p>
         </aside>
         {selected && (
@@ -328,19 +434,16 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
                   <KV k="SENSOR" v={selected.reading.label} accent={selected.reading.ok ? "var(--color-phos)" : undefined} />
                   <KV k="TEMP" v={metric(selected.reading.temperature_c, 1, "°C")} />
                   <KV k="HUMIDITY" v={metric(selected.reading.humidity_pct, 0, "%")} />
-                  <KV k="WIND" v={metric(selected.reading.wind_mph, 1, " mph")} />
-                  <KV k="FOSBERG" v={selected.reading.risk_score == null ? "—" : `${selected.reading.risk_score.toFixed(0)}${selected.reading.category ? ` ${selected.reading.category}` : ""}`} accent={riskColor(selected.reading.category) ?? undefined} />
-                  <KV k="COLLECTOR" v={selected.reading.endpoint ?? (selected.kind === "local" ? "This server" : "—")} />
+                  <KV k="WIND" v={metric(selected.reading.wind_kmh == null ? null : selected.reading.wind_kmh / 1.609344, 1, " mph")} />
+                  <KV k="FOSBERG" v={selected.reading.ffwi == null ? "—" : `${selected.reading.ffwi.toFixed(0)}${selected.reading.category ? ` ${selected.reading.category}` : ""}`} accent={riskColor(selected.reading.category) ?? undefined} />
+                  <KV k="NEAR" v={selected.reading.near ?? "No fire in reach"} accent={selected.reading.near ? riskColor(selected.reading.category) ?? undefined : undefined} />
                 </div>
-                {selected.reading.detail && <p className="mt-2 text-[11px] text-ink-mute">{selected.reading.detail}</p>}
               </div>
               {selected.dashboard ? (
                 <iframe title={selected.name} src={dashboardUrl(selected.dashboard, theme)} className="min-h-0 w-full flex-1 border-0 bg-white" />
               ) : (
                 <div className="px-4 py-6 text-[11px] leading-relaxed text-ink-mute">
-                  {selected.kind === "demo"
-                    ? "Simulated feed for this station. Temperature, humidity, wind, and the Fosberg score drift a little every few seconds."
-                    : "This collector has no dashboard. Readings above are pulled from its status URL."}
+                  This station has no dashboard. The readings above are from the map weather.
                 </div>
               )}
             </>

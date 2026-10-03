@@ -6,7 +6,7 @@ import type { BriefThreat } from "../agent/types";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
-import { flyFireflyHome } from "./mascot";
+import { dismissFirefly, fireflyTucked, revealFirefly } from "./mascot";
 import { useFireflyAgent } from "./useFireflyAgent";
 
 const PROMPTS = [
@@ -34,6 +34,7 @@ export function FireflyDock({ engine, open, onClose }: { engine: Engine | null; 
   const [holding, setHolding] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const skipMascot = useRef(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const micRef = useRef<HTMLButtonElement>(null);
   const { inputLevel } = ff;
@@ -50,7 +51,9 @@ export function FireflyDock({ engine, open, onClose }: { engine: Engine | null; 
   }, [ff.history, ff.showThreats]);
 
   useEffect(() => {
-    void flyFireflyHome();
+    if (skipMascot.current) { skipMascot.current = false; return; }
+    if (open) { if (fireflyTucked()) void revealFirefly(); }
+    else void dismissFirefly();
     if (open) inputRef.current?.focus();
   }, [open]);
 

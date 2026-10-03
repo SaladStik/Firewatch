@@ -12,11 +12,11 @@ HUMIDITY_MAX = 100.0
 
 
 class SensorParseError(ValueError):
-    """The body was JSON but not a usable DHT11 reading."""
+    """The body was JSON but not a usable sensor reading."""
 
 
 class SensorReadFailure(SensorParseError):
-    """The Arduino responded, and the DHT11 itself failed to read."""
+    """The Arduino responded, and the sensor itself failed to read."""
 
 
 @dataclass(frozen=True)

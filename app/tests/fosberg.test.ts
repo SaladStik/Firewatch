@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { daysSinceRain, dryness, fireWeatherRisk, fosbergFFWI } from "../src/data/fosberg.ts";
 
-test("fosbergFFWI matches the teammate's DHT11 station reading", () => {
+test("fosbergFFWI matches the teammate's station reading", () => {
   // Station showed 32.6 for 22.5 °C, 31 % RH, 15 mph (= 24.14 km/h).
   const v = fosbergFFWI(22.5, 31, 15 * 1.609344);
   assert.ok(Math.abs(v - 32.56) < 0.05, `got ${v}`);
