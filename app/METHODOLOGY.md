@@ -66,7 +66,7 @@ Sources, licences and how often each is refreshed are listed in the [README](REA
 
 Code: `riskFromFwi`.
 
-**Fosberg (comparison only).** The Fosberg Fire Weather Index (Fosberg 1978) is still computed and shown, because it's the index the team's DHT11 sensor station reports. It isn't used to rate danger.
+**Fosberg (comparison only).** The Fosberg Fire Weather Index (Fosberg 1978) is still computed and shown, because it's the index the team's sensor station reports. It isn't used to rate danger.
 
 ---
 

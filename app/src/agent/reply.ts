@@ -1,6 +1,12 @@
 /** Turns tool results into one or two sentences. Figures are copied from those results, never invented. */
 import type { ExplainFacts, Plan, ToolResult } from "./types";
 
+/** How each layer is named in a reply. */
+const LAYER_NAMES: Record<string, string> = {
+  risk: "Risk", fires: "Fires", spread: "Spread", air: "Air quality", traffic: "Traffic",
+  beacons: "Beacons", wind: "Wind", rain: "Rain and snow", bloom: "Bloom",
+};
+
 export const UNKNOWN_REPLY =
   "I can fly to a place or province, focus a region, set the forecast, turn wind, rain, spread, beacons, or bloom on or off, list communities at risk, and go to the largest fire.";
 
@@ -48,6 +54,10 @@ export function renderReply(plan: Plan, results: ToolResult[]): string {
     return names.length ? `Several places match: ${names.join(", ")}. Say the full name.` : "Several places match. Say the full name.";
   }
   if (plan.reply === "unknown") return UNKNOWN_REPLY;
+  if (plan.reply === "already") {
+    const named = (plan.already ?? []).map((l) => `${LAYER_NAMES[l.key] ?? l.key} is already ${l.on ? "on" : "off"}`);
+    return named.length ? `${named.join("; ")}.` : UNKNOWN_REPLY;
+  }
   const explain = results.find((r) => r.facts);
   if (plan.reply === "explain" && explain?.facts) return explainReply(explain.facts);
   const threats = results.find((r) => r.tool === "listThreats");

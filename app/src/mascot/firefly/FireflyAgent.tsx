@@ -54,8 +54,11 @@ function SpeechBubble({ text, flip }: { text: string; flip?: boolean }) {
         maxWidth: 220,
         width: "max-content",
         padding: "8px 11px",
-        borderRadius: 12,
-        ...(flip ? { borderBottomRightRadius: 2 } : { borderBottomLeftRadius: 2 }),
+        // Corners spelled out: mixing borderRadius with one corner warns when the bubble flips.
+        borderTopLeftRadius: 12,
+        borderTopRightRadius: 12,
+        borderBottomRightRadius: flip ? 2 : 12,
+        borderBottomLeftRadius: flip ? 12 : 2,
         background: "rgba(8, 18, 28, 0.92)",
         border: "1px solid rgba(55, 227, 255, 0.55)",
         boxShadow: "0 0 18px -6px rgba(55, 227, 255, 0.8)",

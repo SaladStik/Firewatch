@@ -113,7 +113,9 @@ export async function answerKnowledge(engine: Engine, raw: string): Promise<stri
       return all.length ? `Smoke advisories: ${list(all.map(fmt))}.` : "No smoke advisories for that day.";
     });
   }
-  if (/\b(highways?|traffic|roads? (at risk|closed))\b/.test(t) && !is311) return say(await run(askData, { topic: "highways" }), (r) => (r.corridors as R[]).length ? `Highways at risk: ${list((r.corridors as R[]).map((c) => `Hwy ${c.highway} (${c.reason}${c.closed ? ", closed" : ""})`))}.` : "No highway corridors at risk that day.");
+  // "turn on traffic" is a layer switch (the map's own commands), not a question about highways.
+  const layerCommand = /\b(turn|switch|toggle|enable|disable|hide)\b|\b(on|off)\s*$/.test(t);
+  if (/\b(highways?|traffic|roads? (at risk|closed))\b/.test(t) && !is311 && !layerCommand) return say(await run(askData, { topic: "highways" }), (r) => (r.corridors as R[]).length ? `Highways at risk: ${list((r.corridors as R[]).map((c) => `Hwy ${c.highway} (${c.reason}${c.closed ? ", closed" : ""})`))}.` : "No highway corridors at risk that day.");
   const nearFire = /\b(near|around|close to|threatened by|at risk (from|near))\b/.test(t) && refersToFire;
   if (nearFire || (/\b(values at risk|critical (sites|infrastructure)|schools?|hospitals?|what'?s at risk)\b/.test(t) && /\b(near|around|at risk)\b/.test(t))) {
     const place = nearFire ? undefined : text.match(/\b(?:near|around)\s+([A-Z][\w'.-]*(?: [A-Z][\w'.-]*)*)/)?.[1]?.trim();

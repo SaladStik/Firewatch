@@ -52,6 +52,8 @@ export class FireflyController {
   private emote: { name: EmoteName; t: number; onPeak?: () => void; peaked?: boolean } | null = null;
   private talkUntil = 0;
   private holdSpeech = false;
+  /** Seconds the bubble stays after the mouth stops, so a line can be read. */
+  private linger = 1.2;
   private wanderIn = 1;
   private raf = 0;
   private last = 0;
@@ -112,10 +114,11 @@ export class FireflyController {
    * Show a speech bubble and animate the mouth for `seconds`.
    * `hold`: keep the bubble up afterwards until clearSpeech() (e.g. tutorial steps).
    */
-  say(text: string, seconds = Math.max(1.5, text.length * 0.06), opts: { hold?: boolean } = {}) {
+  say(text: string, seconds = Math.max(1.5, text.length * 0.06), opts: { hold?: boolean; linger?: number } = {}) {
     this.speech = text;
     this.talkUntil = this.t + seconds;
     this.holdSpeech = !!opts.hold;
+    this.linger = opts.linger ?? 1.2;
   }
 
   clearSpeech() {
@@ -259,7 +262,7 @@ export class FireflyController {
     if (this.t < this.talkUntil) {
       p.mouthOpen = 0.15 + 0.55 * Math.abs(Math.sin(this.t * 13)) * (0.6 + 0.4 * Math.sin(this.t * 3.1));
     } else {
-      if (this.speech && !this.holdSpeech && this.t > this.talkUntil + 1.2) this.speech = null;
+      if (this.speech && !this.holdSpeech && this.t > this.talkUntil + this.linger) this.speech = null;
       p.mouthOpen += ((f.mouthOpen ?? 0) - p.mouthOpen) * k;
     }
   }

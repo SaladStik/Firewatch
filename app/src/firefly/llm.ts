@@ -55,7 +55,10 @@ export const TOOL_SPECS = [
   fn("open_dispatch", "Open the Dispatch panel on a tab.", { tab: str("Which tab.", { enum: ["crews", "311"] }) }, ["tab"]),
   fn("fly_to", "Move the map to a community or fire (and Firefly with it).", { place: str("Community."), fire_id: str("Fire id from list_fires.") }),
   fn("set_forecast_day", "Show a forecast day on the map (0 = today, 1–7 days ahead).", { day: int("0–7.") }, ["day"]),
-  fn("set_layer", "Show or hide a map layer.", { layer: str("Layer.", { enum: ["risk", "fires", "spread", "beacons", "wind", "rain"] }), on: { type: "boolean" } }, ["layer", "on"]),
+  fn("set_layer", "Show or hide a map layer.", { layer: str("Layer.", { enum: ["risk", "fires", "spread", "air", "traffic", "beacons", "wind", "rain", "bloom"] }), on: { type: "boolean" } }, ["layer", "on"]),
+  fn("set_regions", "Set which provinces are in focus. \"only\" replaces the set (\"just BC\"), \"add\" turns more on, \"remove\" turns some off (at least one stays).", {
+    regions: str("Province names or codes, e.g. \"BC\" or \"Alberta, Saskatchewan\"."), mode: str("Default only.", { enum: ["only", "add", "remove"] }),
+  }, ["regions"]),
   fn("flag_patrol", "Flag the hex at a community or fire for patrol.", { place: str("Community."), fire_id: str("Fire id.") }),
   fn("set_demo_mode", "Turn the labelled demo scenario (simulated fires, heatwave, rainstorm) on or off.", { on: { type: "boolean" } }, ["on"]),
 ];
@@ -65,7 +68,7 @@ const SYSTEM = `You are Firefly, the AI duty assistant on FIRE//WATCH, a wildfir
 You reason with tools over the app's live data and act on the map. Rules:
 - Facts come only from tool results. Never guess numbers, fires, tickets, towns or weather. Call a tool before answering any question about data; call several when the question needs them (e.g. a fire's rank, then what's near it).
 - Act when asked: dispatching, skipping, marking tickets urgent, changing crews or settings go through do_dispatch. Never take those actions unless the user asked for them. "It", "that one", "this fire" mean the fire or ticket last discussed, or the one up next.
-- Show things: fly_to a place or fire you talk about; set_forecast_day before answering about a future day.
+- Show things: fly_to a place or fire you talk about; set_forecast_day before answering about a future day; set_regions when asked to focus or limit provinces ("just BC" is mode only).
 - Projected spread is a scenario model, not an official forecast: say "projected" or "could reach".
 - Answer in plain language, Canadian units, 1–4 short sentences, no markdown, no lists unless asked. Name ids (fires like HWF121, tickets like 26-00216320, crews like R1) so the dispatcher can act on them.
 - When a tool returns an error, say what's missing briefly and offer what you can do.
@@ -123,7 +126,7 @@ export function describeCall(name: string, a: Json): string {
   const other: Record<string, string> = {
     get_briefing: "Reading the situation", get_place_report: `Checking ${s("place")}`, list_fires: "Listing fires", get_fire_details: `Projecting ${s("fire_id")}`,
     explain_location: "Explaining the risk", plan_crews: "Ranking fires for crews", plan_311: "Planning 311 crews", open_dispatch: "Opening Dispatch",
-    fly_to: `Flying to ${s("place") || s("fire_id")}`, set_forecast_day: "Changing the forecast day", set_layer: "Changing the map", flag_patrol: "Flagging for patrol", set_demo_mode: "Switching the demo",
+    fly_to: `Flying to ${s("place") || s("fire_id")}`, set_forecast_day: "Changing the forecast day", set_layer: "Changing the map", set_regions: "Changing the provinces in focus", flag_patrol: "Flagging for patrol", set_demo_mode: "Switching the demo",
   };
   return other[name] ?? name;
 }

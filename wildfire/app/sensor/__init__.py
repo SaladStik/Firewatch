@@ -1,1 +1,1 @@
-"""Arduino DHT11 ingestion."""
+"""Arduino sensor ingestion."""

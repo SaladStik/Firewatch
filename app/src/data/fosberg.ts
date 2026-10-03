@@ -1,7 +1,7 @@
 /**
  * Fosberg Fire Weather Index (Fosberg 1978): instantaneous fire weather from
  * temperature, relative humidity and wind, 0–100. Same index as the team's
- * DHT11 station, so the map and the sensor speak one language.
+ * sensor station, so the map and the sensor speak one language.
  *
  * Fosberg has no memory of past rain, so we add a dryness factor (our own,
  * not part of Fosberg): fuels count as damp the day it rains and fully cured

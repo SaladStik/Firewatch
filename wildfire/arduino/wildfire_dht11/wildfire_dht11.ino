@@ -1,10 +1,10 @@
 /*
-  Wildfire sensor server for Arduino UNO R4 WiFi + a 3-pin DHT11.
+  Wildfire sensor server for Arduino UNO R4 WiFi + a 3-pin temperature sensor.
 
   Wiring used by this project:
-    DHT11 DATA/OUT -> D2
-    DHT11 VCC      -> 5V
-    DHT11 GND      -> GND
+    DATA/OUT -> D2
+    VCC      -> 5V
+    GND      -> GND
 
   The board stays independent of the computer. Power it from USB or a power bank.
   It joins the Wi-Fi named in secrets.h and serves:
@@ -83,7 +83,7 @@ void updateDht() {
   float temperatureC = dht.readTemperature();
   if (isnan(humidity) || isnan(temperatureC)) {
     cachedOk = false;
-    Serial.println("DHT11 read failed");
+    Serial.println("Sensor read failed");
     return;
   }
   cachedOk = true;
@@ -120,11 +120,11 @@ void sendPage(WiFiClient &client) {
   client.println("Connection: close");
   client.println("Refresh: 8");
   client.println();
-  client.println("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>DHT11</title></head><body>");
-  client.println("<h1>Arduino DHT11</h1>");
+  client.println("<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Sensor</title></head><body>");
+  client.println("<h1>Arduino sensor</h1>");
   client.println("<p>Local sensor page. The wildfire app reads JSON from /api/sensor.</p>");
   if (!cachedOk) {
-    client.println("<p>DHT11 read failed.</p>");
+    client.println("<p>Sensor read failed.</p>");
   } else {
     client.print("<p>Temperature: ");
     client.print(cachedTempC, 1);

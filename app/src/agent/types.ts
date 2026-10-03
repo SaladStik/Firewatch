@@ -81,11 +81,13 @@ export type ToolCall =
   | { tool: "flyToFire"; args: Record<string, never> }
   | { tool: "explain"; args: { name: string; lat: number; lng: number; pop: number; regionIndex: number } };
 
-export type ReplyKind = "done" | "threats" | "fires" | "explain" | "ambiguous" | "unknown";
+export type ReplyKind = "done" | "threats" | "fires" | "explain" | "ambiguous" | "already" | "unknown";
 
 export interface Plan {
   calls: ToolCall[];
   reply: ReplyKind;
+  /** Layers asked for that were already in that state ("turn on traffic" while it's on). */
+  already?: { key: keyof Layers; on: boolean }[];
   /** Place names to offer when a query matches several towns and none exactly. */
   candidates?: string[];
 }
