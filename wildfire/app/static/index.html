@@ -38,10 +38,6 @@
         <strong id="tick-band">—</strong>
         <span>Display band</span>
       </div>
-      <div>
-        <strong id="tick-sensor">—</strong>
-        <span>Sensor</span>
-      </div>
     </section>
 
     <p id="app-error" class="app-error" hidden>Cannot reach this application.</p>
@@ -51,13 +47,13 @@
         <section class="card sensor-card" aria-labelledby="sensor-heading">
           <p class="eyebrow">Sensor</p>
           <div class="sensor-title">
-            <h2 id="sensor-heading">DHT11 feed</h2>
+            <h2 id="sensor-heading">Station feed</h2>
             <div class="sensor-actions">
               <button type="button" id="theme-toggle" class="theme-toggle" aria-pressed="false">Light</button>
               <div class="dev-wrap">
                 <button type="button" id="dev-toggle" class="dev-button" aria-expanded="false" aria-haspopup="true" aria-controls="dev-panel">Dev options</button>
                 <div id="dev-panel" class="dev-panel" hidden>
-                  <p>Stand-in wind for the model. This does not change the DHT11 reading.</p>
+                  <p>Stand-in wind for the model. This does not change the station reading.</p>
                   <div class="dev-choices">
                     <button type="button" data-wind="0" data-label="No wind">No wind</button>
                     <button type="button" data-wind="5" data-label="Light wind">Light wind</button>
@@ -94,7 +90,7 @@
               </div>
             </div>
           </div>
-          <p class="lede">Measured by the DHT11 on the Arduino. This page reads them from the application, which listens to the board over USB or Wi-Fi.</p>
+          <p class="lede">Temperature and humidity at this station.</p>
           <dl class="readings">
             <div>
               <dt>Temperature</dt>
@@ -105,28 +101,12 @@
               <dd id="humidity">—</dd>
             </div>
             <div>
-              <dt>Sensor status</dt>
-              <dd id="sensor-status">—</dd>
-            </div>
-            <div>
               <dt>Last reading</dt>
               <dd id="last-reading">—</dd>
             </div>
           </dl>
           <p id="sensor-detail" class="detail"></p>
           <p id="sensor-endpoint" class="meta"></p>
-        </section>
-
-        <section class="card" aria-labelledby="legend-heading">
-          <p class="eyebrow">Legend</p>
-          <h2 id="legend-heading">Display bands</h2>
-          <ul class="legend">
-            <li><i class="swatch band-low"></i><span>Low</span></li>
-            <li><i class="swatch band-moderate"></i><span>Moderate</span></li>
-            <li><i class="swatch band-high"></i><span>High</span></li>
-            <li><i class="swatch band-very-high"></i><span>Very high</span></li>
-            <li><i class="swatch band-extreme"></i><span>Extreme</span></li>
-          </ul>
         </section>
       </div>
 
@@ -173,9 +153,9 @@
           <p class="eyebrow">Data path</p>
           <h2 id="path-heading">How a reading arrives</h2>
           <ol class="pipeline">
-            <li>DHT11</li>
-            <li>Arduino</li>
-            <li>Backend poll</li>
+            <li>Station</li>
+            <li>Weather</li>
+            <li>Backend</li>
             <li>Fosberg model</li>
             <li>Dashboard</li>
           </ol>

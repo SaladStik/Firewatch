@@ -60,8 +60,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path in {"/", "/index.html"}:
             page = (
-                "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Mock DHT11</title></head>"
-                "<body><h1>Mock Arduino DHT11</h1>"
+                "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Mock sensor</title></head>"
+                "<body><h1>Mock Arduino sensor</h1>"
                 "<p>This stand-in serves the human page and JSON at /api/sensor.</p>"
                 "</body></html>"
             ).encode("utf-8")
@@ -108,7 +108,7 @@ class MockArduino:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Mock Arduino DHT11 HTTP server")
+    parser = argparse.ArgumentParser(description="Mock Arduino sensor HTTP server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8081)
     parser.add_argument(

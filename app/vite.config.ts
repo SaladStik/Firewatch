@@ -21,7 +21,7 @@ function portOpen(port: number): Promise<boolean> {
   })
 }
 
-/** Starts the wildfire instrument server (DHT11 dashboard) next to the map. */
+/** Starts the wildfire instrument server next to the map. */
 function instrumentServer(): Plugin {
   let child: ChildProcess | null = null
   const stop = () => {

@@ -1,9 +1,7 @@
-"""Parse lines from the USB DHT11 sketch.
+"""Parse lines from the USB sensor sketch.
 
-The sketch prints one of:
-    DHT11_READY
-    TEMP:23.40,HUMIDITY:42.00
-    ERROR
+The sketch prints a reading as TEMP:23.40,HUMIDITY:42.00, or ERROR.
+A ready banner is ignored.
 """
 
 from __future__ import annotations

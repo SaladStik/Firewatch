@@ -114,7 +114,7 @@ class Settings:
             interval = 8.0
         if interval < 5 or interval > 10:
             warnings.append(
-                "SENSOR_POLL_INTERVAL_SECONDS was clamped to 5-10 seconds so the DHT11 is not polled too often"
+                "SENSOR_POLL_INTERVAL_SECONDS was clamped to 5-10 seconds so the station is not polled too often"
             )
             interval = min(10.0, max(5.0, interval))
 
