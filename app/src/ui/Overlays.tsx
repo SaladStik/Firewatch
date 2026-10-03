@@ -113,7 +113,7 @@ export function BootScreen() {
   const [finished, setFinished] = useState(false);
   useEffect(() => {
     if (boot.done && finished && ref.current) {
-      gsap.to(ref.current, { opacity: 0, duration: 0.6, ease: "power2.out", onComplete: () => { if (ref.current) ref.current.style.display = "none"; } });
+      gsap.to(ref.current, { opacity: 0, duration: 0.6, ease: "power2.out", onComplete: () => { if (ref.current) ref.current.style.display = "none"; app.set((s) => ({ boot: { ...s.boot, hidden: true } })); } });
     }
   }, [boot.done, finished]);
   return (

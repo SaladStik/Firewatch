@@ -549,6 +549,14 @@ export class Scene {
     this.events.onSelect?.(node);
   }
 
+  /** Viewport pixel position of a world point on the terrain surface (for overlays like the mascot). */
+  screenOf(x: number, z: number): { x: number; y: number; visible: boolean } {
+    const node = this.world.nodeAt(x, z);
+    const v = new Vector3(x, node ? this.world.topY(node) : 0, z).project(this.camera);
+    const r = this.canvas.getBoundingClientRect();
+    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height, visible: v.z < 1 && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1 };
+  }
+
   flyTo(x: number, z: number, dist = 30, duration = 1.6) {
     const t = this.controls.target;
     const offset = this.camera.position.clone().sub(t).normalize();

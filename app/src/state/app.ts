@@ -54,7 +54,7 @@ export interface AppState {
   places: RegionPlace[];
   labelMode: LabelMode;
   /** progress 0..1 for the loading bar. */
-  boot: { stage: string; done: boolean; error?: string; progress?: number };
+  boot: { stage: string; done: boolean; error?: string; progress?: number; /** The loading screen has faded out. */ hidden?: boolean };
   stats: (WorldStats & { dist: number; fps: number; vScale: number; heading: number }) | null;
   hover: HexNodeInfo | null;
   selected: HexNodeInfo | null;

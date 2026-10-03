@@ -370,7 +370,7 @@ export class Engine {
   /** Re-score the map with forecast weather for `day` (0 = today, 1..7 ahead). */
   setForecastDay(day: number) {
     app.set({ forecastDay: day });
-    void this.pushHazards();
+    return this.pushHazards();
   }
 
   // ------------------------------------------------------------ view options
