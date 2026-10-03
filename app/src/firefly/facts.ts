@@ -11,6 +11,7 @@ import { isPerimeterActive, SIM_WEATHER_BOOST } from "../data/hazards";
 import { weatherAt, type DayWeather, type WeatherGrid } from "../data/openMeteo";
 import type { Place } from "../data/places";
 import { project, unproject } from "../geo/projection";
+import { hexToWorld } from "../hex/hexMath";
 import { growthLookup, type GrowthField } from "../world/fireGrowth";
 
 export type FactPlace = Place & { region: number };
@@ -299,4 +300,31 @@ export function riskZones(s: FactsSnapshot, g: RiskGrid, max = 5) {
           : "fire weather on dry fuel (heat, low humidity, wind, days since rain)",
       };
     });
+}
+
+/** Where a fire's projected burn heads (cells within 150 km): compass direction and furthest reach. */
+export function spreadHeading(s: FactsSnapshot, fire: { x: number; z: number }) {
+  const f = s.spread;
+  if (!f?.cells.length) return null;
+  let sx = 0, sz = 0, n = 0, far = 0;
+  for (let i = 0; i < f.cells.length; i += 3) {
+    const p = hexToWorld(f.cells[i], f.cells[i + 1], f.size);
+    const dx = p.x - fire.x, dz = p.z - fire.z, d = Math.hypot(dx, dz);
+    if (d > 150) continue;
+    sx += dx; sz += dz; n++;
+    far = Math.max(far, d);
+  }
+  if (!n) return null;
+  const mx = sx / n, mz = sz / n;
+  return { headsToward: Math.hypot(mx, mz) < 0.5 ? "all directions (no clear lean)" : bearing(mx, mz), reachKm: r1(far) };
+}
+
+/** The wind at a point for each forecast day up to `day`: where it blows from and toward, km/h. */
+export function windByDay(s: FactsSnapshot, lat: number, lng: number, day: number) {
+  const cell = weatherAt(s.weather, lat, lng);
+  if (!cell) return [];
+  const compass = (deg: number) => COMPASS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
+  return cell.days.slice(0, day + 1).map((d, i) => ({
+    date: dateOf(s, i), from: compass(d.windFrom), toward: compass(d.windFrom + 180), kmh: Math.round(d.windNoon ?? d.wind),
+  }));
 }

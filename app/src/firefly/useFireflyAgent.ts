@@ -42,6 +42,8 @@ const SECS_PER_CHAR = 0.12;
 const READ_AFTER_S = 6;
 /** With no audio for a queued line (voice off, text only), show it after this long (ms). */
 const LINE_FALLBACK_MS = 1200;
+/** After the focus or forecast day changes, how long to wait for the new projection before alerting again (ms). */
+const VIEW_SETTLE_MS = 8000;
 /** How long the mic stays open after the talk button is released (ms). */
 const MIC_TAIL_MS = 600;
 
@@ -155,9 +157,11 @@ export function useFireflyAgent(engine: Engine | null) {
   const send = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed || !engine) return;
-    // Short map commands are answered on the spot; conversation ("why…", complaints, follow-ups)
-    // goes to Firefly even when it names a place, so the rule brain doesn't just fly there.
-    const local = AGENT_ID && conversational(trimmed) ? null : answerLocally(engine, trimmed);
+    // Short map commands are answered on the spot. Once a Firefly conversation is going, everything
+    // goes to him ("yes", "next one" are replies to him), and so does conversation ("why…",
+    // complaints) even when it names a place, so the rule brain doesn't just fly there.
+    const inConversation = convoRef.current.status === "connected";
+    const local = AGENT_ID && (inConversation || conversational(trimmed)) ? null : answerLocally(engine, trimmed);
     if (local) {
       push({ from: "you", text: trimmed });
       push({ from: "firefly", text: local.reply });
@@ -199,16 +203,29 @@ export function useFireflyAgent(engine: Engine | null) {
     let prev: Watch | null = null;
     let lastKey = "";
     const seen = new Set<string>();
+    // A new focus or forecast day changes what's on the map, not what's happening: re-baseline
+    // instead of alerting, until the projection for the new view has arrived (or VIEW_SETTLE_MS).
+    let viewKey = "", settleUntil = 0, settleSpread: unknown = null;
     const unsubscribe = app.subscribe(() => {
       const s = app.get();
-      const key = `${s.dataStatus.at}|${s.forecastDay}|${s.simulation}|${s.spread?.cells.length ?? 0}|${s.hotspots.length}|${s.weather.length}`;
+      const key = `${s.dataStatus.at}|${s.forecastDay}|${s.focus.join(",")}|${s.simulation}|${s.spread?.cells.length ?? 0}|${s.hotspots.length}|${s.weather.length}`;
       if (key === lastKey || !s.weather.length) return;
       lastKey = key;
+      const view = `${s.focus.join(",")}|${s.forecastDay}`;
+      if (view !== viewKey) {
+        if (viewKey) { settleUntil = performance.now() + VIEW_SETTLE_MS; settleSpread = s.spread; }
+        viewKey = view;
+      }
+      let settling = false;
+      if (settleUntil) {
+        if (performance.now() > settleUntil) settleUntil = 0;
+        else { settling = true; if (s.spread !== settleSpread) settleUntil = 0; }
+      }
       const next = buildWatch();
       moodRef.current = situationMood(next);
       const ctl = fireflyController();
       if (!convoRef.current.isSpeaking) ctl.setMood(moodRef.current);
-      const alerts = diffAlerts(prev, next).filter((a) => !seen.has(a.key));
+      const alerts = settling ? [] : diffAlerts(prev, next).filter((a) => !seen.has(a.key));
       prev = next;
       alerts.forEach((a) => seen.add(a.key));
       const a = alerts[0];

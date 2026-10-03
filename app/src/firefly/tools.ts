@@ -8,7 +8,7 @@ import type { Engine } from "../engine";
 import { NODE_STATUSES, NODE_TYPES } from "../hex/nodeTypes";
 import { project } from "../geo/projection";
 import { app, focusIndices, type Layers } from "../state/app";
-import { activeFires, briefing, crewRanking, explainAt, findPlace, fireList, placeReport, riskZones, townsInPath, type FactsSnapshot } from "./facts";
+import { activeFires, briefing, crewRanking, explainAt, findPlace, fireList, placeReport, riskZones, spreadHeading, townsInPath, windByDay, type FactsSnapshot } from "./facts";
 import { flyFireflyTo, fireflyController } from "./mascot";
 
 export function snapshot(): FactsSnapshot {
@@ -95,7 +95,12 @@ export function makeTools(engine: Engine) {
         .filter((t) => { const q = project(t.lat, t.lng); return Math.hypot(q.x - w.x, q.z - w.z) < 150; })
         .slice(0, 8)
         .map(({ place, population, day }) => ({ place, population, day }));
-      return json({ ...f, horizonDays: days, communitiesInProjectedPath: towns, note: NOTE });
+      return json({
+        ...f, horizonDays: days, communitiesInProjectedPath: towns,
+        projectedSpread: spreadHeading(s, fire),
+        windAtFireByDay: windByDay(s, fire.lat, fire.lng, days),
+        note: `${NOTE} The projection adds up each day's noon wind (and runs faster uphill), while the wind layer shows only the selected day's wind (today: the live wind), so the spread can lean away from the wind on screen when the wind shifts during the week.`,
+      });
     }),
 
     explain_location: guard((p) => {
