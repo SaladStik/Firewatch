@@ -13,6 +13,7 @@ import { app } from "../state/app";
 import { useStore } from "../state/store";
 import { answerLocally } from "../agent/tools";
 import { answerDispatch, isDispatchQuestion } from "../dispatch/agent";
+import { answerKnowledge } from "./knowledgeAsk";
 import { UNKNOWN_REPLY } from "../agent/reply";
 import { activeFires, nearestPlaceText, threatsFor } from "./facts";
 import { fireflyAway, fireflyController, flyFireflyHome, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
@@ -41,6 +42,8 @@ const HOME_AFTER_S = 1.5;
 const SECS_PER_CHAR = 0.065;
 /** With no audio for a queued line (voice off, text only), show it after this long (ms). */
 const LINE_FALLBACK_MS = 1200;
+/** How long to wait for the agent's first reply before answering from the data (ms). */
+const AGENT_TIMEOUT_MS = 25_000;
 /** How long the mic stays open after the talk button is released (ms). */
 const MIC_TAIL_MS = 600;
 
@@ -58,6 +61,12 @@ export function useFireflyAgent(engine: Engine | null) {
   const moodRef = useRef<MoodName>("idle");
   /** Messages typed before the session finished connecting; sent on connect. */
   const queue = useRef<string[]>([]);
+  /** The agent failed (no network, quota, misconfigured): answer offline until it connects again. */
+  const agentDown = useRef(false);
+  /** The question the agent is working on, answered offline if the agent fails. */
+  const pending = useRef("");
+  /** answerOffline, for callbacks set up before it exists (onError, the reply timeout). */
+  const answerOfflineRef = useRef<(q: string) => void>(() => {});
   /** Last typed message, so its transcript echo isn't shown twice. */
   const lastTyped = useRef("");
   /** Pending mic mute after the talk button is released. */
@@ -69,7 +78,7 @@ export function useFireflyAgent(engine: Engine | null) {
   const convo = useConversation({
     micMuted: muted,
     volume: voiceOn ? 1 : 0,
-    onConnect: () => { for (const t of queue.current.splice(0)) convoRef.current.sendUserMessage(t); },
+    onConnect: () => { agentDown.current = false; for (const t of queue.current.splice(0)) convoRef.current.sendUserMessage(t); },
     onMessage: (m) => {
       const text = clean(m.message);
       if (!text) return;
@@ -79,11 +88,20 @@ export function useFireflyAgent(engine: Engine | null) {
         lastTyped.current = "";
         return;
       }
+      pending.current = "";
       push({ from: "firefly", text });
       lines.current.push({ text, at: performance.now() });
     },
     onInterruption: () => { lines.current = []; },
-    onError: (message) => push({ from: "alert", text: `Firefly hit a problem (${String(message)}).` }),
+    onError: (message) => {
+      // Fall back to answering from the app's data so the question isn't lost.
+      agentDown.current = true;
+      queue.current = [];
+      const q = pending.current;
+      pending.current = "";
+      push({ from: "alert", text: `Firefly's AI isn't reachable (${String(message)}): answering from the map's data.` });
+      if (q) answerOfflineRef.current(q);
+    },
   });
   // The hook returns a new object every render: callbacks and effects read the latest through this ref.
   const convoRef = useRef(convo);
@@ -146,43 +164,54 @@ export function useFireflyAgent(engine: Engine | null) {
     c.startSession({ agentId: AGENT_ID, connectionType: "websocket", clientTools: toolsRef.current });
   }, []);
 
+  /**
+   * Answer without the model: the app's own data and dispatch commands (knowledge layer), then crew
+   * planning, then map commands. Used only when the agent isn't configured or can't be reached.
+   */
+  const answerOffline = useCallback((trimmed: string) => {
+    if (!engine) return;
+    const ctl = fireflyController();
+    const reply = (text: string, threats = false) => {
+      push({ from: "firefly", text });
+      setShowThreats(threats);
+      ctl.say(text, Math.max(3, Math.min(14, text.length * 0.045)));
+      ctl.setMood(moodRef.current);
+    };
+    ctl.setMood("thinking");
+    void answerKnowledge(engine, trimmed)
+      .catch((e) => `I couldn't get that: ${e instanceof Error ? e.message : String(e)}`)
+      .then(async (text) => {
+        if (text) return reply(text);
+        if (isDispatchQuestion(trimmed)) return reply((await answerDispatch(trimmed)) ?? "I couldn't plan that one.");
+        const local = answerLocally(engine, trimmed);
+        if (local) return reply(local.reply, local.threats);
+        reply(UNKNOWN_REPLY);
+      });
+  }, [engine]);
+
+  /**
+   * Firefly's AI (the ElevenLabs agent) answers whenever it's available: it reasons over the data
+   * and acts through its tools (ask_data, do_dispatch, plan_crews, …). Without an agent, or if it
+   * can't be reached, the same tools answer directly (answerOffline).
+   */
   const send = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed || !engine) return;
-    // Crew allocation and 311 dispatch: planned here from the case data and live fires, shown in Dispatch.
-    if (isDispatchQuestion(trimmed)) {
-      push({ from: "you", text: trimmed });
-      setShowThreats(false);
-      const ctl = fireflyController();
-      ctl.setMood("thinking");
-      void answerDispatch(trimmed).then((reply) => {
-        const text = reply ?? "I couldn't plan that one.";
-        push({ from: "firefly", text });
-        ctl.say(text, Math.max(4, Math.min(14, text.length * 0.045)));
-        ctl.setMood(moodRef.current);
-      });
-      return;
-    }
-    const local = answerLocally(engine, trimmed);
-    if (local) {
-      push({ from: "you", text: trimmed });
-      push({ from: "firefly", text: local.reply });
-      setShowThreats(local.threats);
-      const ctl = fireflyController();
-      ctl.say(local.reply, Math.max(3, Math.min(12, local.reply.length * 0.05)));
-      ctl.setMood(moodRef.current);
-      return;
-    }
     setShowThreats(false);
     push({ from: "you", text: trimmed });
-    if (!AGENT_ID) {
-      push({ from: "firefly", text: UNKNOWN_REPLY });
-      return;
-    }
+    if (!AGENT_ID || agentDown.current) { answerOffline(trimmed); return; }
     lastTyped.current = clean(trimmed);
+    pending.current = trimmed;
     fireflyController().setMood("thinking");
     deliver(trimmed);
-  }, [deliver, engine]);
+    // No answer from the agent in time (stalled session, missing tool): answer from the data instead.
+    window.setTimeout(() => {
+      if (pending.current !== trimmed) return;
+      pending.current = "";
+      push({ from: "alert", text: "Firefly's AI is taking too long: answering from the map's data." });
+      answerOfflineRef.current(trimmed);
+    }, AGENT_TIMEOUT_MS);
+  }, [deliver, engine, answerOffline]);
 
   /** Hold to talk. The mic stays open a moment after release so the last word isn't cut off. */
   const holdTalk = useCallback((down: boolean) => {
@@ -196,6 +225,8 @@ export function useFireflyAgent(engine: Engine | null) {
     const c = convoRef.current;
     return c.status === "connected" ? c.getInputVolume() : 0;
   }, []);
+
+  useLayoutEffect(() => { answerOfflineRef.current = answerOffline; });
 
   const toggleVoice = useCallback(() => setVoiceOn((v) => !v), []);
 

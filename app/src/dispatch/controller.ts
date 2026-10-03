@@ -232,8 +232,9 @@ function planner(): Worker {
       // The ticket set travels once per version: keep it even if a newer plan request superseded this one.
       if (m.load && m.load.source === dispatch.get().source311) dispatch.set({ load311: m.load.load });
       if (m.id === reqId) dispatch.set({ plan311: m.plan, routes: m.routes, planMs: m.ms });
-      waiting.get(m.id)?.();
-      waiting.delete(m.id);
+      // This answers its own request and every older one still waiting (the worker drops
+      // requests a newer one superseded, so their callers would otherwise wait forever).
+      for (const [id, resolve] of waiting) if (id <= m.id) { resolve(); waiting.delete(id); }
     } else if (m.type === "shortest") {
       shortestWaiting.get(m.id)?.(m.order);
       shortestWaiting.delete(m.id);

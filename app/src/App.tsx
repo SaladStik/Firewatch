@@ -52,7 +52,7 @@ export default function App() {
 
   useEffect(() => {
     const e = new Engine();
-    if (import.meta.env.DEV) Object.assign(window, { engine: e, app }); // debug handles
+    if (import.meta.env.DEV) Object.assign(window, { engine: e, app, dispatch }); // debug handles
     void e.boot(canvasRef.current!, labelsRef.current!).then(() => setEngine(e));
     mountLodTuner(() => (e.scene ? e : null)); // Ctrl+Shift+L (dev / ?fireflydev)
     return () => e.dispose();

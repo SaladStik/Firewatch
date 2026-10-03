@@ -12,6 +12,7 @@ import { activeFires, briefing, explainAt, findPlace, fireList, placeReport, tow
 import { flyFireflyTo, fireflyController } from "./mascot";
 import { crewPlanFacts, plan311Facts } from "../dispatch/agent";
 import { openDispatch } from "../dispatch/controller";
+import { askData, doDispatch } from "./knowledge";
 
 export function snapshot(): FactsSnapshot {
   const s = app.get();
@@ -124,6 +125,14 @@ export function makeTools(engine: Engine) {
         disruption: d === "blizzard" || d === "sick" || d === "none" ? d : undefined,
       }));
     }),
+
+    // Any question about the app's data: air quality, highways, values at risk, live aircraft, the
+    // fleet, the wildfire queue or one fire, 311 tickets / crews / the week's schedule, methodology, sources.
+    ask_data: guard(async (p) => json(await askData(engine, p))),
+
+    // Work the dispatch queues: dispatch / skip fires, set crews and the fleet, dispatch 311 crews,
+    // mark tickets urgent or held, change 311 crews or the disruption, re-route a crew, pick a day.
+    do_dispatch: guard(async (p) => json(await doDispatch(engine, p))),
 
     open_dispatch: guard((p) => {
       openDispatch(p.tab === "311" ? "311" : "crews");
