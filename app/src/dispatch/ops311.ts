@@ -11,9 +11,9 @@
  *   - weather (our Calgary forecast): freezing and snow raise ice and potholes, heavy rain raises
  *     debris and potholes, high wind raises signs and debris;
  *   - similar open tickets within 400 m (up to 4) mean a bigger problem, so the cluster rises.
- * Assignment: each crew picks its next job by priority − 1.5 × km from its last job, + 6 for the
- * same community and + 5 for the same kind of job close by (the right equipment is on the truck),
- * so a crew works a neighbourhood instead of crossing the city for every ticket.
+ * Assignment, in two steps (see assign()): what gets done today is decided strictly by priority,
+ * so the highest-priority work always gets a crew; driving only decides which crew takes it
+ * (nearest to that crew's other jobs, same community, same kind of job close by).
  * Roads crews take Roads work, Waste & Recycling crews take WRS work; anything else goes to either.
  */
 import { haversineKm, num, parseCsv } from "./csv";
@@ -177,43 +177,109 @@ export interface Assignment {
 const canDo = (c: Crew, t: Ticket) => { const u = typeOf(t.service).unit; return u === "Other" || u === c.unit; };
 /** Depot the day starts from (Calgary Roads / WRS operations, approximate). */
 export const DEPOT = { lat: 51.0447, lng: -114.0719 };
-const KM_COST = 1.5, SAME_COMMUNITY = 6, SAME_TYPE_NEAR = 5, KEEP_CREW = 8;
+/** Assignment bonuses, in km of driving they're worth: same community, same kind of job close by, morning crew. */
+const SAME_COMMUNITY_KM = 2, SAME_TYPE_NEAR_KM = 1.5, KEEP_CREW_KM = 4;
 
 export type Strategy = "fifo" | "priority";
 
 /**
- * Fill each crew up to `perCrew` jobs. FIFO: oldest ticket first, ignore type (the baseline).
- * Priority: highest priority first, then the next job by priority − travel (+ same community).
- * `previous`: on a replan, a job keeps its morning crew when it can (fewer phone calls).
+ * Fill the crews' day (up to `perCrew` jobs each).
+ *
+ * FIFO (the baseline): crews take the oldest ticket they can do, ignoring type.
+ *
+ * Priority, in two steps, so importance and driving never trade off against each other:
+ *  1. What gets done today: the day's slots are filled strictly in priority order (per unit: Roads
+ *     slots with Roads work, Waste slots with WRS work, either with the rest). A waiting ticket
+ *     never outranks a planned one its unit could have done, and an urgent ticket always gets a crew.
+ *  2. Who does it: the chosen tickets go, highest priority first, to the crew that adds the least
+ *     driving (nearest to that crew's jobs so far), with bonuses for the same community, the same
+ *     kind of job close by, and (`previous`, on a replan) the job's morning crew.
+ * Each crew's list stays in priority order; the route planner can re-order it for driving.
  */
 export function assign(tickets: Ticket[], crews: Crew[], perCrew: number, today: string, strategy: Strategy, ctx: Ctx311 = NO_CTX, previous?: Assignment): Assignment {
   const prevCrew = new Map<string, string>();
   previous?.routes.forEach((list, crew) => list.forEach((t) => prevCrew.set(t.id, crew)));
   const left = new Map(tickets.map((t) => [t.id, t]));
   const routes = new Map(crews.map((c) => [c.id, [] as Ticket[]]));
-  const pos = new Map(crews.map((c) => [c.id, DEPOT]));
   const pr = new Map(tickets.map((t) => [t.id, priority(t, today, ctx)]));
-  // Round-robin so every crew gets its best next job in turn.
-  for (let round = 0; round < perCrew; round++) {
-    for (const c of crews) {
-      let best: Ticket | null = null, bestV = -Infinity;
-      const here = pos.get(c.id)!, last = routes.get(c.id)!.at(-1);
-      for (const t of left.values()) {
-        if (!canDo(c, t)) continue;
-        let v: number;
-        if (strategy === "fifo") v = -Date.parse(t.date) / 864e5 - (Number(t.id.replace(/\D/g, "")) || 0) * 1e-9;
-        else {
-          v = pr.get(t.id)! - KM_COST * haversineKm(here.lat, here.lng, t.lat, t.lng);
-          if (last && last.community && last.community === t.community) v += SAME_COMMUNITY;
-          if (last && last.service === t.service && haversineKm(last.lat, last.lng, t.lat, t.lng) < 1) v += SAME_TYPE_NEAR;
-          if (prevCrew.get(t.id) === c.id) v += KEEP_CREW;
+  if (strategy === "fifo") {
+    const pos = new Map(crews.map((c) => [c.id, DEPOT]));
+    for (let round = 0; round < perCrew; round++) {
+      for (const c of crews) {
+        let best: Ticket | null = null, bestV = -Infinity;
+        for (const t of left.values()) {
+          if (!canDo(c, t)) continue;
+          const v = -Date.parse(t.date) / 864e5 - (Number(t.id.replace(/\D/g, "")) || 0) * 1e-9;
+          if (v > bestV) { bestV = v; best = t; }
         }
-        if (v > bestV) { bestV = v; best = t; }
+        if (!best) continue;
+        routes.get(c.id)!.push(best);
+        pos.set(c.id, best);
+        left.delete(best.id);
+      }
+    }
+  } else {
+    // 1. What gets done: strictly by priority, within each unit's slots. Among tickets of EQUAL
+    // priority (a band that doesn't all fit), the ones nearest work already chosen go first, so a
+    // tie never costs a crew a trip across the city.
+    const ranked = [...tickets].sort((a, b) => pr.get(b.id)! - pr.get(a.id)! || a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    const free = new Map<Unit, number>([["Roads", 0], ["WRS", 0]]);
+    for (const c of crews) free.set(c.unit, free.get(c.unit)! + perCrew);
+    const chosen: Ticket[] = [];
+    const slotFor = (t: Ticket): Unit | null => {
+      const u = typeOf(t.service).unit;
+      if (u !== "Other") return free.get(u)! > 0 ? u : null;
+      const r = free.get("Roads")!, w = free.get("WRS")!;
+      return r >= w ? (r > 0 ? "Roads" : null) : w > 0 ? "WRS" : null;
+    };
+    const nearChosen = (t: Ticket) => chosen.reduce((m, c) => Math.min(m, haversineKm(c.lat, c.lng, t.lat, t.lng)), haversineKm(DEPOT.lat, DEPOT.lng, t.lat, t.lng));
+    for (let i = 0; i < ranked.length;) {
+      let j = i;
+      while (j < ranked.length && pr.get(ranked[j].id) === pr.get(ranked[i].id)) j++;
+      const band = ranked.slice(i, j);
+      i = j;
+      while (band.length) {
+        const fits = band.filter((t) => slotFor(t));
+        if (!fits.length) break;
+        // Everything left in the band fits: order doesn't matter. Otherwise take the nearest first.
+        const t = fits.reduce((best, x) => (nearChosen(x) < nearChosen(best) ? x : best));
+        const unit = slotFor(t)!;
+        free.set(unit, free.get(unit)! - 1);
+        chosen.push(t);
+        band.splice(band.indexOf(t), 1);
+      }
+    }
+    // 2. Who does it: the crew that adds the least driving, highest priority placed first.
+    const unitOf = new Map<string, Unit>();
+    { // Remember which unit's slot each "Other" ticket took, so step 2 respects the same split.
+      const f = new Map<Unit, number>([["Roads", 0], ["WRS", 0]]);
+      for (const c of crews) f.set(c.unit, f.get(c.unit)! + perCrew);
+      for (const t of chosen) {
+        const u = typeOf(t.service).unit;
+        const unit: Unit = u !== "Other" ? u : f.get("Roads")! >= f.get("WRS")! ? "Roads" : "WRS";
+        f.set(unit, f.get(unit)! - 1);
+        unitOf.set(t.id, unit);
+      }
+    }
+    for (const t of chosen) {
+      let best: Crew | null = null, bestCost = Infinity;
+      for (const c of crews) {
+        const list = routes.get(c.id)!;
+        if (c.unit !== unitOf.get(t.id) || list.length >= perCrew) continue;
+        // Driving this job adds: distance to the nearest of the crew's jobs (or from the depot).
+        let km = list.length ? Infinity : haversineKm(DEPOT.lat, DEPOT.lng, t.lat, t.lng);
+        for (const j of list) km = Math.min(km, haversineKm(j.lat, j.lng, t.lat, t.lng));
+        let cost = km;
+        if (list.some((j) => j.community && j.community === t.community)) cost -= SAME_COMMUNITY_KM;
+        if (list.some((j) => j.service === t.service && haversineKm(j.lat, j.lng, t.lat, t.lng) < 1)) cost -= SAME_TYPE_NEAR_KM;
+        if (prevCrew.get(t.id) === c.id) cost -= KEEP_CREW_KM;
+        // An empty crew is a fresh truck: don't pile everything on the first crew's cluster.
+        if (!list.length) cost -= 0.5;
+        if (cost < bestCost) { bestCost = cost; best = c; }
       }
       if (!best) continue;
-      routes.get(c.id)!.push(best);
-      pos.set(c.id, best);
-      left.delete(best.id);
+      routes.get(best.id)!.push(t);
+      left.delete(t.id);
     }
   }
   const waiting = [...left.values()].sort((a, b) => pr.get(b.id)! - pr.get(a.id)!);

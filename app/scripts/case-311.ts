@@ -27,7 +27,8 @@ console.log(`${load.rows} tickets. Closed ${load.closed}, duplicates ${load.dupl
 
 h("2. Priority (one line)");
 console.log("priority = 10 × safety (1–5 by type) × weather + 2 × days waiting + 3 × similar reports within 400 m");
-console.log("next job = priority − 1.5 × km + 6 if same community + 5 if the same kind of job is within 1 km");
+console.log("today's jobs = the highest priorities that fit the crews (ties: nearest to other work first);");
+console.log("each goes to the crew it adds the least driving to (+ same community, same kind of job nearby)");
 console.log("(no forecast in this report: weather counts in the app, and the noon blizzard brings its own)");
 
 h(`3. ${p.crews.length} crews × ${p.perCrew} jobs: baseline vs priority`);

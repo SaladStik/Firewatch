@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseCsv } from "../src/dispatch/csv.ts";
 import { exposures, fuelFromCode, HAND_WEIGHTS, isEscape, loadHistory, planCrews, rankFires } from "../src/dispatch/crews.ts";
-import { load311, plan311, typeOf } from "../src/dispatch/ops311.ts";
+import { load311, plan311, priority, typeOf } from "../src/dispatch/ops311.ts";
 
 test("csv: quoted fields, escaped quotes, blank lines", () => {
   const rows = parseCsv('a,b\n1,"x, ""y"""\n\n2,z\r\n');
@@ -155,4 +155,24 @@ test("router: drives along streets, joins crossing roads, and finds the shortest
   const ord = shortestOrder(g, depot, stops);
   assert.deepEqual(ord, [1, 0]); // the nearer stop first
   assert.ok(routeStops(g, depot, stops, ord).km < routeStops(g, depot, stops).km);
+});
+
+test("311: the day is filled strictly by priority, so no waiting ticket outranks a planned one", async () => {
+  const { readFileSync } = await import("node:fs");
+  const l = load311(readFileSync("public/data/cases/calgary_311_sample.csv", "utf8"));
+  // An urgent ticket at the far edge of the city still gets a crew.
+  const far = l.open.find((t) => t.community === "RICARDO RANCH") ?? l.open[0];
+  for (const opts of [{}, { disruption: "blizzard" as const }, { disruption: "sick" as const }, { overrides: { [far.id]: "urgent" as const } }]) {
+    const p = plan311(l, opts);
+    for (const [a, ctx] of [[p.morning, p.ctx], [p.noon, p.noonCtx]] as const) {
+      if (!a) continue;
+      const planned = [...a.routes.values()].flat();
+      for (const unit of ["Roads", "WRS"]) {
+        const lowest = Math.min(...planned.filter((t) => typeOf(t.service).unit === unit).map((t) => priority(t, p.today, ctx)));
+        const outranks = a.waiting.filter((t) => typeOf(t.service).unit === unit && priority(t, p.today, ctx) > lowest);
+        assert.deepEqual(outranks.map((t) => t.id), [], `${JSON.stringify(opts)} ${unit}`);
+      }
+    }
+    if ("overrides" in opts) assert.ok(p.morning.routes.size && [...p.morning.routes.values()].flat().some((t) => t.id === far.id));
+  }
 });

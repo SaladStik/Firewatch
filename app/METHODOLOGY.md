@@ -507,7 +507,9 @@ Safety levels by service type:
 
 **Assignment.**
 - Roads crews take Roads work and Waste & Recycling crews take WRS work. Either takes the rest.
-- Crews pick in turn. Each takes the job with the best `priority − 1.5 × km from its last stop`, + 6 for the same community, and + 5 for the same kind of job within 1 km (batching similar work: the right equipment is already on the truck).
+- **Step 1: what gets done today.** The day's slots (crews × jobs each, per unit) are filled strictly in priority order. Among tickets of equal priority, the ones nearest work already chosen go first. So the highest-priority work always gets a crew, and no waiting ticket outranks a planned one its unit could have done; a unit test checks this on every scenario.
+- **Step 2: who does it.** Each chosen ticket, highest first, goes to the crew it adds the least driving to (nearest to that crew's jobs). There are bonuses for the same community, the same kind of job within 1 km (the right equipment is on the truck), and, on a replan, the job's morning crew.
+- An earlier version let each crew trade priority against driving (`priority − 1.5 × km`). It drove less (112 km), but left 37 higher-priority tickets waiting while closer, lower ones were done. Importance now decides *what*; driving only decides *who*.
 - Baseline: oldest ticket first, ignoring type, with the same crews.
 
 **Disruption and replan.**
@@ -524,7 +526,8 @@ Safety levels by service type:
 - **Speeds:** each edge costs travel time at a typical speed for its class: highway 80, arterial 60, collector 50, residential 35, track 20 km/h.
 - **Routing:** A* with a straight-line-at-80-km/h heuristic finds each leg.
 - **Shortest order:** the travelling-salesman order from the depot, using a matrix of road times: exhaustive up to 7 stops, 2-opt beyond.
-- **Result:** all 8 crews' runs total about 163 km by road (the 112 km straight-line figure above is what the planner optimises). Re-ordering a run for the least driving saves a few minutes, because the plan already keeps crews in a neighbourhood.
+- **Snapping:** stops snap to the nearest point *along* a road (not the nearest road vertex: simplified roads have vertices far apart, so the nearest vertex can be across a river). The median walk from a ticket to its road is 33 m.
+- **Result:** all 8 crews' runs total about 335 km by road in priority order. **Shortest order** re-orders a run for the least driving, which saves around 20 minutes on a crew whose top job is across town.
 - **Limits:** no one-way or turn restrictions, and no live traffic.
 
 **The dispatcher's workflow.** The Dispatch panel is a queue. For wildfire crews, the dispatcher steps through the crewed fires in priority order: the map flies to each one, the card says why it's ranked there, and Send crew / Skip records the decision (Enter / S; J / K move). For 311 the queue is the crews: review a crew's run (its stops and why each is there), then dispatch it. Progress and decisions show in the lists.
@@ -534,7 +537,7 @@ Safety levels by service type:
 | Plan | Safety jobs | Driving |
 |---|---|---|
 | Oldest first | 19 | 440 km |
-| FIRE//WATCH | 25 | 112 km |
+| FIRE//WATCH | 25 | 247 km |
 
 With the blizzard's weather the 18 ice calls jump the queue and the replan bumps 20 lower-priority jobs (signs, debris, potholes) to tomorrow; a sick crew bumps 5. Driving is straight-line between stops from a central depot; street routing is Case 2.
 

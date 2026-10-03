@@ -50,8 +50,9 @@ Reports: `npm run case:crews`, `npm run case:311`. Tests: `tests/dispatch.test.t
 
 **Planning the day.**
 - Roads crews do Roads work and Waste & Recycling crews do waste work.
-- Each crew takes its next job by priority minus travel. There's a bonus for staying in the same community, and another for doing the same kind of job nearby (the right equipment is on the truck).
-- Compared with oldest-first, the same 8 crews do 25 safety jobs instead of 19, with 112 km of driving instead of 440.
+- **What gets done** is decided strictly by priority: the day's slots fill from the top of the list. The highest-priority work always gets a crew, and nothing waiting outranks something planned. Among equal priorities, the nearest go first.
+- **Who does it** is decided by driving: each job goes to the crew it adds the least driving to, with bonuses for the same community and the same kind of job nearby.
+- Compared with oldest-first, the same 8 crews do 25 safety jobs instead of 19, with 247 km of driving instead of 440.
 
 **The disruption.**
 - A blizzard adds a wave of ice calls and brings winter weather into the scores.
@@ -61,7 +62,7 @@ Reports: `npm run case:crews`, `npm run case:311`. Tests: `tests/dispatch.test.t
 
 **Driving routes.** Every crew gets a route from the depot through its stops along Calgary's real streets.
 - **The network:** every road the map draws, from OpenStreetMap: highways, arterials, collectors, residential streets and tracks. That's about 82,000 junctions.
-- **The route:** the fastest drive at typical city speeds for each road class (35 km/h on residential streets up to 80 on highways).
+- **The route:** the fastest drive at typical city speeds for each road class (35 km/h on residential streets up to 80 on highways). Stops snap to the nearest point along a road, never to a road across a river.
 - **On the map:** the route is drawn in the crew's colour.
 - **In the crew card:** each leg shows its distance and minutes.
 - **Shortest order:** re-orders a crew's stops for the least driving. With up to 7 stops it checks every order.

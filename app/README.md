@@ -84,7 +84,7 @@ With 40 crews, cut to 32 (`npm run case:crews`):
 - **Route planner:** each crew's drive from the depot through its stops along Calgary's real streets (OpenStreetMap), drawn on the map in the crew's colour, with the distance and minutes for each leg. **Shortest order** re-orders the stops for the least driving.
 - Supervisor notes for 8 a.m. and noon.
 
-With 8 crews × 5 jobs (`npm run case:311`): 25 safety jobs instead of 19, and 112 km of driving instead of 440.
+With 8 crews × 5 jobs (`npm run case:311`): 25 safety jobs instead of 19, and 247 km of driving instead of 440. What gets done is decided strictly by priority (the top work always gets a crew); driving only decides which crew takes it.
 
 ```bash
 npm run case:crews              # Case 3 report (40 crews, 20% cut); -- 30 25 for 30 crews, 25% cut

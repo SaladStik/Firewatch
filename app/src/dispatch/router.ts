@@ -47,6 +47,13 @@ export class RoadGraph {
   private len: Float32Array;
   private main: Uint8Array;
   private grid = new Map<number, number[]>();
+  /** Edge list (one entry per road piece) and a grid of edges, for snapping a stop onto the road beside it. */
+  private eA!: Int32Array;
+  private eB!: Int32Array;
+  private eCost!: Float32Array;
+  private eLen!: Float32Array;
+  private eMain!: Uint8Array;
+  private edgeGrid = new Map<number, number[]>();
   /** Connected component of each node, and the largest one (the city's street network). */
   private comp!: Int32Array;
   private mainComp = 0;
@@ -178,6 +185,17 @@ export class RoadGraph {
     const put = (from: number, to: number, e: number) => { const k = fill[from]++; this.to[k] = to; this.cost[k] = c[e]; this.len[k] = d[e]; this.main[k] = m[e]; };
     for (let e = 0; e < a.length; e++) { put(a[e], b[e], e); put(b[e], a[e], e); }
     this.edges = a.length;
+    this.eA = Int32Array.from(a); this.eB = Int32Array.from(b);
+    this.eCost = Float32Array.from(c); this.eLen = Float32Array.from(d); this.eMain = Uint8Array.from(m);
+    for (let e = 0; e < a.length; e++) {
+      const la0 = Math.min(lat[a[e]], lat[b[e]]), la1 = Math.max(lat[a[e]], lat[b[e]]), ln0 = Math.min(lng[a[e]], lng[b[e]]), ln1 = Math.max(lng[a[e]], lng[b[e]]);
+      for (let y = Math.floor(la0 * 200); y <= Math.floor(la1 * 200); y++) for (let x = Math.floor(ln0 * 200); x <= Math.floor(ln1 * 200); x++) {
+        const k = y * 100003 + x;
+        let arr = this.edgeGrid.get(k);
+        if (!arr) this.edgeGrid.set(k, (arr = []));
+        arr.push(e);
+      }
+    }
     // Connected components: stops snap to the main network, never to an isolated lot or track.
     this.comp = new Int32Array(this.nodes).fill(-1);
     const sizes: number[] = [];
@@ -219,36 +237,80 @@ export class RoadGraph {
     return best;
   }
 
+  /**
+   * The closest point ALONG a road (not just the closest road vertex: simplified roads have vertices
+   * far apart, so the nearest vertex can be across a river while the road runs right past the stop).
+   * Only roads on the main network. t = position along edge e from eA to eB.
+   */
+  snap(la: number, ln: number, maxKm = 1.5): { e: number; t: number; lat: number; lng: number; km: number } | null {
+    const kx = 111.32 * Math.cos((la * Math.PI) / 180), ky = 110.574;
+    const cy = Math.floor(la * 200), cx = Math.floor(ln * 200);
+    let best: { e: number; t: number; lat: number; lng: number; km: number } | null = null;
+    for (let r = 0; r <= Math.ceil(maxKm / 0.35) + 1; r++) {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dy), Math.abs(dx)) !== r) continue; // ring by ring, outwards
+        for (const e of this.edgeGrid.get((cy + dy) * 100003 + cx + dx) ?? []) {
+          const A = this.eA[e], B = this.eB[e];
+          if (this.comp[A] !== this.mainComp) continue;
+          const ax = this.lng[A] * kx, ay = this.lat[A] * ky, vx = this.lng[B] * kx - ax, vy = this.lat[B] * ky - ay, L2 = vx * vx + vy * vy;
+          const px = ln * kx, py = la * ky;
+          const t = L2 > 0 ? Math.min(1, Math.max(0, ((px - ax) * vx + (py - ay) * vy) / L2)) : 0;
+          const km = Math.hypot(ax + vx * t - px, ay + vy * t - py);
+          if (km < maxKm && (!best || km < best.km)) best = { e, t, lat: this.lat[A] + (this.lat[B] - this.lat[A]) * t, lng: this.lng[A] + (this.lng[B] - this.lng[A]) * t, km };
+        }
+      }
+      // Cells are ≥ 0.35 km: once a ring is further than the best found, nothing closer remains.
+      const found = best as { km: number } | null;
+      if (found && found.km < r * 0.35) break;
+    }
+    return best;
+  }
+
   /** Fastest route between two points (A*), or null if they aren't connected. */
   route(from: LatLng, to: LatLng): Leg | null {
-    const s = this.nearest(from.lat, from.lng, 1.5, -1, true), t = this.nearest(to.lat, to.lng, 1.5, -1, true);
-    if (s < 0 || t < 0) return null;
-    if (s === t) return { path: [from, to], km: haversineKm(from.lat, from.lng, to.lat, to.lng), minutes: 0, mainRoadShare: 0 };
+    const S = this.snap(from.lat, from.lng), T = this.snap(to.lat, to.lng);
+    if (!S || !T) return null;
+    const pt = (q: { lat: number; lng: number }) => ({ lat: q.lat, lng: q.lng });
+    // Both on the same road piece: drive along it.
+    if (S.e === T.e) {
+      const km = this.eLen[S.e] * Math.abs(S.t - T.t);
+      return { path: [from, pt(S), pt(T), to], km, minutes: this.eCost[S.e] * Math.abs(S.t - T.t), mainRoadShare: this.eMain[S.e] ? 1 : 0 };
+    }
+    // Start from both ends of the start road piece, finish at either end of the target piece.
     const g = new Float64Array(this.nodes).fill(Infinity), came = new Int32Array(this.nodes).fill(-1), via = new Int32Array(this.nodes).fill(-1);
-    const h = (i: number) => (haversineKm(this.lat[i], this.lng[i], this.lat[t], this.lng[t]) / TOP_SPEED) * 60;
+    const tA = this.eA[T.e], tB = this.eB[T.e];
+    const exit = new Map([[tA, this.eCost[T.e] * T.t], [tB, this.eCost[T.e] * (1 - T.t)]]);
+    const h = (i: number) => (haversineKm(this.lat[i], this.lng[i], T.lat, T.lng) / TOP_SPEED) * 60;
     const heap = new MinHeap();
-    g[s] = 0;
-    heap.push(s, h(s));
+    for (const [n, c0] of [[this.eA[S.e], this.eCost[S.e] * S.t], [this.eB[S.e], this.eCost[S.e] * (1 - S.t)]] as const) {
+      if (c0 < g[n]) { g[n] = c0; heap.push(n, c0 + h(n)); }
+    }
+    let bestCost = Infinity, bestEnd = -1;
     while (heap.size) {
       const u = heap.pop();
-      if (u === t) break;
+      if (g[u] + h(u) >= bestCost) break; // nothing left can beat the best finish
+      const x = exit.get(u);
+      if (x !== undefined && g[u] + x < bestCost) { bestCost = g[u] + x; bestEnd = u; }
       for (let k = this.off[u]; k < this.off[u + 1]; k++) {
         const v = this.to[k], ng = g[u] + this.cost[k];
         if (ng < g[v]) { g[v] = ng; came[v] = u; via[v] = k; heap.push(v, ng + h(v)); }
       }
     }
-    if (!Number.isFinite(g[t])) return null;
+    if (bestEnd < 0) return null;
     const path: LatLng[] = [];
     let km = 0, mainKm = 0;
-    for (let v = t; v >= 0; v = came[v]) {
+    for (let v = bestEnd; v >= 0; v = came[v]) {
       path.push({ lat: this.lat[v], lng: this.lng[v] });
       const k = via[v];
       if (k >= 0) { km += this.len[k]; if (this.main[k]) mainKm += this.len[k]; }
     }
     path.reverse();
-    // The short walk from the ticket to the nearest road point.
-    path.unshift(from); path.push(to);
-    return { path, km, minutes: g[t], mainRoadShare: km > 0 ? mainKm / km : 0 };
+    // The partial road pieces at each end, then the short walk to the ticket itself.
+    let firstNode = bestEnd;
+    while (came[firstNode] >= 0) firstNode = came[firstNode];
+    km += this.eLen[S.e] * (firstNode === this.eA[S.e] ? S.t : 1 - S.t) + this.eLen[T.e] * (bestEnd === tA ? T.t : 1 - T.t);
+    path.unshift(from, pt(S)); path.push(pt(T), to);
+    return { path, km, minutes: bestCost, mainRoadShare: km > 0 ? mainKm / km : 0 };
   }
 }
 
