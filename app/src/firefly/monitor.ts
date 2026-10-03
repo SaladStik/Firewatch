@@ -1,6 +1,6 @@
 /**
  * Firefly's watch: a small summary of the map after each data refresh, and the alerts worth
- * raising between two summaries (new fire, a town entering a projected path, extreme danger
+ * raising between two summaries (new agency-reported fire, a town entering a projected path, extreme danger
  * tomorrow). Pure; useFireflyAgent builds the Watch and delivers alerts.
  */
 import type { MoodName } from "../mascot/firefly";
@@ -31,7 +31,7 @@ export function diffAlerts(prev: Watch | null, next: Watch): Alert[] {
   const out: Alert[] = [];
   for (const f of next.fires) {
     if (prev.fires.some((p) => p.id === f.id || kmBetween(p, f) < NEW_FIRE_KM)) continue;
-    out.push({ kind: "new_fire", key: `fire:${f.id}`, lat: f.lat, lng: f.lng, text: `New fire detected${f.near ? ` ${f.near}` : ""}.` });
+    out.push({ kind: "new_fire", key: `fire:${f.id}`, lat: f.lat, lng: f.lng, text: `New wildfire reported${f.near ? ` ${f.near}` : ""}.` });
   }
   const wasInPath = new Set(prev.threatened.filter((t) => inPath(t.reason)).map((t) => t.place));
   for (const t of next.threatened) {
@@ -46,10 +46,12 @@ export function diffAlerts(prev: Watch | null, next: Watch): Alert[] {
   return out;
 }
 
-/** Ambient mood from the situation (speaking/thinking moods override it in useFireflyAgent). */
+/**
+ * Ambient (resting) mood (speaking/thinking moods override it in useFireflyAgent). Calm unless a
+ * town is inside a fire's projected path: high danger somewhere in a province is nearly always
+ * true in season, and a permanently worried face just reads as sad. Alerts set "alert" while
+ * they play.
+ */
 export function situationMood(w: Watch): MoodName {
-  if (w.threatened.some((t) => inPath(t.reason))) return "alert";
-  if (w.extremeTomorrow.length) return "worried";
-  if (w.threatened.length) return "curious";
-  return "idle";
+  return w.threatened.some((t) => inPath(t.reason)) ? "worried" : "idle";
 }

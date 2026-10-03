@@ -16,9 +16,10 @@ import { answerDispatch, isDispatchQuestion } from "../dispatch/agent";
 import { answerKnowledge } from "./knowledgeAsk";
 import { UNKNOWN_REPLY } from "../agent/reply";
 import { activeFires, nearestPlaceText, threatsFor } from "./facts";
+import { legendContext } from "./legend";
 import { fireflyAway, fireflyController, flyFireflyHome, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
 import { diffAlerts, situationMood, type Alert, type Watch } from "./monitor";
-import { llmContext, makeTools, snapshot } from "./tools";
+import { llmContext, makeTools, mapDayContext, snapshot } from "./tools";
 import { askLlm, llmStatus, type LlmMessage } from "./llm";
 
 export const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID ?? "";
@@ -50,8 +51,15 @@ const LINE_FALLBACK_MS = 1200;
 const AGENT_TIMEOUT_MS = 25_000;
 /** After the model fails, try it again after this long (ms). */
 const LLM_RETRY_MS = 60_000;
+/** After the focus or forecast day changes, how long to wait for the new projection before alerting again (ms). */
+const VIEW_SETTLE_MS = 8000;
 /** How long the mic stays open after the talk button is released (ms). */
 const MIC_TAIL_MS = 600;
+
+/** Words that mark a message as conversation rather than a map command. */
+const CHAT_WORDS = /\b(why|should|shouldn'?t|but|tho|though|don'?t|doesn'?t|didn'?t|not|wrong|instead|explain|mean|hey|um+|i see|next|another|previous|again|them|those|that|this|it)\b/i;
+/** Longer than a command, or worded like a question to Firefly. */
+export const conversational = (text: string) => text.split(/\s+/).length > 8 || CHAT_WORDS.test(text);
 
 /** Expressive voices may tag delivery ("[laughs]"); keep those out of the bubble. */
 const clean = (t: string) => t.replace(/\[[a-z ]{2,24}\]\s*/gi, "").trim();
@@ -65,6 +73,8 @@ export function useFireflyAgent(engine: Engine | null) {
   const toolsRef = useRef<ReturnType<typeof makeTools> | null>(null);
   /** Ambient mood from the last situation check; restored after each reply. */
   const moodRef = useRef<MoodName>("idle");
+  /** The microphone was refused: sessions run text-only (no voice) from then on. */
+  const textOnly = useRef(false);
   /** Messages typed before the session finished connecting; sent on connect. */
   const queue = useRef<string[]>([]);
   /** The agent failed (no network, quota, misconfigured): answer offline until it connects again. */
@@ -97,7 +107,13 @@ export function useFireflyAgent(engine: Engine | null) {
   const convo = useConversation({
     micMuted: muted,
     volume: voiceOn ? 1 : 0,
-    onConnect: () => { agentDown.current = false; for (const t of queue.current.splice(0)) convoRef.current.sendUserMessage(t); },
+    onConnect: () => {
+      agentDown.current = false;
+      const c = convoRef.current;
+      c.sendContextualUpdate(legendContext());
+      c.sendContextualUpdate(mapDayContext());
+      for (const t of queue.current.splice(0)) c.sendUserMessage(t);
+    },
     onMessage: (m) => {
       const text = clean(m.message);
       if (!text) return;
@@ -113,7 +129,15 @@ export function useFireflyAgent(engine: Engine | null) {
     },
     onInterruption: () => { lines.current = []; },
     onError: (message) => {
-      // Fall back to answering from the app's data so the question isn't lost.
+      fireflyController().setMood(moodRef.current);
+      // A voice session needs the microphone even for typed questions. Blocked: answer in text.
+      if (!textOnly.current && /permission|notallowed|microphone|getusermedia/i.test(String(message))) {
+        textOnly.current = true;
+        push({ from: "alert", text: "The microphone is blocked, so Firefly will answer in text. Allow the microphone for this site to hear him talk." });
+        window.setTimeout(() => deliver(), 300);
+        return;
+      }
+      // Otherwise fall back to answering from the app's data so the question isn't lost.
       agentDown.current = true;
       queue.current = [];
       const q = pending.current;
@@ -121,11 +145,25 @@ export function useFireflyAgent(engine: Engine | null) {
       push({ from: "alert", text: `Firefly's AI isn't reachable (${String(message)}): answering from the map's data.` });
       if (q) answerOfflineRef.current(q);
     },
+    // Don't leave him stuck "thinking" if the session ends before he answers.
+    onDisconnect: () => fireflyController().setMood(moodRef.current),
   });
   // The hook returns a new object every render: callbacks and effects read the latest through this ref.
   const convoRef = useRef(convo);
   useLayoutEffect(() => { convoRef.current = convo; });
   const connected = convo.status === "connected";
+
+  // Tell Firefly when the forecast day changes (the user's slider or his own tools), so he
+  // answers about the day on screen instead of assuming today.
+  const forecastDay = useStore(app, (s) => s.forecastDay);
+  const sentDay = useRef(-1);
+  useEffect(() => {
+    if (!connected) { sentDay.current = -1; return; }
+    if (sentDay.current === -1) { sentDay.current = forecastDay; return; } // onConnect already sent it
+    if (sentDay.current === forecastDay) return;
+    sentDay.current = forecastDay;
+    convoRef.current.sendContextualUpdate(mapDayContext());
+  }, [connected, forecastDay]);
 
   // Prepare him once the map is up. He stays hidden until Ask is opened.
   const bootHidden = useStore(app, (s) => !!s.boot.hidden);
@@ -180,7 +218,7 @@ export function useFireflyAgent(engine: Engine | null) {
     if (c.status === "connected") { if (text) c.sendUserMessage(text); return; }
     if (text) queue.current.push(text);
     if (!AGENT_ID || !toolsRef.current || c.status !== "disconnected") return;
-    c.startSession({ agentId: AGENT_ID, connectionType: "websocket", clientTools: toolsRef.current });
+    c.startSession({ agentId: AGENT_ID, connectionType: "websocket", clientTools: toolsRef.current, ...(textOnly.current ? { textOnly: true } : {}) });
   }, []);
 
   /**
@@ -216,6 +254,20 @@ export function useFireflyAgent(engine: Engine | null) {
   const send = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed || !engine) return;
+    // Short map commands ("turn wind on", "show me calgary") are answered on the spot. Questions,
+    // conversation, and anything once a conversation is going ("yes", "next one") go to the AI.
+    const ai = Boolean(AGENT_ID) || llm.available;
+    const inConversation = convoRef.current.status === "connected" || llmHistory.current.length > 0;
+    const local = ai && (inConversation || conversational(trimmed)) ? null : answerLocally(engine, trimmed, ai);
+    if (local) {
+      push({ from: "you", text: trimmed });
+      push({ from: "firefly", text: local.reply });
+      setShowThreats(local.threats);
+      const ctl = fireflyController();
+      ctl.say(local.reply, Math.max(4, local.reply.length * SECS_PER_CHAR), { linger: READ_AFTER_S });
+      ctl.setMood(moodRef.current);
+      return;
+    }
     setShowThreats(false);
     push({ from: "you", text: trimmed });
     // Typed questions: the reasoning model with Firefly's tools, when the data server has one.
@@ -282,16 +334,29 @@ export function useFireflyAgent(engine: Engine | null) {
     let prev: Watch | null = null;
     let lastKey = "";
     const seen = new Set<string>();
+    // A new focus or forecast day changes what's on the map, not what's happening: re-baseline
+    // instead of alerting, until the projection for the new view has arrived (or VIEW_SETTLE_MS).
+    let viewKey = "", settleUntil = 0, settleSpread: unknown = null;
     const unsubscribe = app.subscribe(() => {
       const s = app.get();
-      const key = `${s.dataStatus.at}|${s.forecastDay}|${s.simulation}|${s.spread?.cells.length ?? 0}|${s.hotspots.length}|${s.weather.length}`;
+      const key = `${s.dataStatus.at}|${s.forecastDay}|${s.focus.join(",")}|${s.simulation}|${s.spread?.cells.length ?? 0}|${s.hotspots.length}|${s.weather.length}`;
       if (key === lastKey || !s.weather.length) return;
       lastKey = key;
+      const view = `${s.focus.join(",")}|${s.forecastDay}`;
+      if (view !== viewKey) {
+        if (viewKey) { settleUntil = performance.now() + VIEW_SETTLE_MS; settleSpread = s.spread; }
+        viewKey = view;
+      }
+      let settling = false;
+      if (settleUntil) {
+        if (performance.now() > settleUntil) settleUntil = 0;
+        else { settling = true; if (s.spread !== settleSpread) settleUntil = 0; }
+      }
       const next = buildWatch();
       moodRef.current = situationMood(next);
       const ctl = fireflyController();
       if (!convoRef.current.isSpeaking) ctl.setMood(moodRef.current);
-      const alerts = diffAlerts(prev, next).filter((a) => !seen.has(a.key));
+      const alerts = settling ? [] : diffAlerts(prev, next).filter((a) => !seen.has(a.key));
       prev = next;
       alerts.forEach((a) => seen.add(a.key));
       const a = alerts[0];

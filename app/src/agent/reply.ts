@@ -25,7 +25,7 @@ export function explainReply(f: ExplainFacts): string {
     : "";
   const threat = f.threatReason ? ` ${f.name} is at risk: ${f.threatReason}.` : "";
   const near = f.nearestHotspotKm != null
-    ? ` Nearest hotspot is ${f.nearestHotspotKm >= 10 ? Math.round(f.nearestHotspotKm) : +f.nearestHotspotKm.toFixed(1)} km.`
+    ? ` Nearest satellite hotspot (unconfirmed heat) is ${f.nearestHotspotKm >= 10 ? Math.round(f.nearestHotspotKm) : +f.nearestHotspotKm.toFixed(1)} km.`
     : "";
   return `${f.dayLabel}${windLayer}: ${f.name} is FWI ${f.fwi.toFixed(1)}, ${f.danger}.${wind}${precip}${threat}${near}${sim}`;
 }
@@ -39,13 +39,47 @@ export function threatsReply(threats: { name: string; reason: string }[], dayLab
   return `${dayLabel}, from live fires and weather: ${list}${more ? `; and ${more} more` : ""}.${sim}`;
 }
 
-export function firesReply(fires: { label: string }[], simulation: boolean): string {
+export interface FiresAnswer {
+  /** Worst stage, then biggest first. `agency` is who reported it. */
+  fires: { label: string; stage: string; agency: string }[];
+  simulation: boolean;
+  scope?: string;
+  /** Unconfirmed satellite heat in the last 24 h. */
+  heat?: { hotspots: number; clusters: number; farm: number };
+  /** The province's own fire agency, when one province was asked about: it is named even with none. */
+  ownAgency?: string;
+  /** The question was about hotspots: lead with them. */
+  heatFirst?: boolean;
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** Official fires per reporting agency first; satellite hotspots only as unconfirmed heat. */
+export function firesReply({ fires, simulation, scope = "the regions in focus", heat, ownAgency, heatFirst }: FiresAnswer): string {
   const sim = simulation ? " This is a simulation." : "";
-  if (!fires.length) return `No active fires in the loaded data.${sim}`;
-  const shown = fires.slice(0, 6);
+  const stages = (list: FiresAnswer["fires"]) => ["out of control", "being held", "under control"]
+    .map((st) => [st, list.filter((f) => f.stage === st).length] as const)
+    .filter(([, n]) => n)
+    .map(([st, n]) => `${n} ${st}`)
+    .join(", ");
+  const agencies = [...new Set([...(ownAgency ? [ownAgency] : []), ...fires.map((f) => f.agency)])];
+  const official = agencies.map((a) => {
+    const mine = fires.filter((f) => f.agency === a);
+    if (!mine.length) return `${a} reports no active wildfires in ${scope}`;
+    if (a.startsWith("demo")) return `the demo scenario adds ${plural(mine.length, "simulated fire")}`;
+    if (a.startsWith("Parks Canada")) return `Parks Canada reports ${mine.length} in national parks ${ownAgency ? "there" : `in ${scope}`} (${stages(mine)})`;
+    return `${a} reports ${plural(mine.length, "active wildfire")} in ${scope} (${stages(mine)})`;
+  });
+  const said = official.length ? official.join("; ") : `no active wildfires are reported by the fire agencies in ${scope}`;
+  const sentence = said[0].toUpperCase() + said.slice(1);
+  const heatText = heat?.hotspots
+    ? `${plural(heat.hotspots, "hotspot")} in the last 24 h (${plural(heat.clusters, "cluster")}): unconfirmed heat, not confirmed wildfires${heat.farm ? `, and ${heat.farm} look like farm or controlled burns` : ""}`
+    : "no hotspots in the last 24 h";
+  if (heatFirst) return `${scope}: satellites detected ${heatText}. Officially, ${said}.${sim}`;
+  const shown = fires.slice(0, 2);
   const more = fires.length - shown.length;
-  const list = shown.map((f) => f.label).join("; ");
-  return `Active fires: ${list}${more ? `; and ${more} more` : ""}.${sim}`;
+  const list = shown.length ? ` Top: ${shown.map((f) => f.label).join("; ")}${more ? `; and ${more} more` : ""}.` : "";
+  return `${sentence}.${list}${heat?.hotspots ? ` Satellites also see ${heatText}.` : ""}${sim}`;
 }
 
 export function renderReply(plan: Plan, results: ToolResult[]): string {
@@ -63,7 +97,7 @@ export function renderReply(plan: Plan, results: ToolResult[]): string {
   const threats = results.find((r) => r.tool === "listThreats");
   if (plan.reply === "threats" && threats?.threats) return threatsReply(threats.threats, threats.dayLabel ?? "Today", !!threats.simulation);
   const fires = results.find((r) => r.tool === "listFires");
-  if (plan.reply === "fires" && fires?.fires) return firesReply(fires.fires, !!fires.simulation);
+  if (plan.reply === "fires" && fires?.firesAnswer) return firesReply(fires.firesAnswer);
   const lines = results.map((r) => r.summary).filter(Boolean);
   return lines.length ? lines.join(" ") : UNKNOWN_REPLY;
 }

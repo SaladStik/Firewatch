@@ -1,7 +1,7 @@
 /** Promise-based RPC wrapper around world.worker.ts. */
 import type { Landmark } from "../hex/overlayStyles";
 import type { ProjectionParams } from "../geo/projection";
-import type { ChunkData, HazardSnapshot, TerrainMeta, WorkerRequest, WorkerResponse } from "./types";
+import type { ChunkData, HazardSnapshot, RiskScan, TerrainMeta, WorkerRequest, WorkerResponse } from "./types";
 import type { GrowthField, GrowthSource } from "./fireGrowth";
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
@@ -88,6 +88,11 @@ export class WorldClient {
   /** Run the fuel-aware fire growth model on one worker (it needs the land cover). */
   growth(sources: GrowthSource[], horizon: number, size: number) {
     return this.any<GrowthField>({ type: "growth", sources, horizon, size });
+  }
+
+  /** Sample the map's risk on a grid (see RiskScan). */
+  riskScan(x0: number, z0: number, step: number, nx: number, nz: number) {
+    return this.any<RiskScan>({ type: "riskScan", x0, z0, step, nx, nz });
   }
 
   sample(x: number, z: number) {

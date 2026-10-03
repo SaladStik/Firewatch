@@ -2,6 +2,7 @@ import { ConversationProvider } from "@elevenlabs/react";
 import { useEffect, useRef, useState } from "react";
 import { Engine } from "./engine";
 import { FireflyDock } from "./firefly/FireflyDock";
+import { FireflyHotspot } from "./firefly/FireflyHotspot";
 import { mountLodTuner } from "./dev/LodTuner";
 import { app } from "./state/app";
 import { StatusDock } from "./ui/StatusDock";
@@ -135,6 +136,7 @@ export default function App() {
       {screen === "map" && <RouteOverlay engine={engine} />}
       {screen === "map" && <AircraftLayer engine={engine} />}
       {screen === "map" && <DispatchPins engine={engine} />}
+      <FireflyHotspot enabled={screen === "map" && !askOpen} onOpen={() => setAskOpen(true)} />
       <HoverTip />
       <BootScreen />
       {screen === "instruments" && <InstrumentData engine={engine} onBack={() => setScreen("map")} />}

@@ -96,10 +96,13 @@ curl -H "Authorization: Bearer $TOKEN" https://<app-url>/api/health
 
 ## 3. Let it reach its sources
 
-The server fetches two hosts and nothing else. Allow them in a network policy:
+The server fetches these hosts and nothing else. Allow them in a network policy:
 
-- `cwfis.cfs.nrcan.gc.ca`
-- `api.open-meteo.com`
+- `cwfis.cfs.nrcan.gc.ca` (hotspots, perimeters, fire weather stations)
+- `api.cwfif.nrcan.gc.ca` (agency-reported fires)
+- `api.open-meteo.com` (weather)
+- `data.calgary.ca` (Calgary 311)
+- `api.adsb.lol` (firefighting aircraft)
 
 Deploy it as an ordinary app, **not** in an App Space: those have no public internet egress at
 all, so every source would fail.

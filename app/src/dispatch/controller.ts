@@ -8,7 +8,7 @@ import type { Hotspot } from "../data/cwfis";
 import { CRITICAL_ASSETS } from "../data/criticalAssets";
 import { weatherAt } from "../data/openMeteo";
 import type { Engine } from "../engine";
-import { activeFires, nearestPlaceText } from "../firefly/facts";
+import { activeFires, agencyName, nearestPlaceText } from "../firefly/facts";
 import { snapshot } from "../firefly/tools";
 import { project } from "../geo/projection";
 import { app } from "../state/app";
@@ -91,23 +91,28 @@ function learn() {
 }
 
 // ------------------------------------------------------------ wildfire crews
-/** Today's active fires as crew-ranking inputs: size, today's FWI and fuel at the fire, observed growth. */
+/**
+ * Today's active fires as crew-ranking inputs: the fire agencies' reported fires (not satellite heat,
+ * and not fires already under control), with reported size, today's FWI and fuel, observed growth.
+ */
 export function liveFires(): CrewFire[] {
   const s = snapshot();
   const month = new Date().getMonth() + 1;
-  return activeFires(s).map((f) => {
+  return activeFires(s).filter((f) => f.stage !== "under_control").map((f) => {
     const wx = weatherAt(s.weather, f.lat, f.lng)?.days[s.forecastDay];
     const w = project(f.lat, f.lng);
     const node = engine?.scene?.world.nodeAt(w.x, w.z);
     const fuel = (node && FUEL_FOR_LAND[node.land]) || "M-1";
-    const per = f.id ? s.perimeters.find((p) => p.id === f.id) : undefined;
-    const g = f.id ? s.fireGrowth[f.id] : undefined;
+    const per = f.perimeterId ? s.perimeters.find((p) => p.id === f.perimeterId) : undefined;
+    const g = f.perimeterId ? s.fireGrowth[f.perimeterId] : undefined;
+    const near = nearestPlaceText(s, f.lat, f.lng);
     return {
-      id: f.fid,
-      name: nearestPlaceText(s, f.lat, f.lng) ?? undefined,
+      // The agency's fire number ("WB16"), so the dispatcher can say it.
+      id: f.simulated ? f.fid : f.name,
+      name: near ?? (f.simulated ? undefined : agencyName(f.agency)),
       lat: f.lat,
       lng: f.lng,
-      sizeHa: per?.areaHa ?? Math.max(1, Math.PI * f.r0 * f.r0 * 100),
+      sizeHa: f.sizeHa || per?.areaHa || Math.max(1, Math.PI * f.r0 * f.r0 * 100),
       observedRos: g ? (g.observedKmDay * 1000) / ACTIVE_BURN_MIN : null,
       tempC: wx?.temp ?? 20,
       rh: wx?.rh ?? 40,

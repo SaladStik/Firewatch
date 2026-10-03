@@ -55,9 +55,13 @@ let flight = 0;
 /** Where he parks while showing a spot: right of the screen centre (the camera centres the spot). */
 const parkPoint = () => ({ x: innerWidth / 2 + Math.min(200, Math.max(110, innerWidth * 0.12)), y: restY() });
 
+/** True while a flight's loop is running, so a second "show" doesn't start another round. */
+let looping = false;
+
 /**
  * While the camera flies to (lat, lng), Firefly does one round loop around the screen centre,
- * then parks right of centre looking at the spot.
+ * then parks right of centre looking at the spot. A new spot while he's still looping skips
+ * straight to parking: one round per showing, never back to back.
  */
 export async function flyFireflyTo(engine: Engine, lat: number, lng: number) {
   if (tucked) return;
@@ -67,14 +71,17 @@ export async function flyFireflyTo(engine: Engine, lat: number, lng: number) {
   const cx = innerWidth / 2, cy = innerHeight / 2;
   const r = Math.min(innerWidth, innerHeight) * 0.26;
   const park = parkPoint();
-  // Sweep clockwise from where he is, one full loop, ending on the right-hand side.
-  const a0 = Math.atan2(ctl.pose.y - cy, ctl.pose.x - cx);
-  const sweep = ((((-a0) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) + 2 * Math.PI;
-  const steps = Math.ceil(sweep / (Math.PI / 6));
-  for (let i = 0; i <= steps; i++) {
-    const a = a0 + (sweep * i) / steps;
-    await ctl.flyTo(cx + r * Math.cos(a), cy + r * Math.sin(a), { speed: 760, pass: 40 });
-    if (id !== flight) return;
+  if (!looping) {
+    looping = true;
+    // Exactly one clockwise round, starting from where he is.
+    const a0 = Math.atan2(ctl.pose.y - cy, ctl.pose.x - cx);
+    const steps = 12;
+    for (let i = 0; i <= steps; i++) {
+      const a = a0 + (2 * Math.PI * i) / steps;
+      await ctl.flyTo(cx + r * Math.cos(a), cy + r * Math.sin(a), { speed: 760, pass: 40 });
+      if (id !== flight) { looping = false; return; }
+    }
+    looping = false;
   }
   await ctl.flyTo(park.x, park.y, { speed: 420 });
   if (id !== flight) return;

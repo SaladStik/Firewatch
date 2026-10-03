@@ -40,6 +40,11 @@ export interface ChunkData {
 export interface HazardSnapshot {
   /** dx/dz/stretch: the day's downwind direction at the hotspot (see world/spread.ts). */
   hotspots: { x: number; z: number; frp: number; fwi: number; dx: number; dz: number; stretch: number; scale: number }[];
+  /**
+   * Agency-reported fires (plus the demo's simulated ones, out of control): centre, radius in km,
+   * and stage 0 = out of control, 1 = being held, 2 = under control.
+   */
+  reported: { x: number; z: number; r: number; stage: 0 | 1 | 2 }[];
   perimeters: { active: boolean; minX: number; maxX: number; minZ: number; maxZ: number; rings: number[][] }[];
   /** Regular lat/lng grids of weather risk (0..1), one per region. */
   weather: { lat0: number; lng0: number; step: number; nLat: number; nLng: number; risk: number[] }[];
@@ -87,7 +92,11 @@ export type WorkerRequest =
   | { id: number; type: "hazards"; hazards: HazardSnapshot }
   | { id: number; type: "growth"; sources: GrowthSource[]; horizon: number; size: number }
   | { id: number; type: "sample"; x: number; z: number }
-  | { id: number; type: "water"; x: number; z: number; maxKm: number };
+  | { id: number; type: "water"; x: number; z: number; maxKm: number }
+  | { id: number; type: "riskScan"; x0: number; z0: number; step: number; nx: number; nz: number };
+
+/** Map risk (0..1) on an nx × nz grid of world points, row-major from (x0, z0) — same evaluation as the hexes. */
+export interface RiskScan { risk: Float32Array; status: Uint8Array }
 
 export type WorkerResponse =
   | { id: number; ok: true; result: unknown }

@@ -114,7 +114,7 @@ const crewReply = (plan: CrewPlan, live: boolean) => {
   const top = plan.pickedCut.slice(0, 3).map(label).join(", ");
   const vs = g ? ` Against biggest-first that reaches ${g.ours.escapesCaught} fires that later escaped instead of ${g.baseline.escapesCaught}, and ${g.cut.escapesCaught} vs ${g.baselineCut.escapesCaught} after the cut.` : "";
   const lost = plan.lostCrew.length ? ` Cutting to ${plan.cutCrews} crew${plan.cutCrews === 1 ? "" : "s"}, ${plan.lostCrew.length === 1 ? "1 fire loses its crew" : `${plan.lostCrew.length} fires lose theirs`}: ${plan.lostCrew.slice(0, 6).map(label).join(", ")}${plan.lostCrew.length > 6 ? " and more" : ""}.` : "";
-  return `${plan.crews} crews${live ? " on today's fires" : " on Alberta's 2023–2025 fires"}: first ${top}.${vs}${lost} The full list and the duty-officer note are in Dispatch.`;
+  return `${plan.crews} crew${plan.crews === 1 ? "" : "s"}${live ? " on today's fires" : " on Alberta's 2023–2025 fires"}: first ${top}.${vs}${lost} The full list and the duty-officer note are in Dispatch.`;
 };
 
 /** Whether a typed Ask is a crew-allocation or 311 question (answered here, not by the model). */

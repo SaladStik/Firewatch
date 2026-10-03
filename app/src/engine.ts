@@ -6,9 +6,9 @@
 import { PROJECTION, type Region } from "./config/regions";
 import type { FwiStation, Hotspot, Perimeter } from "./data/cwfis";
 import { makeFwiSeed } from "./data/fwiSeed";
-import { loadFireHistory, loadHotspots, loadPerimeters, loadStations, loadWeather, usingDataServer } from "./data/liveData";
+import { loadFireHistory, loadHotspots, loadPerimeters, loadReportedFires, loadStations, loadWeather, usingDataServer } from "./data/liveData";
 import { growthCalibration, type FireGrowth, type FireHistory } from "./data/fireHistory";
-import { fireSources, growthSources } from "./data/fireSpread";
+import { fireSources, growthSources, spreadSources } from "./data/fireSpread";
 import { growthCellSize } from "./world/fireGrowth";
 import { buildSnapshot, isPerimeterActive, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
 import { caseHotspots, initDispatch, loadCases } from "./dispatch/controller";
@@ -31,7 +31,7 @@ import { WorldClient } from "./world/WorldClient";
 import type { HexNodeInfo } from "./world/types";
 
 const RISK_STATUSES = new Set<number>([NodeStatus.Elevated, NodeStatus.High, NodeStatus.Extreme]);
-const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Burned]);
+const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.UnderControl, NodeStatus.Burned]);
 /** Smoke-haze tint mixed into fire-possible hexes when the air layer is on. */
 const AIR_HAZE = rgb("#6b5a4a");
 const mix3 = (a: [number, number, number], b: [number, number, number], t: number): [number, number, number] => [
@@ -62,7 +62,7 @@ export class Engine {
     const stage = (s: string, progress: number) => app.set({ boot: { stage: s, done: false, progress } });
     try {
       // Fresh boot (also after a dev hot-reload): nothing is loaded yet.
-      app.set({ loaded: [], places: [], traffic: [], trafficThreats: [], airThreats: [], hotspots: [], perimeters: [], weather: [], selected: null, hover: null });
+      app.set({ loaded: [], places: [], traffic: [], trafficThreats: [], airThreats: [], hotspots: [], perimeters: [], reportedFires: [], weather: [], selected: null, hover: null });
       setProjection(PROJECTION);
       await this.client.init(PROJECTION);
       this.scene = new Scene(canvas, overlay, this.client, { onHover: (n) => app.set({ hover: n }), onSelect: (n) => this.onSelect(n), onStats: (s) => app.set({ stats: s }) });
@@ -160,7 +160,7 @@ export class Engine {
     ];
     const now = Date.now();
     // Hotspots first: their CWFIS FWI codes seed the weather cells near fires.
-    const [hs, per] = await Promise.allSettled([loadHotspots(box), loadPerimeters(box)]);
+    const [hs, per, rep] = await Promise.allSettled([loadHotspots(box), loadPerimeters(box), loadReportedFires(loaded.map((r) => r.code))]);
     // The data server seeds the FWI System itself; only direct mode needs the stations here.
     const seed = usingDataServer ? undefined : await this.fwiSeed(hs.status === "fulfilled" ? hs.value : []);
     const wx = await Promise.allSettled([
@@ -190,14 +190,17 @@ export class Engine {
         return [lat, lng];
       })
       : app.get().perimeters;
+    // Official fires: keep the last good list when the API is down.
+    const reportedFires = rep.status === "fulfilled" ? await this.tagRegion(rep.value, (f) => [f.lat, f.lng]) : app.get().reportedFires;
     // Keep previously fetched grids for regions that are no longer in focus.
     const fresh = wx.flatMap((w) => (w.status === "fulfilled" ? [w.value] : []));
     void fresh;
     const weather = [...this.weatherCache.values()].map((c) => c.grid);
     app.set({
-      hotspots, perimeters, weather: weather.length ? weather : app.get().weather,
+      hotspots, perimeters, reportedFires, weather: weather.length ? weather : app.get().weather,
       dataStatus: {
         cwfis: hs.status === "fulfilled" && per.status === "fulfilled" ? "ok" : "error",
+        reported: rep.status === "fulfilled" ? "ok" : "error",
         weather: wx.every((w) => w.status === "fulfilled") ? "ok" : "error",
         weatherError: wx.map((w) => (w.status === "rejected" ? String((w.reason as Error)?.message ?? w.reason) : "")).find(Boolean),
         at: new Date().toISOString(),
@@ -297,13 +300,18 @@ export class Engine {
     // Grow every active fire over the real fuel map, day by day up to the selected day (world/fireGrowth.ts).
     let spread = null;
     if (s.layers.spread) {
-      const src = growthSources(fireSources(hotspots, s.perimeters, Date.now(), growth), s.weather, s.forecastDay, weatherBoost, (d) => storms[d] ?? []);
+      // Official out-of-control / being-held fires, plus the demo's simulated ignitions.
+      const fires = [
+        ...spreadSources(s.reportedFires, s.perimeters, Date.now(), growth),
+        ...fireSources(hotspots.filter((h) => h.agency === "SIMULATION"), [], Date.now()),
+      ];
+      const src = growthSources(fires, s.weather, s.forecastDay, weatherBoost, (d) => storms[d] ?? []);
       if (src.length) spread = await this.client.growth(src, s.forecastDay, growthCellSize(src, s.forecastDay));
     }
     app.set({ spread, fireGrowth: growth });
     this.rainBlobs = rain;
     await this.client.setHazards(buildSnapshot({
-      hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost, spread, rain, growth,
+      hotspots, reportedFires: s.reportedFires, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost, spread, rain, growth,
     }));
     await this.scene.world.refreshStatus();
     // The open sector panel shows status/risk from click time; re-read it for the new hazards.
@@ -498,6 +506,11 @@ export class Engine {
     if (app.get().flagged.includes(n.key)) return;
     app.set((s) => ({ flagged: [...s.flagged, n.key] }));
     this.scene.world.setOverride(n.level, n.q, n.r, { line: "#7dd3ff", pulse: 0.6, lift: 0.15 });
+  }
+
+  /** The map's risk on a grid of world points, from the current hazards (same as the hexes show). */
+  riskScan(x0: number, z0: number, step: number, nx: number, nz: number) {
+    return this.client.riskScan(x0, z0, step, nx, nz);
   }
 
   flyToLatLng(lat: number, lng: number, dist = 25) {

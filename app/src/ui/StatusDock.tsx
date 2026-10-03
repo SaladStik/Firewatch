@@ -35,9 +35,9 @@ function levelColor(level: string) {
 const fmtVolume = (v: number) =>
   (Math.round(v / (v >= 10_000 ? 100 : 10)) * (v >= 10_000 ? 100 : 10)).toLocaleString();
 
-function Metric({ label, value, color }: { label: string; value: string | number; color: string }) {
+function Metric({ label, value, color, title }: { label: string; value: string | number; color: string; title?: string }) {
   return (
-    <div className="flex items-baseline gap-1 px-1.5">
+    <div className="flex items-baseline gap-1 px-1.5" title={title}>
       <span className="text-[12px] font-bold tabular-nums leading-none" style={{ color }}>{value}</span>
       <span className="text-[8.5px] font-bold tracking-[0.06em] uppercase text-ink-mute">{label}</span>
     </div>
@@ -46,6 +46,7 @@ function Metric({ label, value, color }: { label: string; value: string | number
 
 export function StatusDock({ engine, embedded }: { engine: Engine | null; embedded?: boolean }) {
   const hotspots = useStore(app, (s) => s.hotspots);
+  const reportedFires = useStore(app, (s) => s.reportedFires);
   const perimeters = useStore(app, (s) => s.perimeters);
   const weather = useStore(app, (s) => s.weather);
   const sim = useStore(app, (s) => s.simulation);
@@ -66,12 +67,13 @@ export function StatusDock({ engine, embedded }: { engine: Engine | null; embedd
   const focus = useFocusIndices();
   const dates = weather[0]?.dates;
 
-  const all = useMemo(
-    () => (sim ? [...hotspots, ...regions.flatMap((r, i) => simulatedHotspots(r.demoSites).map((h) => ({ ...h, region: i })))] : hotspots),
-    [hotspots, sim, regions],
-  );
-  const focusHs = useMemo(() => all.filter((h) => focus.has(h.region ?? -1)), [all, focus]);
-  const elsewhere = all.length - focusHs.length;
+  // Official fires are what count as fires; hotspots are unconfirmed heat (often farm burns).
+  // The demo scenario adds one simulated out-of-control fire per demo site.
+  const focusFires = reportedFires.filter((f) => focus.has(f.region ?? -1));
+  const simFires = sim ? regions.reduce((a, r, i) => a + (focus.has(i) ? r.demoSites.length : 0), 0) : 0;
+  const fireCount = focusFires.length + simFires;
+  const outOfControl = focusFires.filter((f) => f.stage === "out_of_control").length + simFires;
+  const heat = hotspots.filter((h) => focus.has(h.region ?? -1)).length;
   const focusPer = perimeters.filter((p) => focus.has(p.region ?? -1));
   const active = focusPer.filter((p) => isPerimeterActive(p)).length;
   const burnedHa = focusPer.reduce((a, p) => a + p.areaHa, 0);
@@ -137,8 +139,9 @@ export function StatusDock({ engine, embedded }: { engine: Engine | null; embedd
       <div className="flex h-9 min-w-0 items-center gap-2 px-2">
         <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
           <span className="label-xs mr-1 shrink-0">Sitrep</span>
-          <Metric label="hot" value={focusHs.length} color="var(--color-fire)" />
-          <Metric label="else" value={elsewhere} color="var(--color-ink-dim)" />
+          <Metric label="fires" value={fireCount} color="var(--color-fire)" title={`Active wildfires reported by fire agencies in focus${simFires ? ` (incl. ${simFires} simulated)` : ""}`} />
+          <Metric label="ooc" value={outOfControl} color="var(--color-risk-ext)" title="Out of control" />
+          <Metric label="heat" value={heat} color="var(--color-ink-dim)" title="Satellite hotspots, last 24 h: unconfirmed heat detections (often farm or controlled burns)" />
           <Metric label="perim" value={active} color="var(--color-risk-ext)" />
           <Metric label="burned" value={`${Math.round(burnedHa / 1000)}k`} color="var(--color-risk-high)" />
           <Metric label="wx" value={Math.round(Math.min(1, wxMax) * 100)} color="var(--color-risk-elev)" />

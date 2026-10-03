@@ -5,9 +5,11 @@ import { snowShare } from "../data/rain";
 import { project } from "../geo/projection";
 import { app, type Layers } from "../state/app";
 import { dayLabel, compassName } from "../ui/weatherFormat";
-import { buildBrief, fireList, threatList, threatReasonAt } from "./brief";
+import { activeFires, agencyName, fireView, heatDetections, rankedFires } from "../firefly/facts";
+import { snapshot } from "../firefly/tools";
+import { buildBrief, fireList as briefFires, threatList, threatReasonAt } from "./brief";
 import { renderReply } from "./reply";
-import { ruleBrain } from "./rules";
+import { needsModel, ruleBrain } from "./rules";
 import type { Plan, ToolCall, ToolResult } from "./types";
 
 const LAYER_LABEL: Record<keyof Layers, string> = {
@@ -81,27 +83,33 @@ function runCall(engine: Engine, call: ToolCall): ToolResult {
       };
     }
     case "listFires": {
-      const fires = fireList().map((f) => ({ label: f.kind === "perimeter" ? `Perimeter ${f.label}` : f.label }));
-      return { tool: call.tool, summary: "Listed active fires", fires, simulation: app.get().simulation };
+      // Agency-reported fires (Firefly's facts), in the province asked about or the ones in focus.
+      const s = snapshot();
+      const idx = call.args.regionIndex;
+      if (idx != null && idx >= 0) s.focus = new Set([idx]);
+      const regions = [...s.focus];
+      const scope = regions.map((i) => s.regionNames[i]).filter(Boolean).join(", ") || "the regions in focus";
+      const heat = heatDetections(s).filter((h) => h.kind === "hotspots" && !h.officialFire);
+      const hotspots = s.hotspots.filter((h) => h.agency !== "SIMULATION" && h.region != null && s.focus.has(h.region)).length;
+      return {
+        tool: call.tool, summary: "Listed active fires",
+        firesAnswer: {
+          simulation: s.simulation, scope, heatFirst: call.args.heatFirst,
+          // One province: name its own agency even when it reports none (a park's fires are Parks Canada's).
+          ownAgency: regions.length === 1 && s.regionCodes?.[regions[0]] ? agencyName(s.regionCodes[regions[0]]) : undefined,
+          fires: rankedFires(s).map((x) => fireView(s, x)).map((f) => ({
+            stage: f.stage, agency: f.reportedBy,
+            label: `${f.name}, ${f.stage}, ${f.hectares.toLocaleString("en-CA")} ha${f.near ? `, ${f.near}` : ""}`,
+          })),
+          heat: { hotspots, clusters: heat.length, farm: heat.filter((h) => h.likelyFarmOrControlledBurn).length },
+        },
+      };
     }
     case "flyToFire": {
-      const fires = fireList();
-      const perimeter = fires.find((f) => f.kind === "perimeter");
-      if (perimeter) {
-        engine.flyToLatLng(perimeter.lat, perimeter.lng, 25);
-        return { tool: call.tool, summary: `Flew to the largest fire, ${perimeter.label}` };
-      }
-      const spots = fires.filter((f) => f.kind === "hotspot");
-      const here = engine.scene?.targetLatLng();
-      const nearest = here
-        ? spots.reduce<{ lat: number; lng: number; d: number } | null>((best, h) => {
-          const d = kmBetween(here, h);
-          return !best || d < best.d ? { lat: h.lat, lng: h.lng, d } : best;
-        }, null)
-        : spots[0] ? { lat: spots[0].lat, lng: spots[0].lng, d: 0 } : null;
-      if (!nearest) return { tool: call.tool, summary: "No active fire to fly to" };
-      engine.flyToLatLng(nearest.lat, nearest.lng, 18);
-      return { tool: call.tool, summary: "Flew to the nearest hotspot" };
+      const biggest = activeFires(snapshot()).sort((a, b) => b.sizeHa - a.sizeHa)[0];
+      if (!biggest) return { tool: call.tool, summary: "No active wildfire reported by the fire agencies to fly to" };
+      engine.flyToLatLng(biggest.lat, biggest.lng, 25);
+      return { tool: call.tool, summary: `Flew to the largest reported fire, ${biggest.name} (${Math.round(biggest.sizeHa).toLocaleString("en-CA")} ha)` };
     }
     case "explain": {
       const s = app.get();
@@ -115,7 +123,7 @@ function runCall(engine: Engine, call: ToolCall): ToolResult {
         if (node) engine.scene.select(node);
       }
       let nearest: number | null = null;
-      for (const fire of fireList()) {
+      for (const fire of briefFires()) {
         if (fire.kind !== "hotspot") continue;
         const d = kmBetween({ lat, lng }, fire);
         if (nearest == null || d < nearest) nearest = d;
@@ -150,10 +158,14 @@ export function runPlan(engine: Engine, plan: Plan): { results: ToolResult[]; re
   return { results, reply: renderReply(plan, results) };
 }
 
-/** A map answer from data already loaded, or null when the question needs the model. */
-export function answerLocally(engine: Engine, text: string): { reply: string; threats: boolean } | null {
+/**
+ * A map answer from data already loaded, or null when the question needs the model.
+ * `handOffAmbiguous` (a model is available): also return null for ambiguous places and for
+ * questions this can only act on, not answer (rules.ts needsModel).
+ */
+export function answerLocally(engine: Engine, text: string, handOffAmbiguous = false): { reply: string; threats: boolean } | null {
   const plan = ruleBrain.plan(text, buildBrief(engine));
-  if (plan.reply === "unknown") return null;
+  if (plan.reply === "unknown" || (handOffAmbiguous && needsModel(text, plan))) return null;
   try {
     if (plan.calls.length && plan.reply !== "ambiguous") {
       return { reply: runPlan(engine, plan).reply, threats: plan.reply === "threats" };
