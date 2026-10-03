@@ -63,7 +63,7 @@ What he can do:
 Setup (Databricks model, for typed questions): start the data server with `DATABRICKS_HOST` and `DATABRICKS_TOKEN` (see [RUNBOOK.md](../RUNBOOK.md)), or deploy it as a Databricks App, which supplies its own credentials ([DEPLOY-DATABRICKS.md](../DEPLOY-DATABRICKS.md)). The token stays on the server; the page never sees it.
 
 Setup (ElevenLabs, for voice):
-1. Create an agent in the ElevenLabs dashboard from [`src/firefly/AGENT.md`](src/firefly/AGENT.md): first message, system prompt, and the 18 client tools (names and parameters must match `tools.ts`).
+1. Create an agent in the ElevenLabs dashboard from [`src/firefly/AGENT.md`](src/firefly/AGENT.md): first message, system prompt, and the 17 client tools (names and parameters must match `tools.ts`).
 2. Copy `app/.env.example` to `app/.env` and put its ID in: `VITE_ELEVENLABS_AGENT_ID=agent_…`, then restart `npm run dev`. Without it, the dock shows "Firefly is offline". `.env` is the only file it reads (Vite loads `.env` in every mode) and is gitignored, so the ID stays out of the repo.
 
 Privacy: typed questions and the tool results go to the Databricks endpoint; while a voice session is connected, voice goes to ElevenLabs. The mic stays muted unless the talk button is held, though the browser asks for mic permission once when a session starts. The agent ID is public (no API key in the app); restrict it with the dashboard's host allowlist when deploying. Projected spread is a **scenario**, and Firefly says so.
