@@ -267,7 +267,13 @@ export function riskZones(s: FactsSnapshot, g: RiskGrid, max = 5) {
     zones.push(z);
   }
   const cellKm2 = g.step * g.step;
+  const inFocus = (z: (typeof zones)[number]) => {
+    const { lat, lng } = unproject(z.sx / z.w, z.sz / z.w);
+    const n = nearestPlace(s, lat, lng);
+    return !n || s.focus.has(n.place.region);
+  };
   return zones
+    .filter(inFocus)
     .map((z) => ({ z, score: z.peak * Math.sqrt(z.cells * cellKm2) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, max)
