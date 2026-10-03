@@ -1,6 +1,6 @@
 # TODO
 
-What's left before judging (IEEE YP Industry Hackathon, Oct 2–4, 2026). Owners are tagged: **[Minh]** for everything ElevenLabs, **[Scott]** for everything Databricks.
+What's left before judging (IEEE YP Industry Hackathon, Oct 2–4, 2026). Owners are tagged: **[Minh]** for everything ElevenLabs, **[Nick]** for everything Databricks.
 
 ## ElevenLabs voice agent [Minh]
 
@@ -14,23 +14,23 @@ The voice agent's settings live in [`app/src/firefly/AGENT.md`](app/src/firefly/
 - [ ] **[Minh]** Live voice test: hold the mic and ask "what's next", "dispatch it", "potholes in Beltline", "mark that ticket urgent", "any water bombers flying?". In the ElevenLabs conversation log, check it called `ask_data` / `do_dispatch` rather than guessing.
 - [ ] **[Minh]** Check there are enough ElevenLabs credits for rehearsals plus the demo.
 
-## Databricks AI model [Scott]
+## Databricks AI model [Nick]
 
 Typed questions go to a model on Databricks Model Serving through the data server ([`app/server/ai.ts`](app/server/ai.ts), [`app/src/firefly/llm.ts`](app/src/firefly/llm.ts)). So far it has only been tested against a mock model.
 
-- [ ] **[Scott]** Confirm the workspace is Databricks Free Edition. The legacy Community Edition has no Model Serving or Apps.
-- [ ] **[Scott]** Under Serving, check `databricks-meta-llama-3-3-70b-instruct` exists. To use a different endpoint (e.g. a Claude one), set `FIREWATCH_AI_ENDPOINT`.
-- [ ] **[Scott]** Run locally with `DATABRICKS_HOST` and `DATABRICKS_TOKEN` (see [RUNBOOK.md](RUNBOOK.md)). http://localhost:8787/api/ai should show `"available": true`.
-- [ ] **[Scott]** Real-model test in the app, where each reply should show "AI · <model>" and the tools it used:
+- [ ] **[Nick]** Confirm the workspace is Databricks Free Edition. The legacy Community Edition has no Model Serving or Apps.
+- [ ] **[Nick]** Under Serving, check `databricks-meta-llama-3-3-70b-instruct` exists. To use a different endpoint (e.g. a Claude one), set `FIREWATCH_AI_ENDPOINT`.
+- [ ] **[Nick]** Run locally with `DATABRICKS_HOST` and `DATABRICKS_TOKEN` (see [RUNBOOK.md](RUNBOOK.md)). http://localhost:8787/api/ai should show `"available": true`.
+- [ ] **[Nick]** Real-model test in the app, where each reply should show "AI · <model>" and the tools it used:
   - "who's next?" then "dispatch it"
   - "find pothole tickets in Beltline and mark the worst one urgent"
   - "which fires lost a crew if we cut 20%?"
   - "is there smoke in Calgary?"
   - "what should crew R1 do today?"
-- [ ] **[Scott]** If the model answers without calling tools, or calls them badly, try a stronger endpoint before changing the prompt.
-- [ ] **[Scott]** Deploy the data server (`npm run deploy:databricks`). Give the app's service principal "Can query" on the endpoint, then check `<app url>/api/ai` (see [DEPLOY-DATABRICKS.md](DEPLOY-DATABRICKS.md)).
-- [ ] **[Scott]** Redeploy the Cloudflare Pages site so its proxy forwards `POST /api/ai/chat`.
-- [ ] **[Scott]** Check Free Edition's rate limits are enough for the demo. If the model fails, Firefly falls back to ElevenLabs, then to answers from the app's own data.
+- [ ] **[Nick]** If the model answers without calling tools, or calls them badly, try a stronger endpoint before changing the prompt.
+- [ ] **[Nick]** Deploy the data server (`npm run deploy:databricks`). Give the app's service principal "Can query" on the endpoint, then check `<app url>/api/ai` (see [DEPLOY-DATABRICKS.md](DEPLOY-DATABRICKS.md)).
+- [ ] **[Nick]** Redeploy the Cloudflare Pages site so its proxy forwards `POST /api/ai/chat`.
+- [ ] **[Nick]** Check Free Edition's rate limits are enough for the demo. If the model fails, Firefly falls back to ElevenLabs, then to answers from the app's own data.
 
 ## Merge and deploy
 
