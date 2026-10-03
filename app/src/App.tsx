@@ -73,7 +73,8 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-end justify-between gap-4">
-            <div className="w-9" />
+            {/* Holds the bottom-left corner for the Firefly dock so the centre bars sit to its right. */}
+            <div className="w-9 shrink-0 md:w-[356px]" />
             <div className="absolute bottom-4 left-4 z-20 hidden md:block">
               <ErrorBoundary name="FireflyDock"><FireflyDock engine={engine} /></ErrorBoundary>
             </div>

@@ -33,6 +33,8 @@ function buildWatch(): Watch {
 
 /** Seconds of quiet after explaining before he flies back to the dock. */
 const HOME_AFTER_S = 1.5;
+/** How long the mic stays open after the talk button is released (ms). */
+const MIC_TAIL_MS = 600;
 
 /** Expressive voices may tag delivery ("[laughs]"); keep those out of the bubble. */
 const clean = (t: string) => t.replace(/\[[a-z ]{2,24}\]\s*/gi, "").trim();
@@ -47,6 +49,10 @@ export function useFireflyAgent(engine: Engine | null) {
   const moodRef = useRef<MoodName>("happy");
   /** Messages typed before the session finished connecting; sent on connect. */
   const queue = useRef<string[]>([]);
+  /** Last typed message, so its transcript echo isn't shown twice. */
+  const lastTyped = useRef("");
+  /** Pending mic mute after the talk button is released. */
+  const muteTimer = useRef(0);
   const push = (line: ChatLine) => setHistory((h) => [...h.slice(-40), line]);
 
   const convo = useConversation({
@@ -54,9 +60,14 @@ export function useFireflyAgent(engine: Engine | null) {
     volume: voiceOn ? 1 : 0,
     onConnect: () => { for (const t of queue.current.splice(0)) convoRef.current.sendUserMessage(t); },
     onMessage: (m) => {
-      if (m.role !== "agent") return;
       const text = clean(m.message);
       if (!text) return;
+      if (m.role === "user") {
+        // What the mic heard (typed messages may be echoed back too; skip those).
+        if (text !== lastTyped.current) { push({ from: "you", text }); fireflyController().setMood("thinking"); }
+        lastTyped.current = "";
+        return;
+      }
       push({ from: "firefly", text });
       const ctl = fireflyController();
       ctl.say(text, Math.max(3, text.length * 0.07));
@@ -109,14 +120,23 @@ export function useFireflyAgent(engine: Engine | null) {
   const send = useCallback((text: string) => {
     if (!text.trim()) return;
     push({ from: "you", text });
+    lastTyped.current = clean(text);
     fireflyController().setMood("thinking");
     deliver(text);
   }, [deliver]);
 
+  /** Hold to talk. The mic stays open a moment after release so the last word isn't cut off. */
   const holdTalk = useCallback((down: boolean) => {
-    if (down) deliver();
-    setMuted(!down);
+    clearTimeout(muteTimer.current);
+    if (down) { deliver(); setMuted(false); return; }
+    muteTimer.current = window.setTimeout(() => setMuted(true), MIC_TAIL_MS);
   }, [deliver]);
+
+  /** Mic input level 0..1 (for the talk button's ring). */
+  const inputLevel = useCallback(() => {
+    const c = convoRef.current;
+    return c.status === "connected" ? c.getInputVolume() : 0;
+  }, []);
 
   const toggleVoice = useCallback(() => setVoiceOn((v) => !v), []);
 
@@ -159,6 +179,6 @@ export function useFireflyAgent(engine: Engine | null) {
 
   return {
     available: Boolean(AGENT_ID), status: convo.status, connected, speaking: convo.isSpeaking, history,
-    send, holdTalk, voiceOn, toggleVoice, pendingAlert, askAboutAlert, end: () => convo.endSession(),
+    send, holdTalk, inputLevel, voiceOn, toggleVoice, pendingAlert, askAboutAlert, end: () => convo.endSession(),
   };
 }

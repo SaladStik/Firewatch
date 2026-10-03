@@ -1,6 +1,6 @@
 /** Bottom-left: talk to Firefly. Input pill (type or hold the mic), suggestion chips, history drawer. */
 import { MessageSquare, Mic, Send, Volume2, VolumeX } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Engine } from "../engine";
 import { useFireflyAgent } from "./useFireflyAgent";
 
@@ -11,6 +11,22 @@ export function FireflyDock({ engine }: { engine: Engine | null }) {
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
   const [holding, setHolding] = useState(false);
+  const micRef = useRef<HTMLButtonElement>(null);
+  const { inputLevel } = ff;
+
+  // While holding, a ring around the mic follows the input level, so you can see it hears you.
+  useEffect(() => {
+    const mic = micRef.current;
+    if (!holding || !mic) return;
+    let raf = 0;
+    const tick = () => {
+      const lvl = Math.min(1, inputLevel() * 4);
+      mic.style.boxShadow = `0 0 0 ${2 + lvl * 7}px color-mix(in srgb, var(--color-fire) ${35 + lvl * 50}%, transparent)`;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); mic.style.boxShadow = ""; };
+  }, [holding, inputLevel]);
 
   if (!ff.available) {
     return <div className="panel pointer-events-auto px-3 py-2 text-[10.5px] text-ink-mute">Firefly is offline (set VITE_ELEVENLABS_AGENT_ID in app/.env.local).</div>;
@@ -52,9 +68,10 @@ export function FireflyDock({ engine }: { engine: Engine | null }) {
         />
         <button aria-label="Send" onClick={submit} className="p-1 text-ink-dim hover:text-phos"><Send size={14} /></button>
         <button
+          ref={micRef}
           aria-label="Hold to talk"
           onPointerDown={() => talk(true)} onPointerUp={() => talk(false)} onPointerLeave={() => { if (holding) talk(false); }}
-          className={`grid h-7 w-7 place-items-center rounded-full transition ${holding ? "bg-[var(--color-fire)] text-white" : "bg-[var(--color-phos)] text-black"}`}
+          className={`grid h-7 w-7 touch-none select-none place-items-center rounded-full transition ${holding ? "bg-[var(--color-fire)] text-white" : "bg-[var(--color-phos)] text-black"}`}
         ><Mic size={14} /></button>
         <button aria-label={ff.voiceOn ? "Mute Firefly's voice" : "Unmute Firefly's voice"} onClick={ff.toggleVoice} className="p-1 text-ink-dim hover:text-phos">
           {ff.voiceOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
