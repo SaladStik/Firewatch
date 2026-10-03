@@ -6,7 +6,7 @@ import type { BriefThreat } from "../agent/types";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
-import { flyFireflyHome } from "./mascot";
+import { dismissFirefly, fireflyTucked, revealFirefly } from "./mascot";
 import { useFireflyAgent } from "./useFireflyAgent";
 
 const PROMPTS = [
@@ -34,6 +34,7 @@ export function FireflyDock({ engine, open, onClose }: { engine: Engine | null; 
   const [holding, setHolding] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const skipMascot = useRef(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const micRef = useRef<HTMLButtonElement>(null);
   const { inputLevel } = ff;
@@ -50,7 +51,9 @@ export function FireflyDock({ engine, open, onClose }: { engine: Engine | null; 
   }, [ff.history, ff.showThreats]);
 
   useEffect(() => {
-    void flyFireflyHome();
+    if (skipMascot.current) { skipMascot.current = false; return; }
+    if (open) { if (fireflyTucked()) void revealFirefly(); }
+    else void dismissFirefly();
     if (open) inputRef.current?.focus();
   }, [open]);
 
@@ -93,8 +96,7 @@ export function FireflyDock({ engine, open, onClose }: { engine: Engine | null; 
       <div ref={logRef} className="scroll-thin flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
         {ff.history.length === 0 && (
           <div className="m-auto w-full max-w-[18rem]">
-            <p className="text-[13px] leading-relaxed text-ink-dim">Places, fires, and the forecast are answered on the map. Anything else asks Firefly.</p>
-            <div className="mt-4 flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5">
               {PROMPTS.map((prompt) => (
                 <button key={prompt} type="button" onClick={() => ff.send(prompt)} disabled={!booted || !engine} className="border border-line px-3 py-2 text-left text-[12px] text-ink transition hover:border-phos hover:text-phos disabled:opacity-40">
                   {prompt}

@@ -1,7 +1,7 @@
 [
   {
-    "id": "local-dht11",
-    "name": "Local DHT11",
+    "id": "local-station",
+    "name": "Local station",
     "location": "Local station",
     "latitude": null,
     "longitude": null,

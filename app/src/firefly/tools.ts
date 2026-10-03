@@ -23,10 +23,21 @@ export function snapshot(): FactsSnapshot {
 
 const json = (v: unknown) => JSON.stringify(v);
 const fail = (msg: string) => json({ error: msg });
-const LAYERS: (keyof Layers)[] = ["risk", "fires", "spread", "beacons", "wind", "rain"];
+const LAYERS: (keyof Layers)[] = ["risk", "fires", "spread", "air", "traffic", "beacons", "wind", "rain", "bloom"];
 const NOTE = "Projected spread is a scenario model, not an official forecast.";
 
 type Params = Record<string, unknown>;
+
+/** Province name or code ("bc", "British Columbia"). "on" is not Ontario — that word is too common. */
+function matchRegions(raw: string): { id: string; name: string }[] | string {
+  const text = ` ${raw.toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim()} `;
+  if (text.trim().length < 2) return "Name a province, for example BC or British Columbia.";
+  const hits = app.get().regions.filter((r) => {
+    const aliases = [r.name, r.id.replace(/-/g, " "), r.code].map((a) => a.toLowerCase()).filter((a) => a !== "on" && a.length >= 2);
+    return aliases.some((a) => text.includes(` ${a} `));
+  });
+  return hits.length ? hits.map((r) => ({ id: r.id, name: r.name })) : "Unknown region. Use a province name or code, for example BC.";
+}
 
 function locate(s: FactsSnapshot, p: Params): { lat: number; lng: number; label: string; fire: boolean } | string {
   if (typeof p.fire_id === "string" && p.fire_id) {
@@ -126,6 +137,28 @@ export function makeTools(engine: Engine) {
       const on = p.on === true || p.on === "true";
       engine.setLayer(layer, on);
       return json({ ok: true, layer, on });
+    }),
+
+    set_regions: guard((p) => {
+      const raw = String(p.regions ?? p.region ?? "");
+      const matched = matchRegions(raw);
+      if (typeof matched === "string") return fail(matched);
+      const mode = p.mode === "add" || p.mode === "remove" ? p.mode : "only";
+      const current = app.get().focus;
+      const picked = matched.map((r) => r.id);
+      const ids = mode === "add"
+        ? [...new Set([...current, ...picked])]
+        : mode === "remove"
+          ? current.filter((id) => !picked.includes(id))
+          : picked;
+      if (!ids.length) return fail("At least one region has to stay in focus.");
+      engine.setFocus(ids);
+      if (mode !== "remove" && matched.length === 1) {
+        const index = app.get().regions.findIndex((r) => r.id === matched[0].id);
+        if (index >= 0) engine.scene.flyToRegion(index);
+      }
+      const names = ids.map((id) => app.get().regions.find((r) => r.id === id)?.name ?? id);
+      return json({ ok: true, focus: names });
     }),
 
     flag_patrol: guard((p) => {

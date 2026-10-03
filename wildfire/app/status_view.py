@@ -51,12 +51,12 @@ def prediction_message(assessment: Assessment) -> str:
     if assessment.state == "missing_inputs":
         return (
             "The model did not produce a score because wind speed is missing. "
-            "Temperature and humidity from the DHT11 are not sufficient on their own."
+            "Temperature and humidity are not sufficient on their own."
         )
     if assessment.state == "stale_sensor":
         return "The model estimate is withheld because the sensor reading is stale."
     if assessment.state == "read_failure":
-        return "The model estimate is withheld because the DHT11 read failed."
+        return "The model estimate is withheld because the station read failed."
     if assessment.state == "invalid_sensor":
         return "The model estimate is withheld because the sensor response was invalid."
     if assessment.state == "model_error":
@@ -201,7 +201,7 @@ def build_status(
                     "label": "Temperature",
                     "value": temperature_c,
                     "unit": "°C",
-                    "source": "DHT11 via Arduino",
+                    "source": "Station",
                     "used_by_model": scored,
                 },
                 {
@@ -209,7 +209,7 @@ def build_status(
                     "label": "Relative humidity",
                     "value": humidity_pct,
                     "unit": "%",
-                    "source": "DHT11 via Arduino",
+                    "source": "Station",
                     "used_by_model": scored,
                 },
                 {

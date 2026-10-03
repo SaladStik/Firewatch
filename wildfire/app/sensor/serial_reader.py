@@ -1,4 +1,4 @@
-"""Read the DHT11 sketch from the Arduino's USB serial port."""
+"""Read the sensor sketch from the Arduino's USB serial port."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ async def serial_session(runtime: Runtime, client: httpx.AsyncClient) -> None:
     except serial.SerialException as exc:
         runtime.apply_sensor_result(FetchResult(status="offline", error=_open_error(port, exc)))
         return
-    logger.info("Reading DHT11 from %s at %s baud", port, baud)
+    logger.info("Reading sensor from %s at %s baud", port, baud)
     try:
         while True:
             raw = await asyncio.to_thread(connection.readline)

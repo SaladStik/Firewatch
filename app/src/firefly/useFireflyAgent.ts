@@ -36,8 +36,10 @@ function buildWatch(): Watch {
 
 /** Seconds of quiet after explaining before he flies back to the dock. */
 const HOME_AFTER_S = 1.5;
-/** Rough speaking rate of the voice (s per character), to pace the bubble through queued lines. */
-const SECS_PER_CHAR = 0.065;
+/** How long each character stays in the bubble (s). Slower than the voice, so a line can be read. */
+const SECS_PER_CHAR = 0.12;
+/** Extra seconds the bubble stays after the line has been said. */
+const READ_AFTER_S = 6;
 /** With no audio for a queued line (voice off, text only), show it after this long (ms). */
 const LINE_FALLBACK_MS = 1200;
 /** How long the mic stays open after the talk button is released (ms). */
@@ -89,7 +91,7 @@ export function useFireflyAgent(engine: Engine | null) {
   useLayoutEffect(() => { convoRef.current = convo; });
   const connected = convo.status === "connected";
 
-  // Show him once the map is up and the loading screen has faded out.
+  // Prepare him once the map is up. He stays hidden until Ask is opened.
   const bootHidden = useStore(app, (s) => !!s.boot.hidden);
   useEffect(() => {
     if (!engine || !bootHidden) return;
@@ -119,9 +121,9 @@ export function useFireflyAgent(engine: Engine | null) {
         if (audioStarted || (speaking && t > lineEndsAt) || (!speaking && t - next.at > LINE_FALLBACK_MS)) {
           lines.current.shift();
           audioStarted = false;
-          const secs = Math.max(2, next.text.length * SECS_PER_CHAR);
-          lineEndsAt = t + secs * 1000;
-          ctl.say(next.text, secs + 0.5);
+          const secs = Math.max(4, next.text.length * SECS_PER_CHAR);
+          lineEndsAt = t + (secs + READ_AFTER_S) * 1000;
+          ctl.say(next.text, secs, { linger: READ_AFTER_S });
           ctl.setMood(moodRef.current);
         }
       }
@@ -154,7 +156,7 @@ export function useFireflyAgent(engine: Engine | null) {
       push({ from: "firefly", text: local.reply });
       setShowThreats(local.threats);
       const ctl = fireflyController();
-      ctl.say(local.reply, Math.max(3, Math.min(12, local.reply.length * 0.05)));
+      ctl.say(local.reply, Math.max(4, local.reply.length * SECS_PER_CHAR), { linger: READ_AFTER_S });
       ctl.setMood(moodRef.current);
       return;
     }
@@ -210,7 +212,7 @@ export function useFireflyAgent(engine: Engine | null) {
       push({ from: "alert", text: a.text });
       const c = convoRef.current;
       if (c.status === "connected" && !c.isSpeaking) c.sendUserMessage(`[ALERT] ${a.text}`);
-      else { ctl.say(a.text, 6); setPendingAlert(a); }
+      else { ctl.say(a.text, Math.max(4, a.text.length * SECS_PER_CHAR), { linger: READ_AFTER_S }); setPendingAlert(a); }
     });
     return () => { unsubscribe(); };
   }, [engine]);

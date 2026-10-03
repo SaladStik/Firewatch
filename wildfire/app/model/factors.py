@@ -19,7 +19,7 @@ FACTORS = (
         "key": None,
         "label": "Drought and fuel moisture",
         "unit": "",
-        "why": "Dead-fuel moisture, drought indices, and live fuel moisture dominate real fire danger. A DHT11 cannot measure them.",
+        "why": "Dead-fuel moisture, drought indices, and live fuel moisture dominate real fire danger. This station does not measure them.",
         "source_hint": "RAWS, gridMET, or the National Fire Danger Rating System.",
     },
     {

@@ -23,10 +23,10 @@ def test_dashboard_shell_separates_sensor_readings_from_the_model(tmp_path):
     assert "National Weather Service" not in text
     assert "Temperature" in text
     assert "Humidity" in text
-    assert "Sensor status" in text
+    assert "Sensor status" not in text
     assert "Last reading" in text
     assert "Wildfire risk" in text
-    assert "DHT11 feed" in text
+    assert "Station feed" in text
     assert "Model output" in text
 
 

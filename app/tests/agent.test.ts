@@ -103,6 +103,14 @@ test("forecast phrases become a day index", () => {
   assert.equal(forecastDayOf("monday"), 3);
 });
 
+test("just a province replaces focus with that province", () => {
+  const plan = planRequest("enable just bc", brief());
+  const focus = plan.calls.find((c) => c.tool === "focus");
+  assert.ok(focus && focus.tool === "focus");
+  if (focus?.tool === "focus") assert.deepEqual(focus.args.ids, ["british-columbia"]);
+  assert.ok(plan.calls.some((c) => c.tool === "flyToRegion"));
+});
+
 test("layers turn on and off", () => {
   const on = planRequest("turn wind on", brief());
   assert.deepEqual(on.calls[0], { tool: "setLayer", args: { key: "wind", on: true } });

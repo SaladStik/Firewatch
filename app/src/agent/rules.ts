@@ -111,9 +111,13 @@ function regionAliases(r: BriefRegion): string[] {
   return [...new Set(aliases.filter((a) => a.length >= 2))];
 }
 
+function findRegions(text: string, regions: BriefRegion[]): BriefRegion[] {
+  return regions.filter((region) => regionAliases(region).some((alias) => hasPhrase(text, alias)));
+}
+
 function findRegion(text: string, regions: BriefRegion[]): { region: BriefRegion; aliasLength: number } | null {
   let best: { region: BriefRegion; aliasLength: number } | null = null;
-  for (const region of regions) {
+  for (const region of findRegions(text, regions)) {
     for (const alias of regionAliases(region)) {
       if (!hasPhrase(text, alias)) continue;
       if (!best || alias.length > best.aliasLength) best = { region, aliasLength: alias.length };
@@ -237,11 +241,16 @@ export function planRequest(raw: string, brief: Brief): Plan {
   const explain = wantsExplain(text);
 
   const calls: ToolCall[] = [];
-  const replaceFocus = /\bfocus\b/.test(text) || /\bonly\b/.test(text);
+  const namedRegions = findRegions(text, brief.regions);
+  const replaceFocus = /\bfocus\b/.test(text) || /\bonly\b/.test(text) || (/\bjust\b/.test(text) && !!region && !place);
   const focusRegion = place?.regionId || region?.id;
   if (focusRegion && (replaceFocus || !(place ? place.focused : brief.focusIds.includes(focusRegion)))) {
-    const ids = replaceFocus ? [focusRegion] : [...new Set([...brief.focusIds, focusRegion])];
-    if (ids.length && (replaceFocus || ids.length !== brief.focusIds.length)) calls.push({ tool: "focus", args: { ids } });
+    const ids = replaceFocus
+      ? (region && !place ? namedRegions.map((r) => r.id) : [focusRegion])
+      : [...new Set([...brief.focusIds, focusRegion])];
+    if (ids.length && (replaceFocus || ids.length !== brief.focusIds.length || ids.some((id, i) => id !== brief.focusIds[i]))) {
+      calls.push({ tool: "focus", args: { ids } });
+    }
   }
   if (day != null && day !== brief.forecastDay) calls.push({ tool: "setForecastDay", args: { day } });
   for (const layer of layers) {

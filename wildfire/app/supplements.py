@@ -1,4 +1,4 @@
-"""Optional wind and weather context. These do not replace the DHT11."""
+"""Optional wind and weather context. These do not replace the station reading."""
 
 from __future__ import annotations
 
