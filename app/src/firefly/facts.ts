@@ -6,6 +6,7 @@
 import { communityThreats, type CommunityThreat } from "../data/communityRisk";
 import type { Hotspot, Perimeter } from "../data/cwfis";
 import type { FireGrowth } from "../data/fireHistory";
+import { fireHotspots, heatClusters } from "../data/firePoints";
 import { fireSources, spreadSources, type FireSource } from "../data/fireSpread";
 import { SIM_WEATHER_BOOST } from "../data/hazards";
 import { weatherAt, type DayWeather, type WeatherGrid } from "../data/openMeteo";
@@ -144,30 +145,19 @@ export interface HeatDetection extends FireSource {
   likelyFarmOrControlledBurn: boolean;
 }
 
-/** A cluster this weak and mostly on farmland is most likely a stubble or slash burn. */
-const FARM_SHARE = 0.5, FARM_MAX_FRP_MW = 25;
 
 /**
  * Satellite heat in the focus regions (real hotspots only): active CWFIS perimeters and hotspot
  * clusters, each with its hotspot count, strongest FRP and farmland share.
  */
 export function heatDetections(s: FactsSnapshot): HeatDetection[] {
-  const real = s.hotspots.filter((h) => h.agency !== "SIMULATION");
-  const fires = activeFires(s).filter((f) => !f.simulated);
-  const pts = real.map((h) => ({ h, ...project(h.lat, h.lng) }));
-  return fireSources(real, s.perimeters, s.now, s.fireGrowth)
-    .filter((f) => inFocus(s, f.lat, f.lng))
-    .map((f) => {
-      const mine = pts.filter((p) => Math.hypot(p.x - f.x, p.z - f.z) <= f.r0 + 1).map((p) => p.h);
-      const farmShare = mine.length ? mine.filter((h) => h.fuel.toLowerCase() === "farm").length / mine.length : 0;
-      const maxFrpMw = mine.reduce((m, h) => Math.max(m, h.frp || 0), 0);
-      const official = fires.find((o) => Math.hypot(o.x - f.x, o.z - f.z) <= o.r0 + f.r0 + 5);
-      return {
-        ...f, fid: f.id ?? `heat-${f.lat.toFixed(2)},${f.lng.toFixed(2)}`,
-        hotspots: mine.length, maxFrpMw: r1(maxFrpMw), farmShare: r1(farmShare), officialFire: official?.fid ?? null,
-        likelyFarmOrControlledBurn: !official && f.kind === "hotspots" && farmShare >= FARM_SHARE && maxFrpMw < FARM_MAX_FRP_MW,
-      };
-    });
+  // Same clusters and farm-burn rule the map and every panel use (data/firePoints.ts).
+  return heatClusters(s.hotspots, s.reported, s.perimeters, s.now, s.fireGrowth)
+    .filter((c) => inFocus(s, c.lat, c.lng))
+    .map(({ members, official, farmShare, maxFrpMw, ...c }) => ({
+      ...c, fid: c.id ?? `heat-${c.lat.toFixed(2)},${c.lng.toFixed(2)}`,
+      hotspots: members.length, maxFrpMw: r1(maxFrpMw), farmShare: r1(farmShare), officialFire: official?.id ?? null,
+    }));
 }
 
 function nearestPlace(s: FactsSnapshot, lat: number, lng: number) {
@@ -197,7 +187,7 @@ const dayView = (s: FactsSnapshot, d: DayWeather, i: number) => ({
 export function threatsFor(s: FactsSnapshot, day: number): CommunityThreat[] {
   return communityThreats({
     places: s.places.filter((p) => !p.landmark && s.focus.has(p.region)),
-    hotspots: s.hotspots, perimeters: s.perimeters, weather: s.weather, day,
+    hotspots: fireHotspots(s.hotspots, s.reported, s.perimeters, s.now), perimeters: s.perimeters, weather: s.weather, day,
     boost: s.simulation ? SIM_WEATHER_BOOST : 1, spread: s.spread, growth: s.fireGrowth, now: s.now,
   });
 }

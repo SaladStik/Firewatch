@@ -2,6 +2,7 @@
  * Single bottom dock: sitrep + forecast day + threat chips.
  * One panel instead of five stacked bars so the map stays open.
  */
+import { fireHotspotsOf } from "../state/fires";
 import { useMemo } from "react";
 import { AlertTriangle, MapPin, Truck, Wind } from "lucide-react";
 import { airAt } from "../data/airQuality";
@@ -46,6 +47,8 @@ function Metric({ label, value, color, title }: { label: string; value: string |
 
 export function StatusDock({ engine, embedded }: { engine: Engine | null; embedded?: boolean }) {
   const hotspots = useStore(app, (s) => s.hotspots);
+  /** Heat that counts as fire, for smoke here (state/fires.ts); `hotspots` stays raw heat for the count. */
+  const fireHeat = useStore(app, fireHotspotsOf);
   const reportedFires = useStore(app, (s) => s.reportedFires);
   const perimeters = useStore(app, (s) => s.perimeters);
   const weather = useStore(app, (s) => s.weather);
@@ -97,8 +100,8 @@ export function StatusDock({ engine, embedded }: { engine: Engine | null; embedd
   const airHere = useMemo(() => {
     if (!airOn || focusPt == null) return null;
     const fires = sim
-      ? [...hotspots, ...regions.flatMap((r) => simulatedHotspots(r.demoSites))]
-      : hotspots.filter((h) => h.agency !== "SIMULATION");
+      ? [...fireHeat, ...regions.flatMap((r) => simulatedHotspots(r.demoSites))]
+      : fireHeat.filter((h) => h.agency !== "SIMULATION");
     const reading = airAt(focusPt.lat, focusPt.lng, {
       hotspots: fires, perimeters, weather, day, spread, growth,
     });
@@ -110,7 +113,7 @@ export function StatusDock({ engine, embedded }: { engine: Engine | null; embedd
       if (d < best) { best = d; label = p.name; }
     }
     return { ...reading, label };
-  }, [airOn, focusPt, places, hotspots, perimeters, weather, day, spread, growth, sim, regions]);
+  }, [airOn, focusPt, places, fireHeat, perimeters, weather, day, spread, growth, sim, regions]);
 
   const airOthers = useMemo(() => {
     if (!airOn) return [];

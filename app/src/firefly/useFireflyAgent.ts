@@ -49,6 +49,8 @@ const READ_AFTER_S = 6;
 const LINE_FALLBACK_MS = 1200;
 /** How long to wait for the agent's first reply before answering from the data (ms). */
 const AGENT_TIMEOUT_MS = 25_000;
+/** How long a session may take to connect before the question is answered from the data (ms). */
+const CONNECT_TIMEOUT_MS = 8_000;
 /** After the model fails, try it again after this long (ms). */
 const LLM_RETRY_MS = 60_000;
 /** After the focus or forecast day changes, how long to wait for the new projection before alerting again (ms). */
@@ -75,6 +77,8 @@ export function useFireflyAgent(engine: Engine | null) {
   const moodRef = useRef<MoodName>("idle");
   /** The microphone was refused: sessions run text-only (no voice) from then on. */
   const textOnly = useRef(false);
+  /** The session is being restarted text-only (its disconnect isn't a failure). */
+  const retryingTextOnly = useRef(false);
   /** Messages typed before the session finished connecting; sent on connect. */
   const queue = useRef<string[]>([]);
   /** The agent failed (no network, quota, misconfigured): answer offline until it connects again. */
@@ -133,6 +137,7 @@ export function useFireflyAgent(engine: Engine | null) {
       // A voice session needs the microphone even for typed questions. Blocked: answer in text.
       if (!textOnly.current && /permission|notallowed|microphone|getusermedia/i.test(String(message))) {
         textOnly.current = true;
+        retryingTextOnly.current = true;
         push({ from: "alert", text: "The microphone is blocked, so Firefly will answer in text. Allow the microphone for this site to hear him talk." });
         window.setTimeout(() => deliver(), 300);
         return;
@@ -146,7 +151,18 @@ export function useFireflyAgent(engine: Engine | null) {
       if (q) answerOfflineRef.current(q);
     },
     // Don't leave him stuck "thinking" if the session ends before he answers.
-    onDisconnect: () => fireflyController().setMood(moodRef.current),
+    // A session that drops while a question waits (agent unreachable, closed without an error)
+    // answers it from the data now instead of after the timeout. textOnly's own reconnect is spared.
+    onDisconnect: () => {
+      fireflyController().setMood(moodRef.current);
+      const q = pending.current;
+      if (!q || retryingTextOnly.current) { retryingTextOnly.current = false; return; }
+      agentDown.current = true;
+      queue.current = [];
+      pending.current = "";
+      push({ from: "alert", text: "Firefly's AI isn't reachable: answering from the map's data." });
+      answerOfflineRef.current(q);
+    },
   });
   // The hook returns a new object every render: callbacks and effects read the latest through this ref.
   const convoRef = useRef(convo);
@@ -302,6 +318,15 @@ export function useFireflyAgent(engine: Engine | null) {
     pending.current = trimmed;
     fireflyController().setMood("thinking");
     deliver(trimmed);
+    // Never connected (agent unreachable: some failures report no error): answer from the data now.
+    window.setTimeout(() => {
+      if (pending.current !== trimmed || convoRef.current.status === "connected") return;
+      agentDown.current = true;
+      pending.current = "";
+      queue.current = [];
+      push({ from: "alert", text: "Firefly's AI isn't reachable: answering from the map's data." });
+      answerOfflineRef.current(trimmed);
+    }, CONNECT_TIMEOUT_MS);
     // No answer from the agent in time (stalled session, missing tool): answer from the data instead.
     window.setTimeout(() => {
       if (pending.current !== trimmed) return;

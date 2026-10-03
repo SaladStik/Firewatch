@@ -2,6 +2,7 @@
  * Duty checklist: schools, hospitals, industrial sites, and power near the
  * fire closest to the selected hex. Check off notify / evacuate / clear.
  */
+import { fireHotspotsOf } from "../state/fires";
 import { useEffect, useMemo, useState } from "react";
 import { Building2, Check, Factory, Hospital, School, Zap } from "lucide-react";
 import { ASSET_KIND_ORDER, ASSET_LABEL, assetsForRegions, type AssetKind } from "../data/criticalAssets";
@@ -93,7 +94,8 @@ function ItemRow({
 
 export function ValuesAtRisk({ engine }: { engine: Engine | null }) {
   const selected = useStore(app, (s) => s.selected);
-  const hotspots = useStore(app, (s) => s.hotspots);
+  // Heat that counts as fire (likely farm burns left out, reported fires added): state/fires.ts.
+  const hotspots = useStore(app, fireHotspotsOf);
   const perimeters = useStore(app, (s) => s.perimeters);
   const weather = useStore(app, (s) => s.weather);
   const day = useStore(app, (s) => s.forecastDay);

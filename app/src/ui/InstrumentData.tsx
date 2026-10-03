@@ -1,4 +1,5 @@
 /** Station list with the same Open-Meteo weather and Canadian FWI the map uses. */
+import { fireHotspotsOf } from "../state/fires";
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import stations from "../../../wildfire/instruments.json";
@@ -207,7 +208,8 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
   const weather = useStore(app, (s) => s.weather);
   const day = useStore(app, (s) => s.forecastDay);
   const status = useStore(app, (s) => s.dataStatus);
-  const hotspots = useStore(app, (s) => s.hotspots);
+  // Heat that counts as fire (likely farm burns left out, reported fires added): state/fires.ts.
+  const hotspots = useStore(app, fireHotspotsOf);
   const perimeters = useStore(app, (s) => s.perimeters);
   const spread = useStore(app, (s) => s.spread);
   const growth = useStore(app, (s) => s.fireGrowth);
