@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planRequest } from "../src/agent/rules.ts";
+import { needsModel, planRequest } from "../src/agent/rules.ts";
 import { explainReply, renderReply, UNKNOWN_REPLY } from "../src/agent/reply.ts";
 import type { Brief, BriefPlace, ExplainFacts, Plan } from "../src/agent/types.ts";
 import type { Layers } from "../src/state/app.ts";
@@ -205,4 +205,36 @@ test("a layer that's already in that state says so instead of the help text", ()
   const plan = planRequest("turn on traffic", brief());
   assert.equal(plan.reply, "already");
   assert.equal(renderReply(plan, []), "Traffic is already on.");
+});
+
+test("accented names don't match plain words, and still match when said", () => {
+  const b = brief({ places: [...brief().places, place({ name: "Whatì", pop: 500, lat: 63.1, lng: -117.3, regionId: "northwest-territories", focused: false })] });
+  assert.ok(!planRequest("what is that", b).calls.some((c) => c.tool === "flyToPlace"));
+  const fly = planRequest("fly to whati", b).calls.find((c) => c.tool === "flyToPlace");
+  assert.ok(fly && fly.tool === "flyToPlace" && fly.args.name === "Whatì");
+});
+
+test("a hotspot question lists the heat instead of only setting the forecast", () => {
+  const plan = planRequest("are there any hotspots today?", brief({ forecastDay: 3 }));
+  assert.equal(plan.reply, "fires");
+  assert.ok(plan.calls.some((c) => c.tool === "listFires" && c.args.heatFirst));
+  assert.deepEqual(tools("turn hotspots off"), ["setLayer"]);
+});
+
+test("a risk question about a place is answered, not just flown to", () => {
+  for (const q of ["is calgary risky today?", "is calgary safe?", "risk in calgary", "is fort mcmurray at risk"]) {
+    const plan = planRequest(q, brief());
+    assert.equal(plan.reply, "explain", q);
+    assert.ok(plan.calls.some((c) => c.tool === "explain"), q);
+  }
+});
+
+test("with Firefly available, questions go to him (spoken); map commands stay local", () => {
+  const goesToModel = (q: string) => needsModel(q, planRequest(q, brief()));
+  for (const q of ["How risky is Calgary?", "is calgary risky today?", "Which communities are at risk?", "Where is the largest fire?", "will it rain in calgary", "calgary?", "active fires in alberta"]) {
+    assert.ok(goesToModel(q), q);
+  }
+  for (const q of ["show me calgary", "focus alberta", "turn wind on", "take me to the largest fire"]) {
+    assert.ok(!goesToModel(q), q);
+  }
 });

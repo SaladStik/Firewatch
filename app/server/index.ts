@@ -48,6 +48,7 @@ import { fetchFwiStations, fetchHotspots, fetchPerimeters, type Perimeter } from
 import { fetchFireHistory } from "../src/data/fireHistory";
 import { fetchOpen311 } from "../src/data/calgary311";
 import { fetchFireAircraft } from "../src/data/aircraft";
+import { fetchReportedFires } from "../src/data/reportedFires";
 import type { Site } from "../src/dispatch/cityContext";
 import { Worker } from "node:worker_threads";
 import { makeFwiSeed } from "../src/data/fwiSeed";
@@ -216,6 +217,8 @@ function scoreSites(rows: unknown[], fetchedAt: string): Promise<Record<string, 
     w.postMessage({ id, rows, fetchedAt });
   });
 }
+/** Agency-reported fires (NRCan's national list), every agency, refreshed with the fire data. */
+const reported = new Cached("reported", TTL.fires, () => fetchReportedFires([...new Set(REGION_LIST.map((r) => r.code))]));
 /** Firefighting aircraft in the air right now (adsb.lol), refreshed every 2 minutes. */
 const aircraft = new Cached("aircraft", 2 * MIN, () => fetchFireAircraft());
 const calgary311 = new Cached("calgary311", TTL.fires, async () => {
@@ -354,7 +357,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const status = (c: Cached<unknown>) => ({ fresh: c.fresh, fetchedAt: c.fetchedAt ? new Date(c.fetchedAt).toISOString() : null, error: c.lastError || null });
     return sendJson(req, res, 200, {
       ok: true,
-      hotspots: status(hotspots as Cached<unknown>), perimeters: status(perimeters as Cached<unknown>), stations: status(stations as Cached<unknown>), calgary311: status(calgary311 as Cached<unknown>), aircraft: status(aircraft as Cached<unknown>),
+      hotspots: status(hotspots as Cached<unknown>), perimeters: status(perimeters as Cached<unknown>), stations: status(stations as Cached<unknown>), calgary311: status(calgary311 as Cached<unknown>), reported: status(reported as Cached<unknown>), aircraft: status(aircraft as Cached<unknown>),
       weather: Object.fromEntries([...weather].map(([id, c]) => [id, status(c)])),
       fireHistories: histories.size,
       ai: aiStatus(),
@@ -365,6 +368,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (p === "/api/cwfis/stations") return serve(req, res, stations as Cached<unknown>);
   if (p === "/api/calgary311/open") return serve(req, res, calgary311 as Cached<unknown>);
   if (p === "/api/aircraft") return serve(req, res, aircraft as Cached<unknown>);
+  if (p === "/api/cwfif/reported") return serve(req, res, reported as Cached<unknown>);
   if (p === "/api/ai") return sendJson(req, res, 200, aiStatus());
 
   const wx = p.match(/^\/api\/weather\/([a-z-]+)$/);
@@ -399,7 +403,7 @@ server.headersTimeout = 70_000;
 
 // Keep the most-used data warm in the background so devices never wait on a source.
 async function warm() {
-  await Promise.allSettled([hotspots.get(), perimeters.get(), stations.get(), calgary311.get()]);
+  await Promise.allSettled([hotspots.get(), perimeters.get(), stations.get(), reported.get(), calgary311.get()]);
   for (const id of PREWARM) {
     const r = REGION_LIST.find((x) => x.id === id);
     if (r) await weatherFor(r).get().catch(() => {});
@@ -417,7 +421,7 @@ server.listen(PORT, () => {
   console.log(`FIRE//WATCH data server`);
   console.log(`  This machine:   http://localhost:${PORT}`);
   for (const ip of lanAddresses()) console.log(`  Other devices:  http://${ip}:${PORT}`);
-  console.log(`  API:  /api/health, /api/cwfis/{hotspots,perimeters,stations}, /api/weather/<region>, /api/fire-history/<id>`);
+  console.log(`  API:  /api/health, /api/cwfis/{hotspots,perimeters,stations}, /api/cwfif/reported, /api/weather/<region>, /api/fire-history/<id>`);
   console.log(`  Site: ${existsSync(DIST) ? DIST : "(not built — run npm run build to serve it here)"}`);
   const ai = aiStatus();
   console.log(`  Firefly AI: ${ai.available ? `${ai.provider} ${ai.model}` : "(not configured: set DATABRICKS_HOST and DATABRICKS_TOKEN)"}`);

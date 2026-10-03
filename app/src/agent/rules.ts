@@ -52,7 +52,8 @@ const LAYER_WORDS: { key: keyof Layers; word: string }[] = [
 ];
 
 function norm(text: string): string {
-  return text.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  // Strip accents first, so "Whatì" is "whati" rather than "what" (which matched the word "what").
+  return text.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function hasPhrase(text: string, phrase: string): boolean {
@@ -178,8 +179,13 @@ function wantsThreats(text: string): boolean {
   return /\bat risk\b/.test(text) || (/\b(communities|towns)\b/.test(text) && /\b(risk|threatened|danger)\b/.test(text));
 }
 
+/** A question about hotspots (not a layer toggle): "any hotspots today?", "how many hotspots". */
+function wantsHeat(text: string): boolean {
+  return /\b(any|how many|are there|list|what|which|where are)\b.*\b(hotspots?|heat detections?)\b/.test(text);
+}
+
 function wantsFireList(text: string): boolean {
-  return /\b(active fires|list fires|what fires|which fires)\b/.test(text);
+  return /\b(active fires|list fires|what fires|which fires|(any|how many|list) (wild)?fires)\b/.test(text) || wantsHeat(text);
 }
 
 function wantsLargestFire(text: string): boolean {
@@ -188,6 +194,11 @@ function wantsLargestFire(text: string): boolean {
 
 function wantsExplain(text: string): boolean {
   return /\b(how risky|how dangerous|fire danger|fwi|explain|weather)\b/.test(text) || /\bwhat(?:s| is) the risk\b/.test(text);
+}
+
+/** Asking about a place's risk in other words: "is calgary risky / safe", "risk in calgary". */
+function asksRisk(text: string): boolean {
+  return /\b(risky|dangerous|danger|safe|unsafe|risk|at risk|dry|windy)\b/.test(text);
 }
 
 function leftoverQuery(text: string): string {
@@ -236,10 +247,12 @@ export function planRequest(raw: string, brief: Brief): Plan {
   const day = forecastDay(text, brief.today);
   const layers = layerChanges(text);
   const sim = simulationChange(text);
-  const threats = wantsThreats(text);
+  // "is kelowna at risk" is about Kelowna, not the list of every community at risk.
+  const aboutPlace = !!place && !/\b(communities|towns|places)\b/.test(text);
+  const threats = wantsThreats(text) && !aboutPlace;
   const fires = wantsFireList(text) && !wantsLargestFire(text);
   const toFire = wantsLargestFire(text);
-  const explain = wantsExplain(text);
+  const explain = wantsExplain(text) || (aboutPlace && !layers.length && !fires && asksRisk(text));
 
   const calls: ToolCall[] = [];
   const namedRegions = findRegions(text, brief.regions);
@@ -269,7 +282,7 @@ export function planRequest(raw: string, brief: Brief): Plan {
     calls.push({ tool: "flyToRegion", args: { index: region.index, name: region.name, regionId: region.id } });
   }
   if (threats) calls.push({ tool: "listThreats", args: {} });
-  if (fires) calls.push({ tool: "listFires", args: {} });
+  if (fires) calls.push({ tool: "listFires", args: { ...(region ? { regionIndex: region.index } : {}), ...(wantsHeat(text) ? { heatFirst: true } : {}) } });
   if (explain) {
     const aboutHere = /\b(here|this hex|this spot|selection|selected)\b/.test(text);
     const point = place
@@ -294,6 +307,19 @@ export function planRequest(raw: string, brief: Brief): Plan {
         ? "fires"
         : "done";
   return { calls: kept, reply };
+}
+
+/** Starts like a map command ("show me calgary", "focus bc", "turn wind on"). */
+const COMMAND = /^(show|fly|go|take|zoom|focus|turn|switch|set|enable|disable|hide|open|just|only|move|center|centre|start|stop|end)\b/;
+
+/**
+ * When a model (Firefly) is available, should it answer instead of this plan? Yes for anything
+ * that isn't a map command: Firefly answers out loud, while a local answer is only a silent
+ * bubble ("is calgary risky?" must not become "Flew to Calgary" either). Commands stay instant.
+ */
+export function needsModel(raw: string, plan: Plan): boolean {
+  if (plan.reply === "unknown" || plan.reply === "ambiguous") return true;
+  return !COMMAND.test(norm(raw));
 }
 
 export const ruleBrain: AgentBrain = { plan: planRequest };

@@ -9,10 +9,13 @@ import type { Hotspot, Perimeter } from "./cwfis";
 import { perimeterAt, reachScale, type FireGrowth } from "./fireHistory";
 import type { GrowthField } from "../world/fireGrowth";
 import type { RainBlob } from "./rain";
+import type { ReportedFire } from "./reportedFires";
 import { weatherAt, type WeatherGrid } from "./openMeteo";
 
 export interface HazardInputs {
   hotspots: Hotspot[];
+  /** Agency-reported fires; only out-of-control ones are painted "Out of control". */
+  reportedFires: Pick<ReportedFire, "lat" | "lng" | "sizeHa" | "stage">[];
   perimeters: Perimeter[];
   weather: WeatherGrid[];
   /** Forecast day index into each cell's `days` (0 = today). */
@@ -28,6 +31,7 @@ export interface HazardInputs {
 }
 
 const ACTIVE_PERIMETER_DAYS = 5;
+const STAGE_CODE = { out_of_control: 0, being_held: 1, under_control: 2 } as const;
 /** Demo scenario: heatwave multiplier on weather risk. */
 export const SIM_WEATHER_BOOST = 1.35;
 
@@ -48,6 +52,12 @@ export function buildSnapshot(inp: HazardInputs): HazardSnapshot {
       const scale = fire ? reachScale(inp.growth![fire.id].k) : 1;
       return { ...project(h.lat, h.lng), frp: h.frp, fwi: h.fwi, ...downwind(calm ? 0 : wx.windFrom, calm ? 0 : wx.wind), scale };
     }),
+    // Hotspots are unconfirmed heat (often farm burns): only official fires get a fire status on
+    // the map, plus the demo scenario's simulated ignitions (out of control).
+    reported: [
+      ...inp.reportedFires.map((f) => ({ ...project(f.lat, f.lng), r: Math.sqrt(f.sizeHa / 100 / Math.PI), stage: STAGE_CODE[f.stage] })),
+      ...inp.hotspots.filter((h) => h.agency === "SIMULATION").map((h) => ({ ...project(h.lat, h.lng), r: 0, stage: 0 as const })),
+    ],
     perimeters: inp.perimeters.map((p) => {
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
       const rings = p.rings.map((ring) => {

@@ -74,7 +74,7 @@ Code: `riskFromFwi`.
 
 Each hex's risk is built in order:
 
-1. **A hotspot inside the hex:** "Active fire", risk 1. Satellite pixels are about 375 m.
+1. **An agency-reported fire touching the hex:** "Out of control" (risk 1), "Being held" (0.95) or "Under control" (0.6), the worst stage winning. Fires come from the national fire list (Natural Resources Canada, the same data as CIFFC); the fire's reported hectares set its radius. Satellite hotspots are unconfirmed heat detections (often farm or controlled burns), so they never set a fire status; they still raise risk around them (below).
 2. **Inside a perimeter updated in the last 5 days:** "Active perimeter".
 3. **Otherwise:** weather risk (§2) × the **fuel load** of the hex's land type:
 
@@ -107,11 +107,11 @@ Code: `world/hazardField.ts`, `world/spread.ts`.
 
 ### 4.1 Which fires
 
-The model projects two kinds of fire:
-- **Mapped fires:** every CWFIS perimeter updated in the last 5 days.
-- **New fires:** clusters of hotspots within 3 km of each other that aren't already inside a perimeter.
+The model projects agency-reported fires (national fire list) that are **out of control** or **being held**. Under-control fires are contained, and satellite hotspots are unconfirmed heat (often farm or controlled burns), so neither is projected.
+- **In a mapped perimeter:** a fire inside a CWFIS perimeter updated in the last 5 days starts from that perimeter's size and growth history (§5).
+- **Otherwise:** it starts as a circle of its reported hectares, at least one satellite pixel (0.4 km) across.
 
-Each starts at its current size. Code: `data/fireSpread.ts`.
+Code: `spreadSources` in `data/fireSpread.ts`. The demo scenario adds its simulated ignitions.
 
 ### 4.2 Rate of spread: the FBP System
 
@@ -174,7 +174,7 @@ Models are general; each fire isn't. For every active perimeter in a focused pro
 3. **Predict the same days.** Run the same FBP model over the last 5 days using the weather that **actually happened** there (Open-Meteo's past days), to get **modelled radial growth**.
 4. **Calibration factor** *k* = observed ÷ modelled, limited to 0.2–4. A fire that has been crawling gets *k* < 1 and is projected about one hex; one that has been running gets *k* > 1 and is projected several.
 5. **Confidence.** It rises with the number of days the fire actually grew (full at 4). *k* is blended toward 1 when there's little history: *k*^confidence.
-6. **Where it's used:** *k* multiplies that fire's spread rates in §4. Its square root, limited to 0.6–1.6, scales the fire's proximity reach in §3 and §6. New hotspot clusters have no history, so they use *k* = 1.
+6. **Where it's used:** *k* multiplies that fire's spread rates in §4. Its square root, limited to 0.6–1.6, scales the fire's proximity reach in §3 and §6. Fires outside a perimeter (and hotspots, for their reach) have no history, so they use *k* = 1.
 
 Click a fire hex to see its burned area, recent observed vs. modelled growth, and its *k*.
 

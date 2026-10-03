@@ -53,7 +53,8 @@ export const TOOL_SPECS = [
     roads_crews: int("Default 5."), waste_crews: int("Default 3."), jobs_per_crew: int("Default 5."), disruption: str("Noon disruption.", { enum: ["none", "blizzard", "sick"] }),
   }),
   fn("open_dispatch", "Open the Dispatch panel on a tab.", { tab: str("Which tab.", { enum: ["crews", "311"] }) }, ["tab"]),
-  fn("fly_to", "Move the map to a community or fire (and Firefly with it).", { place: str("Community."), fire_id: str("Fire id from list_fires.") }),
+  fn("find_risk_areas", "Find the map's High and Extreme danger zones for a forecast day (unnamed areas of the risk layer), worst first, each with its nearest town, size, peak risk and cause; shows the worst one.", { day: int("0–7; omit for the day on the map.") }),
+  fn("fly_to", "Move the map to a community, fire or danger zone (and Firefly with it). Give one.", { place: str("Community."), fire_id: str("Fire id from list_fires."), zone: int("Zone number from find_risk_areas.") }),
   fn("set_forecast_day", "Show a forecast day on the map (0 = today, 1–7 days ahead).", { day: int("0–7.") }, ["day"]),
   fn("set_layer", "Show or hide a map layer.", { layer: str("Layer.", { enum: ["risk", "fires", "spread", "air", "traffic", "beacons", "wind", "rain", "bloom"] }), on: { type: "boolean" } }, ["layer", "on"]),
   fn("set_regions", "Set which provinces are in focus. \"only\" replaces the set (\"just BC\"), \"add\" turns more on, \"remove\" turns some off (at least one stays).", {
@@ -125,7 +126,7 @@ export function describeCall(name: string, a: Json): string {
   if (name === "do_dispatch") return action[s("action")] ?? "Updating dispatch";
   const other: Record<string, string> = {
     get_briefing: "Reading the situation", get_place_report: `Checking ${s("place")}`, list_fires: "Listing fires", get_fire_details: `Projecting ${s("fire_id")}`,
-    explain_location: "Explaining the risk", plan_crews: "Ranking fires for crews", plan_311: "Planning 311 crews", open_dispatch: "Opening Dispatch",
+    explain_location: "Explaining the risk", find_risk_areas: "Finding the danger areas", plan_crews: "Ranking fires for crews", plan_311: "Planning 311 crews", open_dispatch: "Opening Dispatch",
     fly_to: `Flying to ${s("place") || s("fire_id")}`, set_forecast_day: "Changing the forecast day", set_layer: "Changing the map", set_regions: "Changing the provinces in focus", flag_patrol: "Flagging for patrol", set_demo_mode: "Switching the demo",
   };
   return other[name] ?? name;

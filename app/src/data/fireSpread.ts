@@ -1,8 +1,8 @@
 /**
  * Fires to project, and the inputs the growth model needs for each (world/fireGrowth.ts).
  *
- * A fire is an active CWFIS perimeter, or a cluster of satellite hotspots (within 3 km of each
- * other) not already inside one. Each carries its current radius, its growth calibration `k`
+ * Projected fires are agency-reported ones (spreadSources). fireSources groups satellite heat:
+ * active CWFIS perimeters, and clusters of hotspots (within 3 km of each other) not inside one. Each carries its current radius, its growth calibration `k`
  * (data/fireHistory.ts) and, per forecast day, the FWI System values and wind at the fire.
  * The projection itself runs on the fuel map in the worker.
  */
@@ -26,7 +26,7 @@ export interface FireSource {
   lng: number;
   /** Current fire radius (km). */
   r0: number;
-  kind: "perimeter" | "hotspots";
+  kind: "perimeter" | "hotspots" | "reported";
   /** Growth calibration from this fire's own history (data/fireHistory.ts); 1 = model as is. */
   k: number;
   /** Perimeter id, when the source is a mapped perimeter. */
@@ -65,6 +65,35 @@ export function fireSources(hotspots: Pick<Hotspot, "lat" | "lng">[], perimeters
   return out;
 }
 
+/** Stages that get a projected spread: under-control fires are contained. */
+const SPREADING = new Set(["out_of_control", "being_held"]);
+
+/**
+ * Fires to project: agency-reported fires that are out of control or being held (hotspots are
+ * unconfirmed heat, often farm burns, so they don't spread). A fire inside an active CWFIS
+ * perimeter takes the perimeter's centre, size and growth history; two fires in one perimeter
+ * project once.
+ */
+export function spreadSources(
+  reported: { lat: number; lng: number; sizeHa: number; stage: string }[],
+  perimeters: Perimeter[], now = Date.now(), growth: Record<string, { k: number }> = {},
+): FireSource[] {
+  const perims = fireSources([], perimeters, now, growth);
+  const used = new Set<string>();
+  const out: FireSource[] = [];
+  for (const f of reported) {
+    if (!SPREADING.has(f.stage)) continue;
+    const w = project(f.lat, f.lng);
+    const p = perims.find((q) => Math.hypot(q.x - w.x, q.z - w.z) <= q.r0 + 2);
+    if (p) {
+      if (!used.has(p.id!)) out.push({ ...p, kind: "reported" });
+      used.add(p.id!);
+      continue;
+    }
+    out.push({ ...w, lat: f.lat, lng: f.lng, r0: Math.max(MIN_R0_KM, Math.sqrt(f.sizeHa / 100 / Math.PI)), kind: "reported", k: 1 });
+  }
+  return out;
+}
 
 /**
  * Growth-model input per fire for days 0..`horizon`: that day's FWI values and wind at the fire,

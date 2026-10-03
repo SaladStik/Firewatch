@@ -27,7 +27,7 @@ const terrain = new TerrainStack();
 const overlays: OverlayIndex[] = [];
 /** Per-region street-level lines, fetched as tiles on demand. */
 const details: DetailTiles[] = [];
-let hazards = new HazardField({ hotspots: [], perimeters: [], weather: [], spread: null, rain: [] });
+let hazards = new HazardField({ hotspots: [], reported: [], perimeters: [], weather: [], spread: null, rain: [] });
 
 async function decode(blob: Blob): Promise<Uint8ClampedArray> {
   const bmp = await createImageBitmap(blob, { premultiplyAlpha: "none", colorSpaceConversion: "none" });
@@ -280,6 +280,18 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
           }
         }
         reply(found);
+        break;
+      }
+      case "riskScan": {
+        const n = msg.nx * msg.nz;
+        const risk = new Float32Array(n), status = new Uint8Array(n);
+        for (let j = 0; j < msg.nz; j++) for (let i = 0; i < msg.nx; i++) {
+          const x = msg.x0 + i * msg.step, z = msg.z0 + j * msg.step;
+          const e = hazards.evaluate(x, z, terrain.landAt(x, z), msg.step);
+          risk[j * msg.nx + i] = e.risk;
+          status[j * msg.nx + i] = e.status;
+        }
+        reply({ risk, status }, [risk.buffer, status.buffer]);
         break;
       }
       case "sample": {

@@ -18,6 +18,7 @@ import type { Region } from "../config/regions";
 import { fetchFwiStations, fetchHotspots, fetchPerimeters, type FwiStation, type Hotspot, type Perimeter } from "./cwfis";
 import { fetchFireHistory, type FireHistory } from "./fireHistory";
 import { fetchOpen311 } from "./calgary311";
+import { fetchReportedFires, type ReportedFire } from "./reportedFires";
 import type { LiveAircraft } from "./aircraft";
 import type { Row311 } from "../dispatch/ops311";
 import { fetchWeatherGrid, type FwiSeed, type WeatherGrid } from "./openMeteo";
@@ -49,6 +50,15 @@ async function api<T>(path: string): Promise<T> {
 export const loadHotspots = (bbox: BBox): Promise<Hotspot[]> => (usingDataServer ? api("/cwfis/hotspots") : fetchHotspots(bbox));
 /** Current-season fire perimeters. */
 export const loadPerimeters = (bbox: BBox): Promise<Perimeter[]> => (usingDataServer ? api("/cwfis/perimeters") : fetchPerimeters(bbox));
+/**
+ * Agency-reported fires this season. The server keeps every agency's; the page keeps the ones it
+ * asked for (plus Parks Canada, as fetchReportedFires does).
+ */
+export async function loadReportedFires(agencies: string[]): Promise<ReportedFire[]> {
+  if (!usingDataServer) return fetchReportedFires(agencies);
+  const keep = new Set([...agencies.map((a) => a.toUpperCase()), "PC"]);
+  return (await api<ReportedFire[]>("/cwfif/reported")).filter((f) => keep.has(f.agency));
+}
 /** Fire weather stations' observed FWI codes. */
 export const loadStations = (): Promise<FwiStation[]> => (usingDataServer ? api("/cwfis/stations") : fetchFwiStations());
 /**

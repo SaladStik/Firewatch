@@ -2,6 +2,7 @@
 import { initialFocus, REGIONS, WORKSPACE, type Region } from "../config/regions";
 import type { Hotspot, Perimeter } from "../data/cwfis";
 import type { FireGrowth } from "../data/fireHistory";
+import type { ReportedFire } from "../data/reportedFires";
 import type { GrowthField } from "../world/fireGrowth";
 import type { WeatherGrid } from "../data/openMeteo";
 import type { Place } from "../data/places";
@@ -64,8 +65,10 @@ export interface AppState {
   layers: Layers;
   hotspots: Hotspot[];
   perimeters: Perimeter[];
+  /** Agency-reported fires (not extinguished) in the loaded regions: the source of truth for active fires. */
+  reportedFires: ReportedFire[];
   weather: WeatherGrid[];
-  dataStatus: { cwfis: "loading" | "ok" | "error"; weather: "loading" | "ok" | "error"; at?: string; /** Why weather failed (shown in the forecast bar). */ weatherError?: string };
+  dataStatus: { cwfis: "loading" | "ok" | "error"; weather: "loading" | "ok" | "error"; reported?: "ok" | "error"; at?: string; /** Why weather failed (shown in the forecast bar). */ weatherError?: string };
   simulation: boolean;
   /** Forecast slider: 0 = today, 1..7 = days ahead. Fires stay as observed now. */
   forecastDay: number;
@@ -98,6 +101,7 @@ export const app = createStore<AppState>({
   layers: { risk: true, fires: true, spread: true, air: true, traffic: true, beacons: true, wind: true, rain: true, bloom: false },
   hotspots: [],
   perimeters: [],
+  reportedFires: [],
   weather: [],
   dataStatus: { cwfis: "loading", weather: "loading" },
   simulation: false,
