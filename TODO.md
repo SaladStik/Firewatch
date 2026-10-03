@@ -9,7 +9,7 @@ The voice agent's settings live in [`app/src/firefly/AGENT.md`](app/src/firefly/
 - [ ] **[Minh]** Add the `ask_data` client tool. Parameters are in the AGENT.md tool table. Turn "Wait for response" on.
 - [ ] **[Minh]** Add the `do_dispatch` client tool, the same way.
 - [ ] **[Minh]** Add the `set_regions` client tool (from PR #15), and add `air`, `traffic` and `bloom` to `set_layer`'s layer list.
-- [ ] **[Minh]** Check the agent has all 16 client tools, with names and parameters matching the AGENT.md table. `tests/llm.test.ts` keeps that table in sync with the code, so the table is the source of truth.
+- [ ] **[Minh]** Check the agent has all 18 client tools (including `find_risk_areas` from PR #16), with names and parameters matching the AGENT.md table. `tests/llm.test.ts` keeps that table in sync with the code, so the table is the source of truth.
 - [ ] **[Minh]** Paste the new system prompt sections from AGENT.md: "Data questions" and "Dispatching".
 - [ ] **[Minh]** Add the deployed site's domain to the agent's allowlist. It rejects `localhost`, so test voice on the deployed site, or allow localhost temporarily.
 - [ ] **[Minh]** Live voice test: hold the mic and ask "what's next", "dispatch it", "potholes in Beltline", "mark that ticket urgent", "any water bombers flying?". In the ElevenLabs conversation log, check it called `ask_data` / `do_dispatch` rather than guessing.
