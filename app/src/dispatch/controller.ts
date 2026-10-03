@@ -14,7 +14,7 @@ import { project } from "../geo/projection";
 import { app } from "../state/app";
 import { FUEL_FOR_LAND } from "../world/fireGrowth";
 import { exposures, HAND_WEIGHTS, learnWeights, loadHistory, planCrews, type CrewFire, type PlaceLite, type RankInput } from "./crews";
-import { load311, plan311 } from "./ops311";
+import { load311, plan311, type Override } from "./ops311";
 import { dispatch, type DispatchState } from "./store";
 
 let engine: Engine | null = null;
@@ -136,7 +136,20 @@ export function setCrewOptions(patch: Partial<Pick<DispatchState, "source" | "cr
 export function recompute311() {
   const d = dispatch.get();
   if (!d.load311) return;
-  dispatch.set({ plan311: plan311(d.load311, { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption }) });
+  dispatch.set({ plan311: plan311(d.load311, { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption, overrides: d.overrides }) });
+}
+
+/** Dispatcher override on one ticket (null clears it); the day is replanned at once. */
+export function setOverride(id: string, o: Override | null) {
+  const next = { ...dispatch.get().overrides };
+  if (o) next[id] = o; else delete next[id];
+  dispatch.set({ overrides: next });
+  recompute311();
+}
+
+export function openTickets(open = true) {
+  dispatch.set({ ticketsOpen: open });
+  if (open) void loadCases();
 }
 
 export function set311Options(patch: Partial<Pick<DispatchState, "roads" | "waste" | "perCrew" | "disruption" | "at">>) {

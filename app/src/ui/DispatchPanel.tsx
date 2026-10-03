@@ -7,7 +7,7 @@
 import { Flame, Snowflake, UserX, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { HAND_WEIGHTS, label, type Grade, type Scored, type Weights } from "../dispatch/crews";
-import { calgarySnowForecast, closeDispatch, flyTo, set311Options, setCrewOptions } from "../dispatch/controller";
+import { calgarySnowForecast, closeDispatch, flyTo, openTickets, set311Options, setCrewOptions } from "../dispatch/controller";
 import { dutyBriefing } from "../dispatch/crews";
 import { priority, supervisor8am, supervisorNoon, typeOf, type Disruption, type Score311, type Ticket } from "../dispatch/ops311";
 import { crewColor } from "../dispatch/colors";
@@ -217,7 +217,10 @@ function Ops311Tab() {
         <div className="text-[11px] text-ink-dim">Noon disruption</div>
         <Seg<Disruption> value={d.disruption} options={[["none", "None"], ["blizzard", "Blizzard"], ["sick", "Crew sick"]]} onChange={(disruption) => set311Options({ disruption, at: disruption === "none" ? "morning" : d.at })} />
         {snow && <p className="flex items-center gap-1.5 text-[11px] text-ink"><Snowflake size={12} /> Our forecast: {snow.mm.toFixed(1)} mm of snow in Calgary {snow.day === 0 ? "today" : snow.day === 1 ? "tomorrow" : "in 2 days"}. Plan for the blizzard.</p>}
-        <button type="button" onClick={() => flyTo(51.045, -114.06, 22)} className="border border-line px-2 py-1.5 text-[11px] text-ink-dim transition hover:border-phos hover:text-phos">Show Calgary</button>
+        <div className="flex gap-1.5">
+          <button type="button" onClick={() => flyTo(51.045, -114.06, 22)} className="flex-1 border border-line px-2 py-1.5 text-[11px] text-ink-dim transition hover:border-phos hover:text-phos">Show Calgary</button>
+          <button type="button" onClick={() => openTickets(!d.ticketsOpen)} className={`flex-1 border px-2 py-1.5 text-[11px] transition hover:border-phos hover:text-phos ${d.ticketsOpen ? "border-phos text-ink" : "border-line text-ink-dim"}`}>All tickets</button>
+        </div>
       </div>
 
       {d.load311 && (

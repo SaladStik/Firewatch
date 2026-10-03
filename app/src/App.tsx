@@ -11,6 +11,7 @@ import { dispatch } from "./dispatch/store";
 import { useStore } from "./state/store";
 import { DispatchPanel } from "./ui/DispatchPanel";
 import { DispatchPins } from "./ui/DispatchPins";
+import { TicketsView } from "./ui/TicketsView";
 import { Explore } from "./ui/Explore";
 import { InstrumentData } from "./ui/InstrumentData";
 import { LayerDock, Legend } from "./ui/Layers";
@@ -45,6 +46,7 @@ export default function App() {
   const [askOpen, setAskOpen] = useState(false);
   const [mapMenuOpen, setMapMenuOpen] = useState(false);
   const dispatchOpen = useStore(dispatch, (s) => s.open);
+  const ticketsOpen = useStore(dispatch, (s) => s.ticketsOpen);
 
   useEffect(() => {
     const e = new Engine();
@@ -121,6 +123,11 @@ export default function App() {
             </div>
           </div>
           </div>
+          {ticketsOpen && screen === "map" && (
+            <div className="pointer-events-auto h-full w-[min(56rem,62vw)] shrink-0">
+              <ErrorBoundary name="Tickets"><TicketsView /></ErrorBoundary>
+            </div>
+          )}
         </div>
       </div>
       {screen === "map" && <DispatchPins engine={engine} />}

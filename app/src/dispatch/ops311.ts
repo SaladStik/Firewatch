@@ -49,6 +49,8 @@ export function typeOf(service: string): { unit: Unit; safety: number; label: st
 
 export interface Load311 {
   open: Ticket[];
+  /** Every ticket in the file (open, closed, duplicates), for the ticket list. */
+  all: Ticket[];
   rows: number;
   closed: number;
   duplicates: number;
@@ -62,23 +64,33 @@ export interface Load311 {
 export function load311(csv: string): Load311 {
   const rows = parseCsv(csv);
   let closed = 0, duplicates = 0, dropped = 0;
-  const open: Ticket[] = [];
+  const open: Ticket[] = [], all: Ticket[] = [];
   for (const r of rows) {
     const lat = num(r.latitude), lng = num(r.longitude), date = (r.requested_date || "").slice(0, 10);
     if (lat == null || lng == null || !date) { dropped++; continue; }
+    const t: Ticket = { id: r.service_request_id, date, status: r.status_description, service: r.service_name, community: r.comm_name || "", lat, lng };
+    all.push(t);
     if (/duplicate/i.test(r.status_description)) { duplicates++; continue; }
     if (/closed/i.test(r.status_description)) { closed++; continue; }
-    open.push({ id: r.service_request_id, date, status: r.status_description, service: r.service_name, community: r.comm_name || "", lat, lng });
+    open.push(t);
   }
   const newest = open.reduce((m, t) => (t.date > m ? t.date : m), "");
   const today = newest ? new Date(Date.parse(`${newest}T12:00:00Z`) + 864e5).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-  return { open, rows: rows.length, closed, duplicates, dropped, today };
+  return { open, all, rows: rows.length, closed, duplicates, dropped, today };
 }
 
 const daysBetween = (a: string, b: string) => Math.max(0, Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 864e5));
 
+export const daysWaiting = (t: Ticket, today: string) => daysBetween(t.date, today);
+
+/** Dispatcher overrides: "urgent" jumps the queue, "hold" keeps a ticket out of today's plan. */
+export type Override = "urgent" | "hold";
+/** Priority boost for a ticket the dispatcher marked urgent (above any safety level). */
+export const URGENT_BOOST = 100;
+let overrides: Record<string, Override> = {};
+
 export function priority(t: Ticket, today: string): number {
-  return 10 * typeOf(t.service).safety + 2 * daysBetween(t.date, today);
+  return 10 * typeOf(t.service).safety + 2 * daysBetween(t.date, today) + (overrides[t.id] === "urgent" ? URGENT_BOOST : 0);
 }
 
 // ------------------------------------------------------------ crews and assignment
@@ -209,13 +221,16 @@ export interface Plan311 {
   scores: { fifo: Score311; morning: Score311; noon: Score311 | null };
 }
 
-export function plan311(load: Load311, opts: { roads?: number; waste?: number; perCrew?: number; disruption?: Disruption } = {}): Plan311 {
+export function plan311(load: Load311, opts: { roads?: number; waste?: number; perCrew?: number; disruption?: Disruption; overrides?: Record<string, Override> } = {}): Plan311 {
+  overrides = opts.overrides ?? {};
   const crews = makeCrews(opts.roads ?? 5, opts.waste ?? 3), perCrew = opts.perCrew ?? 5, today = load.today;
-  const fifo = assign(load.open, crews, perCrew, today, "fifo");
-  const morning = assign(load.open, crews, perCrew, today, "priority");
+  // Held tickets stay out of today's plans (both ours and the baseline's).
+  const open = load.open.filter((t) => overrides[t.id] !== "hold");
+  const fifo = assign(open, crews, perCrew, today, "fifo");
+  const morning = assign(open, crews, perCrew, today, "priority");
   const disruption = opts.disruption ?? "none";
-  let noonCrews = crews, tickets = load.open, added: Ticket[] = [];
-  if (disruption === "blizzard") { added = blizzardTickets(load.open, today); tickets = [...load.open, ...added]; }
+  let noonCrews = crews, tickets = open, added: Ticket[] = [];
+  if (disruption === "blizzard") { added = blizzardTickets(load.open, today); tickets = [...open, ...added.filter((t) => overrides[t.id] !== "hold")]; }
   if (disruption === "sick") {
     // The busiest Roads crew calls in sick.
     const busiest = crews.filter((c) => c.unit === "Roads").sort((a, b) => morning.routes.get(b.id)!.length - morning.routes.get(a.id)!.length)[0];

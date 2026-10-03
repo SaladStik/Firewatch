@@ -6,7 +6,7 @@
  */
 import { createStore } from "../state/store";
 import type { CrewPlan, HistoryLoad, Learned, RankInput } from "./crews";
-import type { Disruption, Load311, Plan311 } from "./ops311";
+import type { Disruption, Load311, Override, Plan311 } from "./ops311";
 
 export type DispatchTab = "crews" | "311";
 export type CrewSource = "history" | "live";
@@ -41,6 +41,10 @@ export interface DispatchState {
   plan311: Plan311 | null;
   /** 311 view: the 8 a.m. plan or the noon replan. */
   at: "morning" | "noon";
+  /** The full ticket list is open. */
+  ticketsOpen: boolean;
+  /** Dispatcher overrides by ticket id. */
+  overrides: Record<string, Override>;
 }
 
 export const dispatch = createStore<DispatchState>({
@@ -65,4 +69,6 @@ export const dispatch = createStore<DispatchState>({
   load311: null,
   plan311: null,
   at: "morning",
+  ticketsOpen: false,
+  overrides: {},
 });
