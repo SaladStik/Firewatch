@@ -476,34 +476,54 @@ All seasons together, 40 crews: biggest first reaches 15 escapes, FIRE//WATCH 28
 
 ### 13.2 Calgary 311 (Case 1)
 
-**Data.** 200 Open Calgary tickets: 78 closed and 3 duplicates leave 119 open. The plan is for the day after the newest ticket.
+**Data.** Two ticket sets:
+- **Live:** every open request of the crew field-work types in Open Calgary's 311 dataset, about 25,000 tickets plus 2,300 open duplicates. Refreshed every 10 minutes and planned for today.
+- **Case sample:** 200 tickets; 78 closed and 3 duplicates leave 119 open. Planned for the day after the newest ticket.
 
-**Priority.** `priority = 10 × safety × weather + 2 × days waiting + 3 × similar reports nearby`.
-- **Severity first.** A brand-new traffic-sign ticket (40) goes before a week-old parking sign (24). Waiting adds 2 a day so nothing waits forever: a level-1 ticket needs more than 10 days before it outranks a fresh pothole.
-- **Weather.** Calgary's forecast from the same Open-Meteo grid as the fire map scales severity by type:
+Duplicate requests count as extra reports on the nearest open ticket of the same type. Inquiries, requests for new signals and annual programs aren't crew jobs, so they're left out.
 
-  | Weather | Raised (×) |
+**Where a ticket is.** Open Calgary publishes 311 locations only to the community's centre point; the address stays on the city's work order. So a ticket's location is its community, measured inside its boundary (Open Calgary Community District Boundaries) from OpenStreetMap and the city's data:
+- schools, childcare, seniors' homes, hospitals and fire stations in it;
+- crosswalks and traffic signals per km²;
+- population density;
+- how much of it is steeper than 8%;
+- whether it's industrial.
+
+A ticket with a real location (none in today's open data) uses the spot instead: the road it's on (from the route planner's street network), a school, crosswalk or transit stop within metres, a fire station close by, and the slope.
+
+**Priority.**
+`priority = severity × impact + waiting + reports + history (+ 1000 if the dispatcher marks it urgent)`
+
+- **Severity:** 10 × safety by service type:
+
+  | Safety | Service types |
   |---|---|
-  | Snow (≤ 1 °C with precipitation) | ice ×1.6, traffic signs ×1.3 (visibility), potholes ×1.2 (freeze-thaw) |
-  | Freezing, dry | ice ×1.3, potholes ×1.2 |
-  | Heavy rain (≥ 5 mm) | debris ×1.3, potholes ×1.25 |
-  | High wind (≥ 50 km/h) | signs ×1.3, debris ×1.25, missed pickups ×1.15 |
+  | 5 | ice and snow, a traffic or pedestrian light out, an unsafe detour |
+  | 4 | traffic signs and markings |
+  | 3 | potholes, road surface damage, debris, lane signs at signals, missing or damaged signs |
+  | 2 | broken sidewalks and curbs, walls and fences, streetlights, back lanes, missed residential pickup |
+  | 1 | parking and temporary signs, e-scooters, carts, commercial collection |
 
-  The noon blizzard brings its own weather (−8 °C, 15 mm of snow), so the replan scores with it.
-- **Similar reports nearby.** Each open ticket of the same type within 400 m adds 3, up to 4 tickets: several reports mean a bigger problem.
-- **Dispatcher overrides.** A ticket marked urgent gets +100; a held ticket stays out of today's plan.
+- **Impact** (× up to 3): weather × place.
+  - **Weather today** (our Calgary forecast):
+    - snow: ice ×1.6, traffic signs and signals ×1.3 (visibility), potholes ×1.2 (freeze-thaw);
+    - freezing: ice ×1.3, broken sidewalks ×1.2;
+    - heavy rain: debris ×1.3, potholes ×1.25;
+    - high wind: signs ×1.3, debris ×1.25.
+  - **Weather tomorrow:** snow raises ice, potholes and signals ×1.15; heavy rain raises potholes and debris ×1.1, so crews get ahead of it.
+  - **Place** (the community):
+    - schools and childcare: ×1.15 with three or more, ×1.08 with one or two;
+    - seniors' homes ×1.1, hospitals and clinics ×1.08;
+    - busy streets on foot: ×1.15 at twice the city's median crosswalks per km², ×1.07 at 1.3×;
+    - hills: ×1.25 for ice and sidewalks if 15% of the community is steeper than 8%;
+    - density: missed pickups ×1.1 at twice the median;
+    - industrial areas: potholes and road damage ×1.1 (heavy trucks).
+- **Stale ice.** An ice or snow report older than 7 days, when it isn't freezing now, drops to 15% of its weight and is flagged for a site check. The live queue holds ice tickets from past winters that were never closed.
+- **Waiting:** up to 15 as a ticket approaches the city's own 90th-percentile time to close that type, measured from a year of Open Calgary history (e.g. potholes 6 days, debris 9, damaged signs 243). Then 1 a day overdue, up to 20 more. Old work keeps moving, but age alone never outranks a real hazard.
+- **Reports:** 3 per other open report of the same type nearby (the same community, for community-centre tickets) and 3 per duplicate, up to 4 of each.
+- **History:** + 3 if the community reports this type at twice the city's typical rate per resident (+ 4 / + 8 for a precise spot with 3 / 10 requests last year).
 
-Every ticket's priority is broken down in the ticket list and the crew queue (safety, weather, waiting, similar reports, urgent), so the dispatcher can see why it's where it is.
-
-Safety levels by service type:
-
-| Safety | Service types |
-|---|---|
-| 5 | ice and snow |
-| 4 | traffic signs and markings |
-| 3 | potholes, debris, missing or damaged signs |
-| 2 | streetlights, missed residential pickup, inspections, seniors' services |
-| 1 | parking signs, commercial collection, new carts |
+Every part is listed in the ticket's "why", in the crew card and the ticket list.
 
 **Assignment.**
 - Roads crews take Roads work and Waste & Recycling crews take WRS work. Either takes the rest.
@@ -532,7 +552,13 @@ Safety levels by service type:
 
 **The dispatcher's workflow.** The Dispatch panel is a queue. For wildfire crews, the dispatcher steps through the crewed fires in priority order: the map flies to each one, the card says why it's ranked there, and Send crew / Skip records the decision (Enter / S; J / K move). For 311 the queue is the crews: review a crew's run (its stops and why each is there), then dispatch it. Progress and decisions show in the lists.
 
-**Result** (5 Roads + 3 Waste crews × 5 jobs, no weather adjustments):
+**Speed.** The live queue is large, so:
+- planning runs in a background worker, and the browser never freezes;
+- scores are cached between replans that only change crews;
+- the data server fetches the queue once per 10 minutes and works out every ticket's site facts in a worker thread, so a plan takes about 0.35 s and a replan under a second;
+- the ticket list renders only the rows on screen, and the map shows the planned stops and the 300 most urgent waiting tickets.
+
+**Result** on the case sample (5 Roads + 3 Waste crews × 5 jobs, no weather adjustments):
 
 | Plan | Safety jobs | Driving |
 |---|---|---|

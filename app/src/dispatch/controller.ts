@@ -14,8 +14,8 @@ import { project } from "../geo/projection";
 import { app } from "../state/app";
 import { FUEL_FOR_LAND } from "../world/fireGrowth";
 import { exposures, HAND_WEIGHTS, learnWeights, loadHistory, planCrews, type CrewFire, type PlaceLite, type RankInput } from "./crews";
-import { DEPOT, load311, plan311, type Override, type Weather311 } from "./ops311";
-import { RoadGraph, routeStops, shortestOrder } from "./router";
+import type { Override, Weather311 } from "./ops311";
+import type { FromWorker, ToWorker } from "./plan311.worker";
 import { dispatch, type DispatchState } from "./store";
 
 let engine: Engine | null = null;
@@ -45,15 +45,13 @@ export function loadCases(): Promise<void> {
   dispatch.set({ status: "loading", error: "" });
   loading = (async () => {
     try {
-      const [fires, tickets, places] = await Promise.all([
+      const [fires, places] = await Promise.all([
         fetch(`${base()}data/cases/alberta_wildfires_2023_2025.csv`).then((r) => r.text()),
-        fetch(`${base()}data/cases/calgary_311_sample.csv`).then((r) => r.text()),
         fetch(`${base()}data/alberta/places.json`).then((r) => r.json() as Promise<{ places: PlaceLite[] }>),
       ]);
       const history = loadHistory(fires);
       const historyInput: RankInput = { fires: history.fires, exposures: exposures(history.fires, places.places, assets) };
-      dispatch.set({ history, historyInput, load311: load311(tickets), status: "learning" });
-      recompute311();
+      dispatch.set({ history, historyInput, status: "learning" });
       // Let the panel paint "learning…" before the weight search (about a second).
       await new Promise((r) => setTimeout(r, 30));
       learn();
@@ -133,70 +131,81 @@ export function setCrewOptions(patch: Partial<Pick<DispatchState, "source" | "cr
   else recomputeCrews();
 }
 
-// ------------------------------------------------------------ Calgary 311
-// ------------------------------------------------------------ route planner
-/** Calgary's street network (built once from the map's OpenStreetMap line tiles). */
-let roads: RoadGraph | null = null;
-let roadsLoading: Promise<void> | null = null;
-const CALGARY_ROADS: [number, number, number, number] = [-114.40, 50.80, -113.80, 51.26];
+// ------------------------------------------------------------ Calgary 311 (planned in a worker)
+/**
+ * Everything heavy for 311 (the ~25,000-ticket live queue, scoring, assignment, street routing)
+ * runs in dispatch/plan311.worker.ts. The panel asks for a plan; the newest answer wins.
+ */
+let worker: Worker | null = null;
+let reqId = 0;
+const waiting = new Map<number, () => void>();
+const shortestWaiting = new Map<number, (o: number[]) => void>();
+let roadsWere = "idle", cityWas = false;
 
-function loadRoads(): Promise<void> {
-  if (roadsLoading) return roadsLoading;
-  dispatch.set({ roadStatus: "loading" });
-  roadsLoading = (async () => {
-    try {
-      const url = `${base()}data/alberta/lines`;
-      const index = (await (await fetch(`${url}/index.json`)).json()) as { q: number; tiles: string[] };
-      const names: string[] = [];
-      for (let la = Math.floor(CALGARY_ROADS[1]); la <= Math.floor(CALGARY_ROADS[3]); la++) for (let ln = Math.floor(CALGARY_ROADS[0]); ln <= Math.floor(CALGARY_ROADS[2]); ln++) names.push(`${la}_${ln}`);
-      const tiles = await Promise.all(names.filter((n) => index.tiles.includes(n)).map((n) => fetch(`${url}/${n}.json`).then((r) => r.json())));
-      await new Promise((r) => setTimeout(r, 20)); // let "Loading streets…" paint before the build (~0.7 s)
-      roads = new RoadGraph(tiles, index.q, CALGARY_ROADS);
-      dispatch.set({ roadStatus: "ready" });
-      recomputeRoutes();
-    } catch {
-      roadsLoading = null;
-      dispatch.set({ roadStatus: "error" });
+function planner(): Worker {
+  if (worker) return worker;
+  worker = new Worker(new URL("./plan311.worker.ts", import.meta.url), { type: "module" });
+  worker.onmessage = (e: MessageEvent<FromWorker>) => {
+    const m = e.data;
+    if (m.type === "status") {
+      dispatch.set({ liveStatus: m.live, liveError: m.liveError, cityReady: m.city, roadStatus: m.roads, scoring311: m.scoring });
+      // Newly loaded street network / context: re-score (road classes, sites), then route.
+      if ((m.roads === "ready" && roadsWere !== "ready") || (m.city && !cityWas)) { roadsWere = m.roads; cityWas = m.city; void recompute311(); }
+      roadsWere = m.roads; cityWas = m.city;
+    } else if (m.type === "plan") {
+      // The ticket set travels once per version: keep it even if a newer plan request superseded this one.
+      if (m.load && m.load.source === dispatch.get().source311) dispatch.set({ load311: m.load.load });
+      if (m.id === reqId) dispatch.set({ plan311: m.plan, routes: m.routes, planMs: m.ms });
+      waiting.get(m.id)?.();
+      waiting.delete(m.id);
+    } else if (m.type === "shortest") {
+      shortestWaiting.get(m.id)?.(m.order);
+      shortestWaiting.delete(m.id);
     }
-  })();
-  return roadsLoading;
+  };
+  worker.postMessage({ type: "init", base: new URL(base(), location.href).href } satisfies ToWorker);
+  return worker;
 }
 
-/** Route every crew on the plan on screen (8 a.m. or noon), in the order the dispatcher chose. */
-export function recomputeRoutes() {
-  const d = dispatch.get(), p = d.plan311;
-  if (!p) return;
-  if (!roads) { void loadRoads(); return; }
-  const view = d.at === "noon" && p.noon ? p.noon : p.morning;
-  const routes: DispatchState["routes"] = {};
-  view.routes.forEach((jobs, crew) => {
-    if (!jobs.length) return;
-    const order = d.routeOrder[crew]?.length === jobs.length ? d.routeOrder[crew] : undefined;
-    routes[crew] = routeStops(roads!, DEPOT, jobs, order);
-  });
-  dispatch.set({ routes });
-}
-
-/** Re-order one crew's stops for the least driving (or back to priority order). Returns the time saved (min). */
-export function setShortestOrder(crew: string, on: boolean): number {
-  const d = dispatch.get(), p = d.plan311;
-  if (!p || !roads) return 0;
-  const view = d.at === "noon" && p.noon ? p.noon : p.morning;
-  const jobs = view.routes.get(crew) ?? [];
-  const next = { ...d.routeOrder };
-  if (on) next[crew] = shortestOrder(roads, DEPOT, jobs); else delete next[crew];
-  const before = d.routes[crew]?.minutes ?? 0;
-  dispatch.set({ routeOrder: next });
-  recomputeRoutes();
-  return before - (dispatch.get().routes[crew]?.minutes ?? before);
-}
-
-export function recompute311() {
+/** Re-plan the day (and its routes) with the panel's settings. Resolves when the plan arrives. */
+export function recompute311(keepOrder = false): Promise<void> {
   const d = dispatch.get();
-  if (!d.load311) return;
-  // A new plan changes the crews' jobs: chosen stop orders no longer apply.
-  dispatch.set({ plan311: plan311(d.load311, { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption, overrides: d.overrides, weather: calgaryWeather() }), routeOrder: {} });
-  if (d.open && d.tab === "311") recomputeRoutes();
+  const id = ++reqId;
+  if (!keepOrder && Object.keys(d.routeOrder).length) dispatch.set({ routeOrder: {} });
+  const msg: ToWorker = {
+    type: "plan", id, source: d.source311, at: d.at, routeOrder: keepOrder ? d.routeOrder : {},
+    opts: { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption, overrides: d.overrides, weather: calgaryWeather() },
+  };
+  return new Promise((resolve) => { waiting.set(id, resolve); planner().postMessage(msg); });
+}
+
+/** Re-route the plan on screen (stop order changed, or 8 a.m. / noon switched). */
+export const recomputeRoutes = () => recompute311(true);
+
+/** Plan the live queue or the case sample. */
+export function setSource311(source: "live" | "sample") {
+  dispatch.set({ source311: source, routeOrder: {}, cursor311: 0, dispatched: {}, plan311: null, routes: {}, load311: null });
+  void recompute311();
+}
+
+/** Fetch the live queue again now (the data server refreshes it every 10 minutes anyway). */
+export function refreshLive311() {
+  planner().postMessage({ type: "refresh" } satisfies ToWorker);
+  void recompute311();
+}
+
+/** Re-order one crew's stops for the least driving (or back to priority order). Resolves to the minutes saved. */
+export async function setShortestOrder(crew: string, on: boolean): Promise<number> {
+  const d = dispatch.get();
+  const before = d.routes[crew]?.minutes ?? 0;
+  const next = { ...d.routeOrder };
+  if (on) {
+    const id = ++reqId;
+    next[crew] = await new Promise<number[]>((resolve) => { shortestWaiting.set(id, resolve); planner().postMessage({ type: "shortest", id, crew } satisfies ToWorker); });
+  } else delete next[crew];
+  dispatch.set({ routeOrder: next });
+  await recompute311(true);
+  return before - (dispatch.get().routes[crew]?.minutes ?? before);
 }
 
 /** Dispatcher override on one ticket (null clears it); the day is replanned at once. */
@@ -204,27 +213,31 @@ export function setOverride(id: string, o: Override | null) {
   const next = { ...dispatch.get().overrides };
   if (o) next[id] = o; else delete next[id];
   dispatch.set({ overrides: next });
-  recompute311();
+  void recompute311();
 }
 
 export function openTickets(open = true) {
   dispatch.set({ ticketsOpen: open });
-  if (open) void loadCases();
+  if (open && !dispatch.get().plan311) void recompute311();
 }
 
 export function set311Options(patch: Partial<Pick<DispatchState, "roads" | "waste" | "perCrew" | "disruption" | "at">>) {
   const onlyView = Object.keys(patch).every((k) => k === "at");
   dispatch.set(patch);
-  // Switching 8 a.m. / noon only changes which plan is routed.
-  if (onlyView) { dispatch.set({ routeOrder: {} }); recomputeRoutes(); return; }
-  void loadCases().then(recompute311);
+  void recompute311(false);
+  void onlyView;
 }
 
 /** Calgary's weather today from the map's forecast (null until it loads). */
 export function calgaryWeather(): Weather311 | null {
-  const wx = weatherAt(app.get().weather, 51.045, -114.06)?.days[0];
-  if (!wx || !Number.isFinite(wx.temp)) return null;
-  return { tempC: wx.temp, precipMm: Number.isFinite(wx.rainMm) ? wx.rainMm : 0, windKmh: Number.isFinite(wx.wind) ? wx.wind : 0 };
+  const days = weatherAt(app.get().weather, 51.045, -114.06)?.days;
+  const day = (i: number): Weather311 | null => {
+    const wx = days?.[i];
+    if (!wx || !Number.isFinite(wx.temp)) return null;
+    return { tempC: wx.temp, precipMm: Number.isFinite(wx.rainMm) ? wx.rainMm : 0, windKmh: Number.isFinite(wx.wind) ? wx.wind : 0 };
+  };
+  const today = day(0);
+  return today ? { ...today, tomorrow: day(1) } : null;
 }
 
 /**
@@ -243,10 +256,9 @@ export function calgarySnowForecast(): { day: number; mm: number } | null {
 // ------------------------------------------------------------ panel and map
 export function openDispatch(tab?: DispatchState["tab"]) {
   dispatch.set({ open: true, ...(tab ? { tab } : {}) });
-  void loadCases().then(() => {
-    if (dispatch.get().source === "live") recomputeCrews();
-    if (dispatch.get().tab === "311") recomputeRoutes();
-  });
+  // 311 plans in its worker straight away; the wildfire table loads alongside.
+  if ((tab ?? dispatch.get().tab) === "311" && !dispatch.get().plan311) void recompute311();
+  void loadCases().then(() => { if (dispatch.get().source === "live") recomputeCrews(); });
 }
 
 export function closeDispatch() {

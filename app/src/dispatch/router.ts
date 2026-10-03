@@ -53,6 +53,7 @@ export class RoadGraph {
   private eCost!: Float32Array;
   private eLen!: Float32Array;
   private eMain!: Uint8Array;
+  private eKind!: Int8Array;
   private edgeGrid = new Map<number, number[]>();
   /** Connected component of each node, and the largest one (the city's street network). */
   private comp!: Int32Array;
@@ -76,7 +77,7 @@ export class RoadGraph {
       return i;
     };
     // 1. Road segments.
-    interface Seg { a: number; b: number; way: number; speed: number; main: number; splits: { t: number; n: number }[] }
+    interface Seg { a: number; b: number; way: number; speed: number; main: number; kind: number; splits: { t: number; n: number }[] }
     const segs: Seg[] = [];
     const ends: number[] = [];
     const seen = new Set<number>();
@@ -93,7 +94,7 @@ export class RoadGraph {
           const la = lat0 + qy / q, ln = lng0 + qx / q;
           if (la < S || la > N || ln < W || ln > E) { prev = -1; continue; }
           const cur = node(la, ln);
-          if (prev >= 0 && prev !== cur) segs.push({ a: prev, b: cur, way: line[0], speed, main, splits: [] });
+          if (prev >= 0 && prev !== cur) segs.push({ a: prev, b: cur, way: line[0], speed, main, kind: line[1], splits: [] });
           if (prev < 0 || i + 2 >= line.length) ends.push(cur);
           prev = cur;
         }
@@ -162,16 +163,17 @@ export class RoadGraph {
     for (let i = 0; i < this.nodes; i++) this.gridAdd(i);
     // 5. Edges: every segment split at its junctions.
     const a: number[] = [], b: number[] = [], c: number[] = [], d: number[] = [], m: number[] = [];
-    const edge = (u: number, v: number, speed: number, main: number) => {
+    const kinds: number[] = [];
+    const edge = (u: number, v: number, speed: number, main: number, kind = -1) => {
       if (u === v) return;
       const km = haversineKm(lat[u], lng[u], lat[v], lng[v]);
-      a.push(u); b.push(v); c.push((km / speed) * 60); d.push(km); m.push(main);
+      a.push(u); b.push(v); c.push((km / speed) * 60); d.push(km); m.push(main); kinds.push(kind);
     };
     for (const sg of segs) {
       sg.splits.sort((p, r) => p.t - r.t);
       let prev = sg.a;
-      for (const sp of sg.splits) { edge(prev, sp.n, sg.speed, sg.main); prev = sp.n; }
-      edge(prev, sg.b, sg.speed, sg.main);
+      for (const sp of sg.splits) { edge(prev, sp.n, sg.speed, sg.main, sg.kind); prev = sp.n; }
+      edge(prev, sg.b, sg.speed, sg.main, sg.kind);
     }
     for (const [u, v] of joins) edge(u, v, 20, 0);
     // CSR, both directions.
@@ -186,7 +188,7 @@ export class RoadGraph {
     for (let e = 0; e < a.length; e++) { put(a[e], b[e], e); put(b[e], a[e], e); }
     this.edges = a.length;
     this.eA = Int32Array.from(a); this.eB = Int32Array.from(b);
-    this.eCost = Float32Array.from(c); this.eLen = Float32Array.from(d); this.eMain = Uint8Array.from(m);
+    this.eCost = Float32Array.from(c); this.eLen = Float32Array.from(d); this.eMain = Uint8Array.from(m); this.eKind = Int8Array.from(kinds);
     for (let e = 0; e < a.length; e++) {
       const la0 = Math.min(lat[a[e]], lat[b[e]]), la1 = Math.max(lat[a[e]], lat[b[e]]), ln0 = Math.min(lng[a[e]], lng[b[e]]), ln1 = Math.max(lng[a[e]], lng[b[e]]);
       for (let y = Math.floor(la0 * 200); y <= Math.floor(la1 * 200); y++) for (let x = Math.floor(ln0 * 200); x <= Math.floor(ln1 * 200); x++) {
@@ -264,6 +266,15 @@ export class RoadGraph {
       if (found && found.km < r * 0.35) break;
     }
     return best;
+  }
+
+  /** The class of road a point is on (nearest road along its length), and how far it is (m). */
+  roadAt(la: number, ln: number): { cls: "highway" | "arterial" | "collector" | "local" | "track"; metres: number } | null {
+    const s = this.snap(la, ln, 0.3);
+    if (!s) return null;
+    const k = this.eKind[s.e];
+    const cls = k === LineKind.Highway ? "highway" : k === LineKind.Primary || k === LineKind.Bridge ? "arterial" : k === LineKind.Secondary || k === LineKind.Tertiary ? "collector" : k === LineKind.Track ? "track" : "local";
+    return { cls, metres: Math.round(s.km * 1000) };
   }
 
   /** Fastest route between two points (A*), or null if they aren't connected. */

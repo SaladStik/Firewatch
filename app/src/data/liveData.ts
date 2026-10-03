@@ -17,6 +17,8 @@
 import type { Region } from "../config/regions";
 import { fetchFwiStations, fetchHotspots, fetchPerimeters, type FwiStation, type Hotspot, type Perimeter } from "./cwfis";
 import { fetchFireHistory, type FireHistory } from "./fireHistory";
+import { fetchOpen311 } from "./calgary311";
+import type { Row311 } from "../dispatch/ops311";
 import { fetchWeatherGrid, type FwiSeed, type WeatherGrid } from "./openMeteo";
 
 /** The data server's address, or "" to fetch sources directly. */
@@ -46,6 +48,8 @@ export const loadHotspots = (bbox: BBox): Promise<Hotspot[]> => (usingDataServer
 export const loadPerimeters = (bbox: BBox): Promise<Perimeter[]> => (usingDataServer ? api("/cwfis/perimeters") : fetchPerimeters(bbox));
 /** Fire weather stations' observed FWI codes. */
 export const loadStations = (): Promise<FwiStation[]> => (usingDataServer ? api("/cwfis/stations") : fetchFwiStations());
+/** Calgary's live 311 queue (open crew field work; Open Calgary). */
+export const loadCalgary311 = (): Promise<{ rows: Row311[]; fetchedAt: string }> => (usingDataServer ? api("/calgary311/open") : fetchOpen311());
 /** One region's weather grid with the FWI System (the server seeds it itself). */
 export const loadWeather = (region: Region, seed?: FwiSeed): Promise<WeatherGrid> =>
   usingDataServer ? api(`/weather/${encodeURIComponent(region.id)}`) : fetchWeatherGrid(region.bbox, undefined, seed);

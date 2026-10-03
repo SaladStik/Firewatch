@@ -4,7 +4,10 @@
  * Filter, sort, click a row to fly to it; mark a ticket urgent or hold it and the day replans.
  */
 import { ArrowDown, ArrowUp, Search, Snowflake, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+/** Row height (px): the list renders only the rows in view, so 25,000 tickets scroll smoothly. */
+const ROW_H = 28;
 import { crewColor } from "../dispatch/colors";
 import { flyTo, openTickets, setOverride } from "../dispatch/controller";
 import { daysWaiting, priority, typeOf, type Ticket, type Unit } from "../dispatch/ops311";
@@ -38,6 +41,16 @@ export function TicketsView() {
   const [plan, setPlan] = useState<Plan>("all");
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "priority", desc: true });
   const p = d.plan311, load = d.load311;
+  const scroller = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewH, setViewH] = useState(800);
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setViewH(el.clientHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const noon = d.at === "noon" && p?.noon ? p.noon : null;
 
   const rows = useMemo(() => {
@@ -73,6 +86,10 @@ export function TicketsView() {
     return list.sort((a, b) => { const x = val(a), y = val(b); return (x < y ? -1 : x > y ? 1 : 0) * s || b.pr - a.pr; });
   }, [rows, q, status, unit, plan, sort]);
 
+  // A new filter or sort starts at the top.
+  useEffect(() => { if (scroller.current) scroller.current.scrollTop = 0; setScrollTop(0); }, [q, status, unit, plan, sort]);
+  const win = { start: Math.max(0, Math.floor(scrollTop / ROW_H) - 10), end: 0 };
+  win.end = Math.min(shown.length, win.start + Math.ceil(viewH / ROW_H) + 25);
   const counts = useMemo(() => ({
     open: rows.filter((r) => r.open).length,
     today: rows.filter((r) => r.at).length,
@@ -89,7 +106,7 @@ export function TicketsView() {
         <div>
           <div className="label-xs">Calgary 311 · tickets</div>
           <p className="mt-0.5 text-[12px] text-ink-dim">
-            {counts.open} open · {counts.today} on today's {noon ? "noon" : "8 a.m."} plan · {counts.safety} safety · {counts.urgent} urgent · {counts.held} held{p ? ` · planning ${p.today}` : ""}
+            {load?.open.some((t) => t.approx) ? "Locations: community centres (Open Calgary doesn't publish addresses) · " : ""}{counts.open} open · {counts.today} on today's {noon ? "noon" : "8 a.m."} plan · {counts.safety} safety · {counts.urgent} urgent · {counts.held} held{p ? ` · planning ${p.today}` : ""}
           </p>
         </div>
         <button type="button" onClick={() => openTickets(false)} aria-label="Close tickets" className="text-ink-mute transition hover:text-phos"><X size={16} /></button>
@@ -113,11 +130,11 @@ export function TicketsView() {
         <Chip value="waiting" current={plan} set={setPlan}>Waiting</Chip>
         {noon && <Chip value="tomorrow" current={plan} set={setPlan}>Bumped</Chip>}
       </div>
-      <div className="scroll-thin min-h-0 flex-1 overflow-auto">
+      <div ref={scroller} onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)} className="scroll-thin min-h-0 flex-1 overflow-auto">
         {!p && <p className="p-4 text-[12px] text-ink-mute">Loading tickets…</p>}
         {p && (
           <table className="w-full text-[11.5px]">
-            <thead className="sticky top-0 bg-[var(--color-panel)] text-[10px] uppercase tracking-[0.06em] text-ink-mute">
+            <thead className="sticky top-0 z-[1] bg-[var(--color-void)] text-[10px] uppercase tracking-[0.06em] text-ink-mute">
               <tr>
                 <Th sort={sort} onSort={onSort} k="priority" className="text-right">Pri</Th>
                 <th className="px-2 py-1.5 text-left font-normal">Ticket</th>
@@ -130,15 +147,16 @@ export function TicketsView() {
               </tr>
             </thead>
             <tbody>
-              {shown.map((r) => {
+              {win.start > 0 && <tr aria-hidden style={{ height: win.start * ROW_H }} />}
+              {shown.slice(win.start, win.end).map((r) => {
                 const crewIdx = r.at ? p.crews.findIndex((c) => c.id === r.at!.crew) : -1;
                 return (
-                  <tr key={r.t.id} onClick={() => flyTo(r.t.lat, r.t.lng, 2.5)} className={`cursor-pointer border-t border-line/60 hover:bg-[color-mix(in_srgb,var(--color-phos)_7%,transparent)] ${r.open ? "text-ink" : "text-ink-mute"}`}>
+                  <tr key={r.t.id} onClick={() => flyTo(r.t.lat, r.t.lng, 2.5)} style={{ height: ROW_H }} className={`cursor-pointer border-t border-line/60 hover:bg-[color-mix(in_srgb,var(--color-phos)_7%,transparent)] ${r.open ? "text-ink" : "text-ink-mute"}`}>
                     <td className="px-2 py-1 text-right tabular-nums">{r.open ? r.pr : "–"}</td>
                     <td className="whitespace-nowrap px-2 py-1 font-mono text-[10.5px]">{r.t.simulated && <Snowflake size={10} className="mr-1 inline text-[#6cc4ff]" />}{r.t.id}</td>
                     <td className="whitespace-nowrap px-2 py-1 tabular-nums text-ink-dim">{r.t.date}{r.open ? <span className="text-ink-mute"> · {r.age}d</span> : null}</td>
-                    <td className="px-2 py-1"><span className={r.type.safety >= 4 ? "text-risk-high" : r.type.safety >= 3 ? "text-risk-elev" : ""}>{r.type.label}</span><span className="text-ink-mute"> · {r.type.unit === "WRS" ? "Waste" : r.type.unit}</span></td>
-                    <td className="px-2 py-1">{title(r.t.community)}</td>
+                    <td className="max-w-[18rem] truncate whitespace-nowrap px-2 py-1"><span className={r.type.safety >= 4 ? "text-risk-high" : r.type.safety >= 3 ? "text-risk-elev" : ""}>{r.type.label}</span><span className="text-ink-mute"> · {r.type.unit === "WRS" ? "Waste" : r.type.unit}</span></td>
+                    <td className="max-w-[12rem] truncate whitespace-nowrap px-2 py-1">{title(r.t.community)}</td>
                     <td className="whitespace-nowrap px-2 py-1 text-ink-dim">{r.t.status}</td>
                     <td className="whitespace-nowrap px-2 py-1">
                       {r.at ? <span className="inline-flex items-center gap-1.5"><span className="inline-block h-2 w-2 rounded-full" style={{ background: crewColor(crewIdx) }} />{r.at.crew} · stop {r.at.stop}</span>
@@ -156,6 +174,7 @@ export function TicketsView() {
                   </tr>
                 );
               })}
+              {win.end < shown.length && <tr aria-hidden style={{ height: (shown.length - win.end) * ROW_H }} />}
             </tbody>
           </table>
         )}

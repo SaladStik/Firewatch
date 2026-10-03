@@ -44,6 +44,9 @@ import { gzip } from "node:zlib";
 import { PROJECTION, REGIONS, type Region } from "../src/config/regions";
 import { fetchFwiStations, fetchHotspots, fetchPerimeters, type Perimeter } from "../src/data/cwfis";
 import { fetchFireHistory } from "../src/data/fireHistory";
+import { fetchOpen311 } from "../src/data/calgary311";
+import type { Site } from "../src/dispatch/cityContext";
+import { Worker } from "node:worker_threads";
 import { makeFwiSeed } from "../src/data/fwiSeed";
 import { fetchWeatherGrid } from "../src/data/openMeteo";
 import { setProjection } from "../src/geo/projection";
@@ -186,6 +189,39 @@ const round5 = (v: number) => Math.round(v * 1e5) / 1e5;
 const perimeters = new Cached("perimeters", TTL.fires, async () =>
   (await fetchPerimeters(CANADA)).map((p) => ({ ...p, rings: p.rings.map((ring) => ring.map(([x, y]) => [round5(x), round5(y)] as [number, number])) })));
 const stations = new Cached("stations", TTL.stations, () => fetchFwiStations());
+/**
+ * Calgary's live 311 queue (crew field work), refreshed every 10 minutes like the fire data, with
+ * each open ticket's site (the road it's on, schools, crossings, slope, 311 history around it)
+ * worked out once, in a worker thread (server/calgary311.worker.ts) so this event loop keeps
+ * serving while ~25,000 tickets are scored. No browser has to score them itself.
+ */
+let siteWorker: Worker | null = null;
+let siteReq = 0;
+function scoreSites(rows: unknown[], fetchedAt: string): Promise<Record<string, Site>> {
+  siteWorker ??= new Worker(new URL("./calgary311.worker.ts", import.meta.url), { execArgv: process.execArgv });
+  const w = siteWorker, id = ++siteReq;
+  return new Promise((resolve, reject) => {
+    const done = (m: { id: number; sites?: Record<string, Site>; error?: string }) => {
+      if (m.id !== id) return;
+      w.off("message", done); w.off("error", fail);
+      if (m.sites) resolve(m.sites); else reject(new Error(m.error ?? "site scoring failed"));
+    };
+    const fail = (e: Error) => { w.off("message", done); siteWorker = null; reject(e); };
+    w.on("message", done);
+    w.once("error", fail);
+    w.postMessage({ id, rows, fetchedAt });
+  });
+}
+const calgary311 = new Cached("calgary311", TTL.fires, async () => {
+  const r = await fetchOpen311();
+  let sites: Record<string, Site> | undefined;
+  try {
+    sites = await scoreSites(r.rows, r.fetchedAt);
+  } catch (e) {
+    console.warn("[data] calgary311 sites:", (e as Error).message); // browsers work them out instead
+  }
+  return { ...r, sites };
+});
 
 const weather = new Map<string, Cached<unknown>>();
 function weatherFor(region: Region) {
@@ -301,7 +337,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const status = (c: Cached<unknown>) => ({ fresh: c.fresh, fetchedAt: c.fetchedAt ? new Date(c.fetchedAt).toISOString() : null, error: c.lastError || null });
     return sendJson(req, res, 200, {
       ok: true,
-      hotspots: status(hotspots as Cached<unknown>), perimeters: status(perimeters as Cached<unknown>), stations: status(stations as Cached<unknown>),
+      hotspots: status(hotspots as Cached<unknown>), perimeters: status(perimeters as Cached<unknown>), stations: status(stations as Cached<unknown>), calgary311: status(calgary311 as Cached<unknown>),
       weather: Object.fromEntries([...weather].map(([id, c]) => [id, status(c)])),
       fireHistories: histories.size,
     });
@@ -309,6 +345,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (p === "/api/cwfis/hotspots") return serve(req, res, hotspots as Cached<unknown>);
   if (p === "/api/cwfis/perimeters") return serve(req, res, perimeters as Cached<unknown>);
   if (p === "/api/cwfis/stations") return serve(req, res, stations as Cached<unknown>);
+  if (p === "/api/calgary311/open") return serve(req, res, calgary311 as Cached<unknown>);
 
   const wx = p.match(/^\/api\/weather\/([a-z-]+)$/);
   if (wx) {
@@ -342,7 +379,7 @@ server.headersTimeout = 70_000;
 
 // Keep the most-used data warm in the background so devices never wait on a source.
 async function warm() {
-  await Promise.allSettled([hotspots.get(), perimeters.get(), stations.get()]);
+  await Promise.allSettled([hotspots.get(), perimeters.get(), stations.get(), calgary311.get()]);
   for (const id of PREWARM) {
     const r = REGION_LIST.find((x) => x.id === id);
     if (r) await weatherFor(r).get().catch(() => {});

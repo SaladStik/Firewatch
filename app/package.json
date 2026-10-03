@@ -21,7 +21,8 @@
     "deploy:pages": "bash scripts/deploy-pages.sh",
     "case:crews": "tsx scripts/case-crews.ts",
     "case:311": "tsx scripts/case-311.ts",
-    "bake:city": "tsx scripts/bake-city.ts"
+    "bake:city": "tsx scripts/bake-city.ts",
+    "bake:calgary311": "python scripts/bake_calgary_311.py && tsx scripts/bake-calgary-communities.ts"
   },
   "dependencies": {
     "@elevenlabs/react": "^1.16.0",

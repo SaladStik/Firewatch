@@ -1,21 +1,34 @@
 /**
  * Case 1 — "Who should 311 send next?" (IEEE YP Industry Hackathon 2026).
  *
- * Score open Calgary 311 tickets, assign them to a few crews for one day, beat oldest-first, then
- * apply one disruption (a blizzard: ice/snow tickets jump, or a crew calls in sick), replan and
- * report how many jobs moved. Shared by the Dispatch panel, Firefly and `npm run case:311`.
+ * Score open Calgary 311 tickets, assign them to crews for one day, beat oldest-first, then apply
+ * one disruption (a blizzard: ice/snow tickets jump, or a crew calls in sick), replan and report
+ * how many jobs moved. Works on the live Open Calgary queue or the case's 200-ticket sample.
+ * Shared by the Dispatch panel, Firefly and `npm run case:311`.
  *
- * One-line priority:   priority = 10 × safety × weather + 2 × days waiting + 3 × similar reports nearby
- *   - severity first: a new traffic-sign ticket (40) goes before a week-old parking sign (24);
- *     waiting adds 2 a day so nothing waits forever;
- *   - weather (our Calgary forecast): freezing and snow raise ice and potholes, heavy rain raises
- *     debris and potholes, high wind raises signs and debris;
- *   - similar open tickets within 400 m (up to 4) mean a bigger problem, so the cluster rises.
+ * priority = severity × impact + waiting + reports + history (+ 1000 if the dispatcher marks it urgent)
+ *   severity  10 × safety (1–5 by service type)
+ *   impact    × weather today and tomorrow (our Calgary forecast)
+ *             × where it is. Open Calgary places 311 tickets at their community's centre (the
+ *               address stays on the work order), so for those it's the community, measured inside
+ *               its boundary: schools, childcare, seniors' homes and hospitals in it, crosswalks and
+ *               signals per km², how hilly it is, density, industrial or not. A ticket with a real
+ *               location uses the spot itself: the road it's on, a school, crosswalk or transit
+ *               stop right there, a fire station close by, the slope. Capped at ×3 overall.
+ *   waiting   up to 15 as the ticket approaches the city's own 90th-percentile time to close this
+ *             type (Open Calgary history), then 1 a day overdue (up to 20 more): old work keeps
+ *             moving, but never outranks a real hazard on age alone
+ *   reports   3 per other open report of the same type within 400 m, 3 per duplicate (up to 4 each)
+ *   history   + 4 / + 8 for a spot with 3+ / 10+ requests of this type in the last year,
+ *             + 3 if the community reports this type at twice the city's typical rate
+ * Severity first: a fresh traffic-signal outage beats a month-old parking sign. Every part is in
+ * the ticket's "why", so a dispatcher can say out loud why it's where it is.
+ *
  * Assignment, in two steps (see assign()): what gets done today is decided strictly by priority,
- * so the highest-priority work always gets a crew; driving only decides which crew takes it
- * (nearest to that crew's other jobs, same community, same kind of job close by).
+ * so the highest-priority work always gets a crew; driving only decides which crew takes it.
  * Roads crews take Roads work, Waste & Recycling crews take WRS work; anything else goes to either.
  */
+import type { CityContext, RoadAt, Site } from "./cityContext";
 import { haversineKm, num, parseCsv } from "./csv";
 
 export type Unit = "Roads" | "WRS" | "Other";
@@ -28,29 +41,63 @@ export interface Ticket {
   community: string;
   lat: number;
   lng: number;
+  /** Duplicate reports of this ticket (merged in from "Duplicate (Open)" requests). */
+  duplicates?: number;
+  /**
+   * Location is only the community's centre point: Open Calgary publishes 311 locations that way
+   * (the address stays on the city's work order). Scored by its community, not the point.
+   */
+  approx?: boolean;
   /** Added by the blizzard disruption (not a real ticket). */
   simulated?: boolean;
 }
 
-/** Service type → unit and safety (5 = life safety: ice, traffic control; 1 = convenience). */
-const TYPES: [RegExp, Unit, number, string][] = [
-  [/\b(snow|ice)\b/i, "Roads", 5, "ice / snow on the road"], // whole words: "Services" isn't ice
-  [/traffic and roadmarking/i, "Roads", 4, "traffic sign or marking down"],
-  [/pothole/i, "Roads", 3, "pothole"],
-  [/debris/i, "Roads", 3, "debris on the road"],
-  [/signs - (missing|damaged)/i, "Roads", 3, "missing or damaged sign"],
-  [/streetlight/i, "Roads", 2, "streetlight out"],
-  [/signs - parking/i, "Roads", 1, "parking sign"],
-  [/waste - residential/i, "WRS", 2, "missed residential pickup"],
-  [/commercial collection/i, "WRS", 1, "commercial collection"],
-  [/new service - carts/i, "WRS", 1, "new cart"],
-  [/inspection/i, "Other", 2, "inspection"],
-  [/seniors/i, "Other", 2, "seniors' home services"],
+/**
+ * Crew work by service type: unit, safety (5 = life safety; 1 = convenience), label, and the kind
+ * of hazard it is (which conditions raise it). Order matters: first match wins.
+ */
+type Hazard = "ice" | "signal" | "trafficSign" | "laneSign" | "pothole" | "roadway" | "debris" | "sign" | "sidewalk" | "lane" | "wall" | "light" | "minorSign" | "mobility" | "pickup" | "cart" | "other";
+const TYPES: [RegExp, Unit, number, string, Hazard][] = [
+  [/\b(snow|ice)\b/i, "Roads", 5, "ice / snow on the road", "ice"], // whole words: "Services" isn't ice
+  [/traffic or pedestrian light repair/i, "Roads", 5, "traffic or pedestrian light out", "signal"],
+  [/detour urgent/i, "Roads", 5, "unsafe detour", "trafficSign"],
+  [/traffic and roadmarking/i, "Roads", 4, "traffic sign or marking down", "trafficSign"],
+  [/traffic signal lane designation/i, "Roads", 3, "lane sign at a signal", "laneSign"],
+  [/pothole/i, "Roads", 3, "pothole", "pothole"],
+  [/roadway maintenance/i, "Roads", 3, "road surface damage", "roadway"],
+  [/debris on street/i, "Roads", 3, "debris on the road", "debris"],
+  [/signs - (missing|damaged)/i, "Roads", 3, "missing or damaged sign", "sign"],
+  [/sidewalk - curb and gutter/i, "Roads", 2, "broken sidewalk or curb", "sidewalk"],
+  [/fence - noise barrier - retaining wall/i, "Roads", 2, "damaged wall or fence", "wall"],
+  [/streetlight maintenance/i, "Roads", 2, "streetlight out", "light"],
+  [/debris on backlane/i, "Roads", 2, "debris in a back lane", "lane"],
+  [/backlane maintenance/i, "Roads", 2, "back lane repair", "lane"],
+  [/temporary sign removal/i, "Roads", 1, "temporary sign to remove", "minorSign"],
+  [/signs - parking/i, "Roads", 1, "parking sign", "minorSign"],
+  [/e-scooter|shared e-bike/i, "Roads", 1, "e-scooter or e-bike", "mobility"],
+  [/waste - residential/i, "WRS", 2, "missed residential pickup", "pickup"],
+  [/debris in backlane/i, "WRS", 2, "waste in a back lane", "lane"],
+  [/blue cart|green cart|cart management|new service - carts/i, "WRS", 1, "cart repair or delivery", "cart"],
+  [/commercial collection/i, "WRS", 1, "commercial collection", "pickup"],
+  [/inspection/i, "Other", 2, "inspection", "other"],
+  [/seniors/i, "Other", 2, "seniors' home services", "other"],
 ];
 
-export function typeOf(service: string): { unit: Unit; safety: number; label: string } {
-  for (const [re, unit, safety, label] of TYPES) if (re.test(service)) return { unit, safety, label };
-  return { unit: service.startsWith("WRS") ? "WRS" : service.startsWith("Roads") ? "Roads" : "Other", safety: 1, label: service };
+/** The exact Open Calgary service names that are crew field work (the live queue loads these). */
+export const CREW_SERVICES = [
+  "Roads - Snow and Ice Control", "Roads - Traffic or Pedestrian Light Repair", "Roads - Detour Urgent (Safety) Concerns",
+  "Roads - Signs - Traffic and Roadmarking", "Roads - Traffic Signal Lane Designation Sign", "Roads - Pothole Maintenance",
+  "Roads - Roadway Maintenance", "Roads - Debris on Street/Sidewalk/Boulevard", "Roads - Signs - Missing - Damaged",
+  "Roads - Sidewalk - Curb and Gutter Repair", "Roads - NEW Sidewalk - Curb and Gutter Repair", "Roads - Fence - Noise Barrier - Retaining Wall Repair",
+  "Roads - Streetlight Maintenance", "Roads - Debris on Backlane", "Roads - Backlane Maintenance", "Roads - Temporary Sign Removal",
+  "Roads - Signs - Parking", "Roads - E-Scooter", "Roads - Shared E-Bike",
+  "WRS - Waste - Residential", "WRS - Debris in Backlane", "WRS - Cart Management", "WRS - Recycling - Blue Cart",
+  "WRS - Compost - Green Cart", "WRS - New Service - Carts", "WRS - Commercial Collection Services",
+];
+
+export function typeOf(service: string): { unit: Unit; safety: number; label: string; hazard: Hazard } {
+  for (const [re, unit, safety, label, hazard] of TYPES) if (re.test(service)) return { unit, safety, label, hazard };
+  return { unit: service.startsWith("WRS") ? "WRS" : service.startsWith("Roads") ? "Roads" : "Other", safety: 1, label: service, hazard: "other" };
 }
 
 export interface Load311 {
@@ -62,100 +109,289 @@ export interface Load311 {
   duplicates: number;
   /** Rows dropped for missing coordinates or date. */
   dropped: number;
-  /** "Today" for the plan: the day after the newest ticket. */
+  /** "Today" for the plan: the day after the newest ticket (sample), or today (live). */
   today: string;
+  /** Where the tickets came from. */
+  source: "sample" | "live";
+  /** Live: when Open Calgary's data was fetched. */
+  fetchedAt?: string;
 }
 
-/** Parse Open Calgary 311 rows (service_request_id, requested_date, status_description, service_name, comm_name, longitude, latitude). */
-export function load311(csv: string): Load311 {
-  const rows = parseCsv(csv);
+/** A raw Open Calgary 311 row (CSV sample or the live API). */
+export interface Row311 { service_request_id: string; requested_date: string; status_description: string; service_name: string; comm_name?: string; location_type?: string; latitude?: string | number; longitude?: string | number }
+
+/** Turn rows into open tickets; duplicates become extra reports on the nearest open ticket of the same type (within 150 m). */
+function fromRows(rows: Row311[], source: Load311["source"], today?: string): Load311 {
   let closed = 0, duplicates = 0, dropped = 0;
-  const open: Ticket[] = [], all: Ticket[] = [];
+  const open: Ticket[] = [], all: Ticket[] = [], dups: Ticket[] = [];
   for (const r of rows) {
-    const lat = num(r.latitude), lng = num(r.longitude), date = (r.requested_date || "").slice(0, 10);
+    const lat = num(String(r.latitude ?? "")), lng = num(String(r.longitude ?? "")), date = (r.requested_date || "").slice(0, 10);
     if (lat == null || lng == null || !date) { dropped++; continue; }
-    const t: Ticket = { id: r.service_request_id, date, status: r.status_description, service: r.service_name, community: r.comm_name || "", lat, lng };
+    // The case sample has no location_type column, but its points are community centres too.
+    const approx = r.location_type ? /centrepoint/i.test(r.location_type) : source === "sample";
+    const t: Ticket = { id: r.service_request_id, date, status: r.status_description, service: r.service_name, community: r.comm_name || "", lat, lng, ...(approx ? { approx } : {}) };
     all.push(t);
-    if (/duplicate/i.test(r.status_description)) { duplicates++; continue; }
+    if (/duplicate/i.test(r.status_description)) { duplicates++; dups.push(t); continue; }
     if (/closed/i.test(r.status_description)) { closed++; continue; }
     open.push(t);
   }
+  const grid = gridOf(open);
+  for (const d of dups) {
+    let best: Ticket | null = null, bestKm = 0.15;
+    for (const t of near(grid, d.lat, d.lng)) {
+      if (t.service !== d.service) continue;
+      const km = haversineKm(d.lat, d.lng, t.lat, t.lng);
+      if (km < bestKm) { bestKm = km; best = t; }
+    }
+    if (best) best.duplicates = (best.duplicates ?? 0) + 1;
+  }
   const newest = open.reduce((m, t) => (t.date > m ? t.date : m), "");
-  const today = newest ? new Date(Date.parse(`${newest}T12:00:00Z`) + 864e5).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-  return { open, all, rows: rows.length, closed, duplicates, dropped, today };
+  const day = today ?? (newest ? new Date(Date.parse(`${newest}T12:00:00Z`) + 864e5).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+  return { open, all, rows: rows.length, closed, duplicates, dropped, today: day, source };
+}
+
+/** Parse the case's Open Calgary 311 CSV sample. */
+export function load311(csv: string): Load311 {
+  return fromRows(parseCsv(csv) as unknown as Row311[], "sample");
+}
+
+/** Today's live queue from the Open Calgary API (data/calgary311.ts), planned for today. */
+export function loadLive311(rows: Row311[], fetchedAt: string): Load311 {
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+  return { ...fromRows(rows, "live", today), fetchedAt };
 }
 
 const daysBetween = (a: string, b: string) => Math.max(0, Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 864e5));
 
 export const daysWaiting = (t: Ticket, today: string) => daysBetween(t.date, today);
 
+// ------------------------------------------------------------ a spatial grid of tickets
+const G = 0.004; // degrees (~440 m × 280 m)
+type Grid = Map<number, Ticket[]>;
+function gridOf(ts: Ticket[]): Grid {
+  const g: Grid = new Map();
+  for (const t of ts) {
+    const k = Math.floor(t.lat / G) * 1000003 + Math.floor(t.lng / G);
+    let arr = g.get(k);
+    if (!arr) g.set(k, (arr = []));
+    arr.push(t);
+  }
+  return g;
+}
+function* near(g: Grid, la: number, ln: number) {
+  const cy = Math.floor(la / G), cx = Math.floor(ln / G);
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) yield* g.get((cy + dy) * 1000003 + cx + dx) ?? [];
+}
+
+// ------------------------------------------------------------ conditions
 /** Dispatcher overrides: "urgent" jumps the queue, "hold" keeps a ticket out of today's plan. */
 export type Override = "urgent" | "hold";
-/** Priority boost for a ticket the dispatcher marked urgent (above any safety level). */
-export const URGENT_BOOST = 100;
+/** Priority boost for a ticket the dispatcher marked urgent: above anything the formula can reach. */
+export const URGENT_BOOST = 1000;
 
-/** Calgary's weather for the plan (from the map's Open-Meteo forecast). */
-export interface Weather311 { tempC: number; precipMm: number; windKmh: number }
+/** Calgary's weather for the plan (from the map's Open-Meteo forecast), and tomorrow's. */
+export interface Weather311 { tempC: number; precipMm: number; windKmh: number; tomorrow?: Weather311 | null }
 /** The weather a blizzard brings (the noon disruption). */
 export const BLIZZARD_WEATHER: Weather311 = { tempC: -8, precipMm: 15, windKmh: 45 };
 
-/** How the weather scales one service type's severity, and why. */
-export function weatherFactor(label: string, w: Weather311 | null): { k: number; why: string[] } {
+/** How the weather scales one hazard's severity, and why. */
+export function weatherFactor(label: string, w: Weather311 | null, hazard: Hazard = hazardOfLabel(label)): { k: number; why: string[] } {
   if (!w) return { k: 1, why: [] };
   const freezing = w.tempC <= 1, snow = freezing && w.precipMm >= 1, rain = !freezing && w.precipMm >= 5, wind = w.windKmh >= 50;
   let k = 1;
   const why: string[] = [];
   const bump = (m: number, reason: string) => { k *= m; why.push(reason); };
-  if (/ice/.test(label)) { if (snow) bump(1.6, "snowing"); else if (freezing) bump(1.3, "below freezing"); }
-  if (/pothole/.test(label) && (freezing || rain)) bump(rain ? 1.25 : 1.2, rain ? "potholes fill with rain" : "freeze-thaw");
-  if (/traffic sign/.test(label) && snow) bump(1.3, "low visibility in snow");
-  if (/debris/.test(label) && rain) bump(1.3, "heavy rain");
-  if (/sign/.test(label) && wind) bump(1.3, "high wind");
-  if (/debris/.test(label) && wind) bump(1.25, "high wind");
-  if (/pickup/.test(label) && wind) bump(1.15, "waste blowing around");
+  if (hazard === "ice") { if (snow) bump(1.6, "snowing"); else if (freezing) bump(1.3, "below freezing"); }
+  if ((hazard === "pothole" || hazard === "roadway") && (freezing || rain)) bump(rain ? 1.25 : 1.2, rain ? "potholes fill with rain" : "freeze-thaw");
+  if ((hazard === "trafficSign" || hazard === "signal") && snow) bump(1.3, "low visibility in snow");
+  if (hazard === "sidewalk" && freezing) bump(1.2, "icy broken sidewalk");
+  if (hazard === "debris" && rain) bump(1.3, "heavy rain");
+  if ((hazard === "sign" || hazard === "trafficSign" || hazard === "minorSign") && wind) bump(1.3, "high wind");
+  if (hazard === "debris" && wind) bump(1.25, "high wind");
+  if (hazard === "pickup" && wind) bump(1.15, "waste blowing around");
+  // Tomorrow's forecast: get ahead of what's coming.
+  const t = w.tomorrow;
+  if (t) {
+    const tSnow = t.tempC <= 1 && t.precipMm >= 1, tRain = t.tempC > 1 && t.precipMm >= 10;
+    if (tSnow && (hazard === "ice" || hazard === "pothole" || hazard === "signal")) bump(1.15, "snow forecast tomorrow");
+    if (tRain && (hazard === "pothole" || hazard === "debris" || hazard === "roadway")) bump(1.1, "heavy rain forecast tomorrow");
+  }
   return { k, why };
 }
+const hazardOfLabel = (label: string): Hazard => TYPES.find((x) => x[3] === label)?.[4] ?? "other";
 
 /** Similar reports nearby: same service type within this distance raise a ticket's priority. */
 export const CLUSTER_KM = 0.4;
-/** What a plan scores tickets with: the weather, similar reports nearby, the dispatcher's overrides. */
+/** What a plan scores tickets with. */
 export interface Ctx311 {
   weather: Weather311 | null;
   clusters: Map<string, number>;
   overrides: Record<string, Override>;
+  /** Calgary context (OSM, 311 history, populations, slope); null until it loads. */
+  city: CityContext | null;
+  /** The road a ticket is on (route planner's street network); null until it loads. */
+  roadAt: RoadAt | null;
+  /** Site facts per ticket, filled lazily. */
+  sites: Map<string, Site>;
 }
-const NO_CTX: Ctx311 = { weather: null, clusters: new Map(), overrides: {} };
+const NO_CTX: Ctx311 = { weather: null, clusters: new Map(), overrides: {}, city: null, roadAt: null, sites: new Map() };
+
+export function makeCtx(p: Partial<Ctx311> & { tickets?: Ticket[] } = {}): Ctx311 {
+  return { weather: p.weather ?? null, clusters: p.clusters ?? (p.tickets ? similarNearby(p.tickets) : new Map()), overrides: p.overrides ?? {}, city: p.city ?? null, roadAt: p.roadAt ?? null, sites: new Map() };
+}
 
 /** Count, for every ticket, the other open tickets of the same type within CLUSTER_KM. */
-export function similarNearby(tickets: Ticket[]): Map<string, number> {
+export function similarNearby(tickets: Ticket[], base?: { clusters: Map<string, number>; added: Ticket[]; all: Ticket[] }): Map<string, number> {
+  // Incremental: the noon replan only adds a few tickets to the morning's counts.
+  if (base) {
+    const out = new Map(base.clusters);
+    const byType = new Map<string, Ticket[]>();
+    for (const t of base.all) { let a = byType.get(t.service); if (!a) byType.set(t.service, (a = [])); a.push(t); }
+    for (const t of base.added) {
+      let n = 0;
+      for (const o of byType.get(t.service) ?? []) {
+        if (o === t || haversineKm(o.lat, o.lng, t.lat, t.lng) >= CLUSTER_KM) continue;
+        n++;
+        if (!base.added.includes(o)) out.set(o.id, (out.get(o.id) ?? 0) + 1);
+      }
+      out.set(t.id, n);
+    }
+    return out;
+  }
   const out = new Map<string, number>();
-  for (const a of tickets) {
-    let n = 0;
-    for (const b of tickets) if (b !== a && b.service === a.service && haversineKm(a.lat, a.lng, b.lat, b.lng) < CLUSTER_KM) n++;
-    out.set(a.id, n);
+  const byType = new Map<string, Ticket[]>();
+  for (const t of tickets) { let a = byType.get(t.service); if (!a) byType.set(t.service, (a = [])); a.push(t); }
+  for (const list of byType.values()) {
+    const g = gridOf(list);
+    for (const a of list) {
+      let n = 0;
+      for (const b of near(g, a.lat, a.lng)) if (b !== a && haversineKm(a.lat, a.lng, b.lat, b.lng) < CLUSTER_KM) n++;
+      out.set(a.id, n);
+    }
   }
   return out;
 }
 
-export interface PriorityParts { safety: number; weather: number; waiting: number; nearby: number; urgent: number; total: number; why: string[] }
+/** Hazards each place condition applies to. */
+const ON_ROAD: Hazard[] = ["ice", "signal", "trafficSign", "laneSign", "pothole", "roadway", "debris"];
+const PEDESTRIAN: Hazard[] = ["ice", "sidewalk", "debris", "signal", "trafficSign", "sign", "light"];
+const VULNERABLE: Hazard[] = ["ice", "sidewalk", "trafficSign", "signal", "sign", "debris", "light", "pothole"];
+const EMERGENCY: Hazard[] = ["ice", "pothole", "roadway", "debris", "signal"];
+const SLOPE: Hazard[] = ["ice", "sidewalk"];
+/** Ice / snow reports older than this are stale unless it's freezing now. */
+const ICE_STALE_DAYS = 7;
+/** Fallback "usual time to close" (days) when the history has none for a type. */
+const DEFAULT_P90 = 7;
 
-/** The priority and what it's made of (for the ticket list's "why"). */
+export interface PriorityParts {
+  safety: number;
+  /** Points from the impact multiplier (weather and place). */
+  impact: number;
+  weather: number;
+  place: number;
+  waiting: number;
+  nearby: number;
+  history: number;
+  urgent: number;
+  total: number;
+  why: string[];
+}
+
+/** The priority and what it's made of (for the ticket list's and crew card's "why"). */
 export function priorityParts(t: Ticket, today: string, ctx: Ctx311 = NO_CTX): PriorityParts {
-  const type = typeOf(t.service), wf = weatherFactor(type.label, ctx.weather);
-  const near = Math.min(4, ctx.clusters.get(t.id) ?? 0), days = daysBetween(t.date, today);
-  const safety = 10 * type.safety, weatherPts = Math.round(safety * (wf.k - 1)), waiting = 2 * days, nearby = 3 * near;
-  const urgent = ctx.overrides[t.id] === "urgent" ? URGENT_BOOST : 0;
+  const type = typeOf(t.service), h = type.hazard;
   const why = [`${type.label} (safety ${type.safety})`];
-  if (wf.why.length) why.push(...wf.why);
-  if (days) why.push(`waiting ${days} day${days === 1 ? "" : "s"}`);
-  if (near) why.push(`${near} similar report${near === 1 ? "" : "s"} within ${CLUSTER_KM * 1000} m`);
+  const safety = 10 * type.safety;
+  // Impact: weather × place.
+  const wf = weatherFactor(type.label, ctx.weather, h);
+  why.push(...wf.why);
+  let site = ctx.sites.get(t.id);
+  if (!site && ctx.city) { site = ctx.city.site(t, t.approx ? null : ctx.roadAt); ctx.sites.set(t.id, site); }
+  if (site && h === "ice" && daysBetween(t.date, today) > ICE_STALE_DAYS && !(ctx.weather && ctx.weather.tempC <= 1)) site = { ...site, repeats: 0 }; // a stale ice report isn't a recurring hazard today
+  let pk = 1;
+  const bump = (m: number, reason: string) => { pk *= m; why.push(reason); };
+  const comm = t.approx && ctx.city ? ctx.city.community(t.community) : null;
+  if (comm && ctx.city) {
+    // The ticket's community, measured inside its boundary (the point is only its centre).
+    const med = ctx.city.communityMedians, name = titleCase(t.community);
+    const kids = comm.schools + comm.childcare;
+    if (VULNERABLE.includes(h)) {
+      if (kids >= 3) bump(1.15, `${kids} schools and childcare centres in ${name}`);
+      else if (kids >= 1) bump(1.08, `${kids === 1 ? "a school" : `${kids} schools`} in ${name}`);
+      if (comm.seniors) bump(1.1, `${comm.seniors === 1 ? "a seniors' home" : `${comm.seniors} seniors' homes`} in ${name}`);
+      if (comm.hospitals) bump(1.08, `${comm.hospitals === 1 ? "a hospital or clinic" : `${comm.hospitals} hospitals and clinics`} in ${name}`);
+    }
+    if (PEDESTRIAN.includes(h) && med.crossingsPerKm2 > 0) {
+      const r = comm.crossingsPerKm2 / med.crossingsPerKm2;
+      if (r >= 2) bump(1.15, `busy streets on foot: ${Math.round(comm.crossingsPerKm2)} crosswalks and signals per km²`);
+      else if (r >= 1.3) bump(1.07, `${Math.round(comm.crossingsPerKm2)} crosswalks and signals per km²`);
+    }
+    if (SLOPE.includes(h)) {
+      if (comm.slopeSteepShare >= 0.15 || comm.slopeMean >= 5) bump(1.25, `hilly: ${Math.round(comm.slopeSteepShare * 100)}% of ${name} is steeper than 8%`);
+      else if (comm.slopeMean >= 3) bump(1.1, `some hills (average ${comm.slopeMean}% slope)`);
+    }
+    if ((h === "pickup" || h === "cart") && med.density > 0 && comm.density >= 2 * med.density) bump(1.1, `dense: ${comm.density.toLocaleString("en-CA")} people per km²`);
+    if ((h === "pothole" || h === "roadway") && /industrial/i.test(comm.kind)) bump(1.1, "industrial area: heavy trucks");
+  } else if (site && !t.approx) {
+    if (ON_ROAD.includes(h) && site.road) {
+      if (site.road === "highway") bump(1.5, "on a highway");
+      else if (site.road === "arterial") bump(1.35, "on a main road");
+      else if (site.road === "collector") bump(1.15, "on a collector road");
+      else if (site.road === "track") bump(0.85, "on a lane or track");
+    }
+    const kid = site.near.school ?? site.near.childcare;
+    if (VULNERABLE.includes(h)) {
+      if (kid !== undefined) bump(1.3, `${kid} m from a school or childcare`);
+      if (site.near.seniors !== undefined) bump(1.25, `${site.near.seniors} m from a seniors' home`);
+      if (site.near.hospital !== undefined) bump(1.2, `${site.near.hospital} m from a hospital or clinic`);
+    }
+    if (PEDESTRIAN.includes(h)) {
+      const ped = [site.near.crossing !== undefined && "a crosswalk", site.near.signal !== undefined && "a traffic signal", site.near.transit !== undefined && "a transit stop"].filter(Boolean) as string[];
+      if (ped.length) bump(1.2, `at ${ped.join(" and ")}`);
+    }
+    if (EMERGENCY.includes(h) && site.near.fire_station !== undefined) bump(1.15, `${site.near.fire_station} m from a fire station`);
+    if (SLOPE.includes(h) && site.slopePct != null && site.slopePct >= 5) bump(site.slopePct >= 8 ? 1.4 : 1.2, `on a ${Math.round(site.slopePct)}% hill`);
+  }
+  // Weather hazards go stale: an ice report from weeks ago melted long since (the live queue holds
+  // ice tickets from past winters that were never closed). Unless it's freezing now, it drops to a
+  // site check.
+  const age = daysBetween(t.date, today);
+  const freezingNow = !!ctx.weather && ctx.weather.tempC <= 1;
+  let stale = 1;
+  if (h === "ice" && age > ICE_STALE_DAYS && !freezingNow) { stale = 0.15; why.push(`ice reported ${age} days ago and it isn't freezing now: likely melted, check before sending a crew`); }
+  const k = Math.min(3, wf.k * pk) * stale;
+  const impact = Math.round(safety * (k - 1));
+  const weatherPts = Math.round(safety * (Math.min(3, wf.k) * stale - 1) * (stale < 1 ? 0 : 1)), place = impact - weatherPts;
+  // Waiting, against how long the city usually takes to close this type.
+  const days = daysBetween(t.date, today), p90 = Math.max(1, site?.closeP90 ?? DEFAULT_P90);
+  const over = Math.max(0, days - p90);
+  const waiting = Math.round(15 * Math.min(1, days / p90) + Math.min(20, over));
+  if (days) why.push(over > 0 ? `waiting ${days} days, ${Math.round(over)} past the city's usual ${Math.round(p90)}` : `waiting ${days} day${days === 1 ? "" : "s"} (city usually closes in ${Math.round(p90)})`);
+  // More reports of the same thing.
+  const nearN = Math.min(4, ctx.clusters.get(t.id) ?? 0), dup = Math.min(4, t.duplicates ?? 0);
+  const nearby = 3 * nearN + 3 * dup;
+  if (nearN) why.push(t.approx ? `${nearN} more open report${nearN === 1 ? "" : "s"} of this in ${titleCase(t.community)}` : `${nearN} similar report${nearN === 1 ? "" : "s"} within ${CLUSTER_KM * 1000} m`);
+  if (dup) why.push(`reported ${dup + 1} times`);
+  // History: a recurring spot, or a community that reports this a lot.
+  let history = 0;
+  if (!t.approx && site?.repeats && site.repeats >= 3) { history += site.repeats >= 10 ? 8 : 4; why.push(`recurring spot: ${site.repeats} requests here last year`); }
+  if (site?.areaRate != null && site.areaRateMedian && site.areaRate >= 2 * site.areaRateMedian) { history += 3; why.push(`${titleCase(t.community)} reports this ${(site.areaRate / site.areaRateMedian).toFixed(1)}× the city's typical rate`); }
+  const urgent = ctx.overrides[t.id] === "urgent" ? URGENT_BOOST : 0;
   if (urgent) why.push("marked urgent");
-  return { safety, weather: weatherPts, waiting, nearby, urgent, total: safety + weatherPts + waiting + nearby + urgent, why };
+  return { safety, impact, weather: weatherPts, place, waiting, nearby, history, urgent, total: safety + impact + waiting + nearby + history + urgent, why };
 }
 
 export function priority(t: Ticket, today: string, ctx: Ctx311 = NO_CTX): number {
-  return priorityParts(t, today, ctx).total;
+  if (ctx === NO_CTX) return priorityParts(t, today, ctx).total;
+  let memo = PMEMO.get(ctx);
+  if (!memo) PMEMO.set(ctx, (memo = new Map()));
+  let v = memo.get(t.id);
+  if (v === undefined) { v = priorityParts(t, today, ctx).total; memo.set(t.id, v); }
+  return v;
 }
+const PMEMO = new WeakMap<Ctx311, Map<string, number>>();
+
+const titleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
 // ------------------------------------------------------------ crews and assignment
 export interface Crew { id: string; unit: Exclude<Unit, "Other"> }
@@ -174,7 +410,6 @@ export interface Assignment {
   waiting: Ticket[];
 }
 
-const canDo = (c: Crew, t: Ticket) => { const u = typeOf(t.service).unit; return u === "Other" || u === c.unit; };
 /** Depot the day starts from (Calgary Roads / WRS operations, approximate). */
 export const DEPOT = { lat: 51.0447, lng: -114.0719 };
 /** Assignment bonuses, in km of driving they're worth: same community, same kind of job close by, morning crew. */
@@ -203,20 +438,19 @@ export function assign(tickets: Ticket[], crews: Crew[], perCrew: number, today:
   const routes = new Map(crews.map((c) => [c.id, [] as Ticket[]]));
   const pr = new Map(tickets.map((t) => [t.id, priority(t, today, ctx)]));
   if (strategy === "fifo") {
-    const pos = new Map(crews.map((c) => [c.id, DEPOT]));
-    for (let round = 0; round < perCrew; round++) {
-      for (const c of crews) {
-        let best: Ticket | null = null, bestV = -Infinity;
-        for (const t of left.values()) {
-          if (!canDo(c, t)) continue;
-          const v = -Date.parse(t.date) / 864e5 - (Number(t.id.replace(/\D/g, "")) || 0) * 1e-9;
-          if (v > bestV) { bestV = v; best = t; }
-        }
-        if (!best) continue;
-        routes.get(c.id)!.push(best);
-        pos.set(c.id, best);
-        left.delete(best.id);
-      }
+    // Oldest first (ties by ticket number), handed round-robin to the crews that can do them.
+    const oldest = [...tickets].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    const turn = new Map<Unit, number>([["Roads", 0], ["WRS", 0]]);
+    for (const t of oldest) {
+      const u = typeOf(t.service).unit;
+      const able = crews.filter((c) => (u === "Other" || c.unit === u) && routes.get(c.id)!.length < perCrew);
+      if (!able.length) continue;
+      const k = turn.get(u === "Other" ? able[0].unit : u) ?? 0;
+      const c = able[k % able.length];
+      turn.set(c.unit, k + 1);
+      routes.get(c.id)!.push(t);
+      left.delete(t.id);
+      if (crews.every((x) => routes.get(x.id)!.length >= perCrew)) break;
     }
   } else {
     // 1. What gets done: strictly by priority, within each unit's slots. Among tickets of EQUAL
@@ -328,7 +562,7 @@ export function blizzardTickets(tickets: Ticket[], today: string, count = 18, se
     const base = tickets[Math.floor(rnd() * tickets.length)];
     out.push({
       id: `SIM-ICE-${String(i + 1).padStart(2, "0")}`, date: today, status: "Open", service: "Roads - Snow and Ice Control",
-      community: base.community, lat: base.lat + (rnd() - 0.5) * 0.01, lng: base.lng + (rnd() - 0.5) * 0.015, simulated: true,
+      community: base.community, lat: base.lat + (rnd() - 0.5) * 0.01, lng: base.lng + (rnd() - 0.5) * 0.015, simulated: true, approx: base.approx,
     });
   }
   return out;
@@ -355,9 +589,17 @@ export interface Plan311 {
   noonCtx: Ctx311;
 }
 
-export function plan311(load: Load311, opts: { roads?: number; waste?: number; perCrew?: number; disruption?: Disruption; overrides?: Record<string, Override>; weather?: Weather311 | null } = {}): Plan311 {
+/** Scoring contexts per ticket set (see plan311). */
+const CTX_CACHE = new WeakMap<Load311, { key: string; ctx: Ctx311; noon: Map<Disruption, Ctx311> }>();
+
+export function plan311(load: Load311, opts: { roads?: number; waste?: number; perCrew?: number; disruption?: Disruption; overrides?: Record<string, Override>; weather?: Weather311 | null; city?: CityContext | null; roadAt?: RoadAt | null } = {}): Plan311 {
   const overrides = opts.overrides ?? {};
-  const ctx: Ctx311 = { weather: opts.weather ?? null, clusters: similarNearby(load.open), overrides };
+  // Scores only depend on the tickets, weather, overrides and context: reuse them across replans
+  // that only change crews (priorities are memoised per ctx).
+  const key = JSON.stringify([opts.weather ?? null, overrides, !!opts.city, !!opts.roadAt]);
+  let cached = CTX_CACHE.get(load);
+  if (!cached || cached.key !== key) CTX_CACHE.set(load, (cached = { key, ctx: makeCtx({ weather: opts.weather, tickets: load.open, overrides, city: opts.city, roadAt: opts.roadAt }), noon: new Map() }));
+  const ctx = cached.ctx;
   const crews = makeCrews(opts.roads ?? 5, opts.waste ?? 3), perCrew = opts.perCrew ?? 5, today = load.today;
   // Held tickets stay out of today's plans (both ours and the baseline's).
   const open = load.open.filter((t) => overrides[t.id] !== "hold");
@@ -372,7 +614,16 @@ export function plan311(load: Load311, opts: { roads?: number; waste?: number; p
     noonCrews = crews.filter((c) => c !== busiest);
   }
   // A blizzard brings its weather with it; the noon replan scores with that.
-  const noonCtx: Ctx311 = disruption === "none" ? ctx : { weather: disruption === "blizzard" ? BLIZZARD_WEATHER : ctx.weather, clusters: similarNearby(tickets), overrides };
+  let noonCtx: Ctx311 = ctx;
+  if (disruption !== "none") {
+    const hit = cached.noon.get(disruption);
+    if (hit) noonCtx = hit;
+    else {
+      const noonClusters = disruption === "blizzard" ? similarNearby(tickets, { clusters: ctx.clusters, added, all: tickets }) : ctx.clusters;
+      noonCtx = { ...makeCtx({ weather: disruption === "blizzard" ? BLIZZARD_WEATHER : ctx.weather, clusters: noonClusters, overrides, city: ctx.city, roadAt: ctx.roadAt }), sites: ctx.sites };
+      cached.noon.set(disruption, noonCtx);
+    }
+  }
   const noon = disruption === "none" ? null : assign(tickets, noonCrews, perCrew, today, "priority", noonCtx, morning);
   const crewOf = (a: Assignment) => { const m = new Map<string, string>(); a.routes.forEach((l, c) => l.forEach((t) => m.set(t.id, c))); return m; };
   const before = crewOf(morning), after = noon ? crewOf(noon) : before;
@@ -417,4 +668,4 @@ export function supervisorNoon(p: Plan311): string {
     `Jobs keep their morning crew where possible, so most crews' afternoons don't change.`;
 }
 
-const title = (s: string) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+const title = titleCase;

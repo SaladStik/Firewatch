@@ -76,8 +76,17 @@ With 40 crews, cut to 32 (`npm run case:crews`):
 | Biggest first, after the cut | 32 | 11 |
 | FIRE//WATCH, after the cut | 32 | **21** |
 
-**Calgary 311 (Case 1).** Plans Roads and Waste & Recycling crews for one day from Open Calgary tickets.
-- Priority: `priority = 10 × safety × weather + 2 × days waiting + 3 × similar reports nearby`. Crews work a neighbourhood and batch similar jobs.
+**Calgary 311 (Case 1).** Plans Roads and Waste & Recycling crews for one day from Calgary's **live 311 queue**: every open crew job in the city, about 25,000 tickets from Open Calgary, refreshed every 10 minutes. The case's 200-ticket sample is one click away.
+- **Priority** uses everything we know about a ticket:
+  - severity by type;
+  - today's and tomorrow's weather;
+  - its community: schools, seniors' homes and hospitals in it, crosswalks per km², hills, density, industrial or not;
+  - how long it has waited against the city's own usual time to close that type;
+  - other open reports and duplicates;
+  - the community's 311 history.
+- **What gets done** is decided strictly by priority; driving only decides which crew takes it.
+- Open Calgary publishes 311 locations only to the community's centre point; addresses stay on the city's work orders. So the app scores and routes by community, and says so.
+- **Fast at that size:** planning and routing run in a background worker. In website + data server mode, the server fetches and scores the queue once (in a worker thread) for everyone. The ticket list renders only the rows on screen.
 - Baseline: oldest first.
 - Noon disruption: a **blizzard** (ice and snow calls jump; suggested automatically when our forecast shows snow in Calgary) or a **sick crew**, then a replan that counts jobs moved.
 - **All tickets:** every ticket with its priority, crew and stop. Mark one **urgent** or **hold** it and the day replans.
@@ -89,6 +98,7 @@ With 8 crews × 5 jobs (`npm run case:311`): 25 safety jobs instead of 19, and 2
 ```bash
 npm run case:crews              # Case 3 report (40 crews, 20% cut); -- 30 25 for 30 crews, 25% cut
 npm run case:311                # Case 1 report (blizzard at noon); -- sick for a sick crew
+npm run bake:calgary311         # refresh the 311 context (history, populations, OSM points, communities)
 ```
 
 ## Data sources
@@ -118,6 +128,7 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 | Fire perimeters (current season) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) M3 perimeters (`public:m3_polygons_current`) | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Active-perimeter and burn-scar hexes, burned-area total |
 | Fire weather stations: observed FWI moisture codes (FFMC, DMC, DC) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) `public:firewx_stns_current` | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Seeds the FWI System per weather cell with official values (with the FWI codes CWFIS attaches to each hotspot). Refreshed at most hourly |
 | Fire growth history (per fire) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) hotspot archive (`public:hotspots`, every detection since 2012), queried per active perimeter since its start date | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Each fire's daily burned-area growth; calibrates how far that fire is projected to spread. Fetched for active fires in focused provinces, at most hourly |
+| Calgary's open 311 queue (crew field work: roads, sidewalks, signs, signals, back lanes, waste) | [Open Calgary 311 Service Requests](https://data.calgary.ca/Services-and-Amenities/311-Service-Requests/iahh-g8bj) (`/api/calgary311/open` on the data server) | Open Government Licence – City of Calgary | Live 311 dispatch. Refreshed every 10 minutes; the data server attaches each ticket's site facts |
 | Weather (12:00 local hourly temperature, humidity and wind for the FWI System; daily peaks and rain totals; 14 past days + today + 7-day forecast; live current conditions incl. wind and precipitation) | [Open-Meteo](https://open-meteo.com/) | Data [CC BY 4.0](https://open-meteo.com/en/license); free API for non-commercial use | 1.5° grid (coarser for very large provinces, ≤ ~90 points each), focused provinces only; Canadian FWI System per day (with Fosberg for comparison), wind direction for spread, live wind and rain animation. Refreshed at most hourly |
 
 ### Case data (bundled, `public/data/cases/`)
@@ -125,7 +136,8 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 | Data | Source | Licence | How we use it |
 |---|---|---|---|
 | Alberta wildfires 2023–2025 (856 fires: all size class C/D/E plus a sample of A/B) | [Historical wildfire data 2006–2025](https://open.alberta.ca/opendata/wildfire-data), Government of Alberta, via the hackathon's Case 3 seed | [Open Government Licence – Alberta](https://open.alberta.ca/licence) | Crew ranking and its evaluation; the demo scenario's fires |
-| Calgary 311 service requests (200-ticket sample) | [Open Calgary 311 Service Requests](https://data.calgary.ca/Services-and-Amenities/311-Service-Requests/iahh-g8bj), via the hackathon's Case 1 seed | Open Government Licence – City of Calgary | 311 dispatch, ticket list |
+| Calgary 311 service requests (200-ticket sample) | [Open Calgary 311 Service Requests](https://data.calgary.ca/Services-and-Amenities/311-Service-Requests/iahh-g8bj), via the hackathon's Case 1 seed | Open Government Licence – City of Calgary | 311 dispatch (case sample), ticket list |
+| Calgary 311 context (`calgary_context.json`, `npm run bake:calgary311`) | Open Calgary: a year of 311 history (time to close by type, requests per community), [community populations](https://data.calgary.ca/d/jtpc-xgsh) and [community boundaries](https://data.calgary.ca/d/surr-xmvs); OpenStreetMap: schools, childcare, hospitals, seniors' homes, fire and police stations, transit stops, signals, crosswalks; slope from the 20 m city raster | Open Government Licence – City of Calgary; ODbL | 311 priority (community facts, usual time to close, history) |
 
 ### Data server (optional)
 

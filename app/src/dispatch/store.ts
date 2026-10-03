@@ -38,6 +38,15 @@ export interface DispatchState {
   waste: number;
   perCrew: number;
   disruption: Disruption;
+  /** The ticket set planned: Calgary's live open queue, or the case's 200-ticket sample. */
+  source311: "live" | "sample";
+  liveStatus: "idle" | "loading" | "ready" | "error";
+  liveError: string;
+  /** Calgary context (OSM, 311 history, populations, slope) loaded. */
+  cityReady: boolean;
+  /** The 311 worker is scoring and planning; and how long the last plan took (ms). */
+  scoring311: boolean;
+  planMs: number;
   load311: Load311 | null;
   plan311: Plan311 | null;
   /** 311 view: the 8 a.m. plan or the noon replan. */
@@ -85,6 +94,12 @@ export const dispatch = createStore<DispatchState>({
   waste: 3,
   perCrew: 5,
   disruption: "blizzard",
+  source311: "live",
+  liveStatus: "idle",
+  liveError: "",
+  cityReady: false,
+  scoring311: false,
+  planMs: 0,
   load311: null,
   plan311: null,
   at: "morning",

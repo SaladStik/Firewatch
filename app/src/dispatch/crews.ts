@@ -212,7 +212,10 @@ export function scoreFire(fire: CrewFire, exposure: Exposure, w: Weights): Score
   const ros = Math.max(fbp, fire.observedRos ?? 0);
   const peopleLog = Math.log10(1 + exposure.people);
   const score = (1 + Math.log10(1 + fire.sizeHa)) ** w.size * (1 + ros / 10) ** w.growth * (1 + peopleLog / 3) ** w.people * (fire.crown ? w.crown : 1);
-  return { fire, score, ros, fbp, exposure, reason: reasonFor(fire, ros, exposure) };
+  // The reason is text for people: built when first read, not for every fire on every weight the
+  // learning round tries (that was most of its time).
+  let reason: string | undefined;
+  return { fire, score, ros, fbp, exposure, get reason() { return (reason ??= reasonFor(fire, ros, exposure)); } };
 }
 
 function reasonFor(f: CrewFire, ros: number, e: Exposure): string {

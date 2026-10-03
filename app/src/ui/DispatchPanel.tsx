@@ -8,9 +8,9 @@
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Flame, Map as MapIcon, Minus, Navigation, Route, Send, Snowflake, Ticket as TicketIcon, Volume2, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { crewColor } from "../dispatch/colors";
-import { calgarySnowForecast, closeDispatch, flyTo, openTickets, recomputeRoutes, set311Options, setCrewOptions, setShortestOrder } from "../dispatch/controller";
+import { calgarySnowForecast, closeDispatch, flyTo, openTickets, recompute311, refreshLive311, set311Options, setCrewOptions, setShortestOrder, setSource311 } from "../dispatch/controller";
 import { dutyBriefing, EXPOSURE_KM, HAND_WEIGHTS, label, type Scored } from "../dispatch/crews";
-import { priorityParts, supervisor8am, supervisorNoon, typeOf, type Disruption, type Plan311, type Ticket, type Weather311 } from "../dispatch/ops311";
+import { priorityParts, supervisor8am, supervisorNoon, typeOf, weatherFactor, type Disruption, type Plan311, type Ticket, type Weather311 } from "../dispatch/ops311";
 import { dispatch, type DispatchTab } from "../dispatch/store";
 import type { Engine } from "../engine";
 import { fireflyController } from "../firefly/mascot";
@@ -303,7 +303,7 @@ function weatherLine(p: Plan311 | null, noon: boolean): string {
   const routes = p ? (noon && p.noon ? p.noon : p.morning).routes : null;
   if (!w) return "Calgary weather isn't loaded yet, so priorities don't include it.";
   const cond = `${Math.round(w.tempC)} °C${w.precipMm >= 1 ? `, ${w.precipMm.toFixed(0)} mm ${w.tempC <= 1 ? "snow" : "rain"}` : ", dry"}, wind ${Math.round(w.windKmh)} km/h`;
-  const adj = p && routes ? [...new Set([...routes.values()].flat().flatMap((t) => priorityParts(t, p.today, ctx!).why.slice(1).filter((x) => !/waiting|similar|urgent/.test(x))))] : [];
+  const adj = p && routes ? [...new Set([...routes.values()].flat().flatMap((t) => weatherFactor(typeOf(t.service).label, w).why))] : [];
   return `Calgary today: ${cond}. ${adj.length ? `Raised for the weather: ${adj.join(", ")}.` : "No weather adjustments today."}`;
 }
 
@@ -316,7 +316,8 @@ function Ops311Tab() {
   const view = noon ? p!.noon! : p?.morning;
   const crews = noon ? p!.noonCrews : p?.crews ?? [];
   const moved = new Set(p?.moved.map((m) => m.ticket.id));
-  useEffect(() => { if (p && (d.roadStatus === "idle" || d.roadStatus === "ready") && !Object.keys(d.routes).length) recomputeRoutes(); }, [p, d.roadStatus, d.routes]);
+  // The tab plans in the 311 worker the first time it shows (routes come with each plan).
+  useEffect(() => { if (!dispatch.get().plan311) void recompute311(); }, []);
   const [saved, setSaved] = useState<Record<string, number>>({});
   // The work queue walks the crews: review a crew's run, send it out.
   const at = Math.min(d.cursor311, Math.max(0, crews.length - 1));
@@ -343,8 +344,23 @@ function Ops311Tab() {
   };
   useQueueKeys(!!crew, { send: sendCrew, next: () => goCrew(at + 1), prev: () => goCrew(at - 1) });
 
+  const load = d.load311;
+  const fetched = load?.fetchedAt ? new Date(load.fetchedAt).toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" }) : "";
   return (
     <div className="flex flex-col gap-3">
+      <div>
+        <Seg value={d.source311} options={[["live", "Live Calgary 311"], ["sample", "Case sample"]]} onChange={(v) => setSource311(v)} />
+        <p className="mt-1 flex items-center gap-2 text-[11px] text-ink-mute">
+          <span className={`inline-block h-1.5 w-1.5 rounded-full ${d.liveStatus === "error" && d.source311 === "live" ? "bg-[var(--color-fire)]" : d.scoring311 || (d.source311 === "live" && d.liveStatus === "loading") ? "animate-pulse bg-[var(--color-risk-elev)]" : "bg-[var(--color-phos)]"}`} />
+          <span className="min-w-0 flex-1 truncate">
+            {d.source311 === "live" && d.liveStatus === "error" ? `Couldn't load Open Calgary: ${d.liveError}`
+              : d.source311 === "live" && d.liveStatus === "loading" && !load ? "Loading Calgary's open 311 queue…"
+                : load ? `${load.open.length.toLocaleString("en-CA")} open tickets${load.duplicates ? `, ${load.duplicates.toLocaleString("en-CA")} duplicate reports` : ""}${fetched ? ` · Open Calgary ${fetched}` : ` · sample, planning ${load.today}`}${d.scoring311 ? " · planning…" : d.planMs ? ` · planned in ${d.planMs < 1000 ? `${d.planMs} ms` : `${(d.planMs / 1000).toFixed(1)} s`}` : ""}`
+                  : "Planning…"}
+          </span>
+          {d.source311 === "live" && <button type="button" onClick={refreshLive311} className="shrink-0 text-[10px] uppercase tracking-wide hover:text-phos">Refresh</button>}
+        </p>
+      </div>
       <div className="grid grid-cols-3 gap-2">
         <Num label="Roads crews" value={d.roads} min={1} max={10} onChange={(roads) => set311Options({ roads })} />
         <Num label="Waste crews" value={d.waste} min={0} max={8} onChange={(waste) => set311Options({ waste })} />
@@ -380,7 +396,7 @@ function Ops311Tab() {
           step={at + 1} total={crews.length} done={sentCount}
           title={<span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-full" style={{ background: crewColor(p!.crews.findIndex((x) => x.id === crew.id)) }} />Crew {crew.id} · {crew.unit === "WRS" ? "Waste & Recycling" : "Roads"}</span>}
           sub={route
-            ? <span className="inline-flex items-center gap-1.5"><Route size={12} /> {jobs.length} stops · <b className="text-ink">{route.km.toFixed(1)} km</b> · {Math.round(route.minutes)} min driving{shortest ? " · shortest order" : ""}</span>
+            ? <span className="inline-flex flex-wrap items-center gap-1.5"><Route size={12} /> {jobs.length} stops · <b className="text-ink">{route.km.toFixed(1)} km</b> · {Math.round(route.minutes)} min driving{shortest ? " · shortest order" : ""}{jobs.some((j) => j.approx) && <span className="text-ink-mute">· stops are community centres; addresses are on the work orders</span>}</span>
             : `${jobs.length} job${jobs.length === 1 ? "" : "s"}${d.roadStatus === "loading" ? " · planning the route…" : ""}`}
           why={jobs.length ? (
             <ol className="flex flex-col gap-0.5">
@@ -406,7 +422,7 @@ function Ops311Tab() {
 
       {crew && route && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
-          <button type="button" onClick={() => { const s = setShortestOrder(crew.id, !shortest); setSaved({ ...saved, [crew.id]: s }); }} className={`border px-2 py-1 transition hover:border-phos ${shortest ? "border-phos text-ink" : "border-line text-ink-dim"}`}>
+          <button type="button" onClick={() => { void setShortestOrder(crew.id, !shortest).then((s) => setSaved((v) => ({ ...v, [crew.id]: s }))); }} className={`border px-2 py-1 transition hover:border-phos ${shortest ? "border-phos text-ink" : "border-line text-ink-dim"}`}>
             {shortest ? "Back to priority order" : "Shortest order"}
           </button>
           <label className="flex cursor-pointer items-center gap-1.5 text-ink-dim"><input type="checkbox" checked={d.showAllRoutes} onChange={(e) => dispatch.set({ showAllRoutes: e.target.checked })} /> All crews' routes</label>

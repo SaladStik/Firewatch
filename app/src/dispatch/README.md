@@ -39,20 +39,22 @@ Reports: `npm run case:crews`, `npm run case:311`. Tests: `tests/dispatch.test.t
 
 **The question.** Calgary has more open tickets than crews. Which jobs get done today, by which crew, and what changes when a blizzard hits or a crew calls in sick?
 
-**The score, in one line.** `priority = 10 × safety × weather + 2 × days waiting + 3 × similar reports nearby`
-- **Safety** comes from the service type, from ice and snow (5) and traffic signs (4) down to parking signs and new carts (1). Severity outranks age: a new traffic-sign ticket goes before a week-old parking sign.
-- **Days waiting** adds 2 a day, so low-priority tickets don't wait forever.
-- **Weather** comes from our own Calgary forecast:
-  - snow and freezing raise ice and potholes (freeze-thaw);
-  - heavy rain raises debris and potholes;
-  - high wind raises signs and debris.
-- **Similar reports nearby:** several reports of the same problem within 400 m mean a bigger problem.
+**The tickets.** Calgary's live 311 queue: about 25,000 open crew jobs from Open Calgary, refreshed every 10 minutes. The case's 200-ticket sample is a click away.
+
+**The score.** `priority = severity × impact + waiting + reports + history`
+- **Severity** comes from the service type: from a traffic light out, an unsafe detour or ice (5), down to parking signs and carts (1).
+- **Impact** is the weather today and tomorrow, plus where the ticket is.
+- **Where it is:** Open Calgary only publishes each ticket's community, not its address. So the app measures the community: its schools, seniors' homes, hospitals, crosswalks per km², hills, density, and whether it's industrial.
+- **Waiting** is measured against how long the city itself usually takes to close that kind of job. Old work keeps moving, but age never beats a real hazard.
+- **Reports and history:** more reports of the same thing, duplicates, and communities that report a problem far more than usual.
+- **Stale ice:** an ice report from weeks ago, with no freezing weather now, gets flagged for a site check instead of a crew.
 
 **Planning the day.**
 - Roads crews do Roads work and Waste & Recycling crews do waste work.
 - **What gets done** is decided strictly by priority: the day's slots fill from the top of the list. The highest-priority work always gets a crew, and nothing waiting outranks something planned. Among equal priorities, the nearest go first.
 - **Who does it** is decided by driving: each job goes to the crew it adds the least driving to, with bonuses for the same community and the same kind of job nearby.
-- Compared with oldest-first, the same 8 crews do 25 safety jobs instead of 19, with 247 km of driving instead of 440.
+- Compared with oldest-first, the same 8 crews do 25 safety jobs instead of 19 on the case sample.
+- It's fast at city scale: planning runs in a background worker, the data server scores the live queue once for everyone, and the ticket list only draws what's on screen.
 
 **The disruption.**
 - A blizzard adds a wave of ice calls and brings winter weather into the scores.

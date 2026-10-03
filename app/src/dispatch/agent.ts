@@ -61,7 +61,7 @@ export async function plan311Facts(opts: { roads?: number; waste?: number; jobsP
     disruption: opts.disruption ?? d.disruption,
     at: (opts.disruption ?? d.disruption) === "none" ? "morning" : "noon",
   });
-  recompute311();
+  await recompute311();
   openDispatch("311");
   flyTo(51.045, -114.06, 22);
   const p = dispatch.get().plan311!;

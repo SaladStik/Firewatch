@@ -13,6 +13,9 @@ import { project } from "../geo/projection";
 import { useStore } from "../state/store";
 import { crewColor } from "../dispatch/colors";
 
+/** Most waiting tickets drawn as map pins (highest priority first). */
+const WAITING_PINS = 300;
+
 interface Pin {
   key: string;
   lat: number;
@@ -46,7 +49,8 @@ export function DispatchPins({ engine }: { engine: Engine | null }) {
           out.push({ key: t.id, lat: t.lat, lng: t.lng, text: `${k + 1}`, title: `${crew} stop ${k + 1}: ${typeOf(t.service).label}, ${t.community}`, color: crewColor(i), ring: t.simulated ? "#bfe6ff" : undefined, zoom: 2.5 });
         });
       });
-      for (const t of view.waiting) {
+      // Waiting tickets: only the most urgent (the live queue holds ~25,000; the list shows them all).
+      for (const t of view.waiting.slice(0, WAITING_PINS)) {
         if (assigned.has(t.id)) continue;
         out.push({ key: t.id, lat: t.lat, lng: t.lng, text: "", title: `Waiting: ${typeOf(t.service).label}, ${t.community}`, color: t.simulated ? "#9fd8ff" : "#8a948e", small: true, zoom: 2.5 });
       }
