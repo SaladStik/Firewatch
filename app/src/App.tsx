@@ -4,8 +4,7 @@ import { Engine } from "./engine";
 import { FireflyDock } from "./firefly/FireflyDock";
 import { mountLodTuner } from "./dev/LodTuner";
 import { app } from "./state/app";
-import { FireFeed } from "./ui/FireFeed";
-import { ForecastBar } from "./ui/ForecastBar";
+import { StatusDock } from "./ui/StatusDock";
 import { AppBar, LodReadout } from "./ui/Hud";
 import { Explore } from "./ui/Explore";
 import { InstrumentData } from "./ui/InstrumentData";
@@ -13,8 +12,7 @@ import { LayerDock, Legend } from "./ui/Layers";
 import { BootScreen, HoverTip, NavControls } from "./ui/Overlays";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { SectorPanel } from "./ui/SectorPanel";
-import { SpreadAlert } from "./ui/SpreadAlert";
-import { TrafficAlert } from "./ui/TrafficAlert";
+import { ValuesAtRisk } from "./ui/ValuesAtRisk";
 import { AgentPanel } from "./ui/AgentPanel";
 
 export default function App() {
@@ -59,24 +57,24 @@ export default function App() {
         />
         <div className="flex min-h-0 flex-1 flex-col justify-between p-4">
           <div className="flex min-h-0 flex-1 items-start justify-between gap-4 py-3">
-            <div className="hidden max-h-full min-h-0 gap-2 md:flex">
+            <div className="hidden max-h-[min(70vh,calc(100%-6rem))] min-h-0 gap-2 md:flex">
               {/* Ends above the Firefly dock: the Legend shrinks (and scrolls inside) on short screens. */}
               <div className="flex max-h-full min-h-0 flex-col gap-2">
                 <ErrorBoundary name="LayerDock"><LayerDock engine={engine} /></ErrorBoundary>
                 <Legend />
               </div>
-              <div className="flex max-h-full min-h-0 flex-col self-start">
+              <div className="flex max-h-full min-h-0 flex-col self-start overflow-hidden">
                 <ErrorBoundary name="Explore"><Explore engine={engine} /></ErrorBoundary>
               </div>
             </div>
             <div className="scroll-thin ml-auto max-h-full self-start overflow-y-auto">
               <ErrorBoundary name="SectorPanel"><SectorPanel engine={engine} /></ErrorBoundary>
+              <ErrorBoundary name="ValuesAtRisk"><ValuesAtRisk engine={engine} /></ErrorBoundary>
             </div>
           </div>
-          <div className="flex items-end justify-between gap-4">
+          <div className="flex items-end justify-between gap-3">
             <div className="w-9 shrink-0 md:hidden" />
-            {/* Bottom-left stack: the Ask panel (when open) above the Firefly dock. It sits in the layout so the
-                Layers/Legend column ends above it; ml clears the FF button. */}
+            {/* Bottom-left: Ask panel above the Firefly dock. */}
             <div className="flex shrink-0 flex-col gap-2 md:ml-10" data-firefly-stack>
               {askOpen && screen === "map" && (
                 <div className="pointer-events-none w-[min(22rem,calc(100vw-2rem))] md:w-[340px]">
@@ -87,11 +85,8 @@ export default function App() {
                 <ErrorBoundary name="FireflyDock"><FireflyDock engine={engine} /></ErrorBoundary>
               </div>
             </div>
-            <div className="flex min-w-0 flex-col items-center gap-2">
-              <ErrorBoundary name="SpreadAlert"><SpreadAlert engine={engine} /></ErrorBoundary>
-              <ErrorBoundary name="TrafficAlert"><TrafficAlert engine={engine} /></ErrorBoundary>
-              <ErrorBoundary name="ForecastBar"><ForecastBar engine={engine} /></ErrorBoundary>
-              <ErrorBoundary name="FireFeed"><FireFeed engine={engine} /></ErrorBoundary>
+            <div className="min-w-0 max-w-[min(36rem,calc(100vw-11rem))] flex-1">
+              <ErrorBoundary name="StatusDock"><StatusDock engine={engine} /></ErrorBoundary>
             </div>
             <NavControls engine={engine} />
           </div>

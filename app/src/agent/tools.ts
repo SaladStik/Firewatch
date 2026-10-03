@@ -13,6 +13,7 @@ const LAYER_LABEL: Record<keyof Layers, string> = {
   risk: "Fire risk",
   fires: "Fires",
   spread: "Projected spread",
+  air: "Air quality",
   traffic: "Traffic corridors",
   beacons: "Beacons",
   wind: "Wind",
