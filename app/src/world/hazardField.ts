@@ -5,8 +5,9 @@
  *   risk = weatherRisk(lat,lng) × fuel(landType) + wind-shaped boost near hotspots
  * weatherRisk = Fosberg FFWI / 100 × days-since-rain dryness × the day's rain damping.
  * Demo rainstorms damp the whole score under them (data/rain.ts).
- * Direct observations override: an agency-reported out-of-control fire / inside an active perimeter.
- * Hotspots are unconfirmed heat detections: they add the boost but never mark a hex "Out of control".
+ * Direct observations override: an agency-reported fire (out of control / being held / under
+ * control) / inside an active perimeter. Hotspots are unconfirmed heat detections: they add the
+ * boost but never give a hex a fire status.
  */
 import { growthLookup } from "./fireGrowth";
 import { blobDamping, blobRain } from "../data/rain";
@@ -100,9 +101,13 @@ export class HazardField {
 
   evaluate(x: number, z: number, land: LandClass, hexSize: number): { status: NodeStatus; risk: number } {
     const fuel = NODE_TYPES[land]?.fuel ?? 0;
-    // An out-of-control fire whose reported area (or point, if small) touches this hex.
+    // A reported fire whose area (or point, if small) touches this hex; the worst stage wins.
     const reach = Math.max(hexSize * 0.95, 0.4);
-    if (this.snap.burning.some((f) => Math.hypot(f.x - x, f.z - z) <= f.r + reach)) return { status: NodeStatus.Burning, risk: 1 };
+    let stage = 3;
+    for (const f of this.snap.reported) if (f.stage < stage && Math.hypot(f.x - x, f.z - z) <= f.r + reach) stage = f.stage;
+    if (stage === 0) return { status: NodeStatus.Burning, risk: 1 };
+    if (stage === 1) return { status: NodeStatus.Perimeter, risk: 0.95 };
+    if (stage === 2) return { status: NodeStatus.UnderControl, risk: 0.6 };
     const perim = this.inPerimeter(x, z);
     if (perim === 2) return { status: NodeStatus.Perimeter, risk: 0.95 };
     let risk = this.weatherRisk(x, z) * fuel;

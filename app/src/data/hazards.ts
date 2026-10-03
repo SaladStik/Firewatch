@@ -31,6 +31,7 @@ export interface HazardInputs {
 }
 
 const ACTIVE_PERIMETER_DAYS = 5;
+const STAGE_CODE = { out_of_control: 0, being_held: 1, under_control: 2 } as const;
 /** Demo scenario: heatwave multiplier on weather risk. */
 export const SIM_WEATHER_BOOST = 1.35;
 
@@ -51,11 +52,11 @@ export function buildSnapshot(inp: HazardInputs): HazardSnapshot {
       const scale = fire ? reachScale(inp.growth![fire.id].k) : 1;
       return { ...project(h.lat, h.lng), frp: h.frp, fwi: h.fwi, ...downwind(calm ? 0 : wx.windFrom, calm ? 0 : wx.wind), scale };
     }),
-    // Hotspots are unconfirmed heat (often farm burns): only official out-of-control fires burn on
-    // the map, plus the demo scenario's simulated ignitions.
-    burning: [
-      ...inp.reportedFires.filter((f) => f.stage === "out_of_control").map((f) => ({ ...project(f.lat, f.lng), r: Math.sqrt(f.sizeHa / 100 / Math.PI) })),
-      ...inp.hotspots.filter((h) => h.agency === "SIMULATION").map((h) => ({ ...project(h.lat, h.lng), r: 0 })),
+    // Hotspots are unconfirmed heat (often farm burns): only official fires get a fire status on
+    // the map, plus the demo scenario's simulated ignitions (out of control).
+    reported: [
+      ...inp.reportedFires.map((f) => ({ ...project(f.lat, f.lng), r: Math.sqrt(f.sizeHa / 100 / Math.PI), stage: STAGE_CODE[f.stage] })),
+      ...inp.hotspots.filter((h) => h.agency === "SIMULATION").map((h) => ({ ...project(h.lat, h.lng), r: 0, stage: 0 as const })),
     ],
     perimeters: inp.perimeters.map((p) => {
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;

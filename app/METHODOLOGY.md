@@ -74,7 +74,7 @@ Code: `riskFromFwi`.
 
 Each hex's risk is built in order:
 
-1. **An agency-reported out-of-control fire touching the hex:** "Out of control", risk 1. Fires come from the national fire list (Natural Resources Canada, the same data as CIFFC); the fire's reported hectares set its radius. Satellite hotspots are unconfirmed heat detections (often farm or controlled burns), so they never set this status; they still raise risk around them (below).
+1. **An agency-reported fire touching the hex:** "Out of control" (risk 1), "Being held" (0.95) or "Under control" (0.6), the worst stage winning. Fires come from the national fire list (Natural Resources Canada, the same data as CIFFC); the fire's reported hectares set its radius. Satellite hotspots are unconfirmed heat detections (often farm or controlled burns), so they never set a fire status; they still raise risk around them (below).
 2. **Inside a perimeter updated in the last 5 days:** "Active perimeter".
 3. **Otherwise:** weather risk (§2) × the **fuel load** of the hex's land type:
 

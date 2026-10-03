@@ -31,7 +31,7 @@ import { WorldClient } from "./world/WorldClient";
 import type { HexNodeInfo } from "./world/types";
 
 const RISK_STATUSES = new Set<number>([NodeStatus.Elevated, NodeStatus.High, NodeStatus.Extreme]);
-const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.Burned]);
+const FIRE_STATUSES = new Set<number>([NodeStatus.Burning, NodeStatus.Perimeter, NodeStatus.UnderControl, NodeStatus.Burned]);
 /** Smoke-haze tint mixed into fire-possible hexes when the air layer is on. */
 const AIR_HAZE = rgb("#6b5a4a");
 const mix3 = (a: [number, number, number], b: [number, number, number], t: number): [number, number, number] => [

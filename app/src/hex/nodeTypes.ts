@@ -82,6 +82,8 @@ export const NodeStatus = {
   Burned: 6,
   /** Inside the projected spread of an active fire (scenario model, data/fireSpread.ts). */
   Projected: 7,
+  /** An agency-reported wildfire that is under control. */
+  UnderControl: 8,
 } as const;
 export type NodeStatus = (typeof NodeStatus)[keyof typeof NodeStatus];
 
@@ -111,6 +113,7 @@ export const NODE_STATUSES: Record<NodeStatus, StatusStyle> = {
   [NodeStatus.Perimeter]: { id: NodeStatus.Perimeter, label: "Being held", line: "#ff2fa0", fill: 0.9, emphasis: 1.3, pulse: 0.35, lift: 0.08, propColor: "#ff2fa0" },
   [NodeStatus.Burned]: { id: NodeStatus.Burned, label: "Burn scar (season)", line: "#6b4a36", fill: 0.4, emphasis: 0.75, pulse: 0, lift: 0, propColor: "#5a3a30" },
   [NodeStatus.Projected]: { id: NodeStatus.Projected, label: "Projected spread (scenario)", line: "#b44dff", fill: 0.9, emphasis: 1.15, pulse: 0.35, lift: 0.04, propColor: "#b44dff" },
+  [NodeStatus.UnderControl]: { id: NodeStatus.UnderControl, label: "Under control", line: "#b0413e", fill: 0.9, emphasis: 1.0, pulse: 0.1, lift: 0.04, propColor: "#b0413e" },
 };
 
 /** Risk score (0..1) → status, when no direct fire observation applies. */

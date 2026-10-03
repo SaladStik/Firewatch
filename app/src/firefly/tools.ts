@@ -22,6 +22,14 @@ export function snapshot(): FactsSnapshot {
   };
 }
 
+/** What the map shows now, sent to Firefly on connect and whenever the forecast day changes. */
+export function mapDayContext(): string {
+  const s = app.get();
+  const date = s.weather[0]?.dates[s.forecastDay] ?? `+${s.forecastDay}d`;
+  const day = s.forecastDay === 0 ? "today" : s.forecastDay === 1 ? "tomorrow" : `forecast day ${s.forecastDay}`;
+  return `The map now shows ${date} (${day}): the risk colours, wind and projected spread are for that day. Answer about this day unless the user names another; don't change it unless asked.`;
+}
+
 const json = (v: unknown) => JSON.stringify(v);
 const fail = (msg: string) => json({ error: msg });
 const LAYERS: (keyof Layers)[] = ["risk", "fires", "spread", "air", "traffic", "beacons", "wind", "rain", "bloom"];
@@ -77,7 +85,7 @@ export function makeTools(engine: Engine) {
   };
 
   return {
-    get_briefing: guard(() => json(briefing(snapshot()))),
+    get_briefing: guard(() => json({ mapShows: mapDayContext(), ...briefing(snapshot()) })),
 
     get_place_report: guard((p) => {
       const s = snapshot();
@@ -96,7 +104,8 @@ export function makeTools(engine: Engine) {
     get_fire_details: guard(async (p) => {
       const found = findFire(snapshot(), p.fire_id);
       if (!found) return fail(`No active fire or heat detection with id ${String(p.fire_id)}. Call list_fires for ids.`);
-      const days = Math.min(7, Math.max(1, Math.round(Number(p.days ?? 3)) || 3));
+      // No `days`: stay on the day the user is looking at (3 when that's today).
+      const days = Math.min(7, Math.max(1, Math.round(Number(p.days ?? (app.get().forecastDay || 3))) || 3));
       await engine.setForecastDay(days);
       const s = snapshot();
       const fire = found.fire ?? found.heat!;
@@ -116,7 +125,7 @@ export function makeTools(engine: Engine) {
             : found.fire!.stage === "under_control" ? "none: under-control fires aren't projected"
             : !app.get().layers.spread ? "none: the projected spread layer is off" : "none: the model doesn't reach new ground by this day"),
         windAtFireByDay: windByDay(s, fire.lat, fire.lng, days),
-        note: `${NOTE} The projection adds up each day's noon wind (and runs faster uphill), while the wind layer shows only the selected day's wind (today: the live wind), so the spread can lean away from the wind on screen when the wind shifts during the week.`,
+        note: `${NOTE} Each day's growth follows that day's ISI (wind-driven spread) and BUI (how dry the fuel is): low values (Low or Moderate danger) mean little growth. The projection adds up each day's noon wind (and runs faster uphill), while the wind layer shows only the selected day's wind (today: the live wind), so the spread can lean away from the wind on screen when the wind shifts during the week.`,
       });
     }),
 

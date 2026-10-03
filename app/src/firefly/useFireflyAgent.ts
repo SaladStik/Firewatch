@@ -17,7 +17,7 @@ import { activeFires, nearestPlaceText, threatsFor } from "./facts";
 import { legendContext } from "./legend";
 import { fireflyAway, fireflyController, flyFireflyHome, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
 import { diffAlerts, situationMood, type Alert, type Watch } from "./monitor";
-import { makeTools, snapshot } from "./tools";
+import { makeTools, mapDayContext, snapshot } from "./tools";
 
 export const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID ?? "";
 
@@ -81,6 +81,7 @@ export function useFireflyAgent(engine: Engine | null) {
     onConnect: () => {
       const c = convoRef.current;
       c.sendContextualUpdate(legendContext());
+      c.sendContextualUpdate(mapDayContext());
       for (const t of queue.current.splice(0)) c.sendUserMessage(t);
     },
     onMessage: (m) => {
@@ -102,6 +103,18 @@ export function useFireflyAgent(engine: Engine | null) {
   const convoRef = useRef(convo);
   useLayoutEffect(() => { convoRef.current = convo; });
   const connected = convo.status === "connected";
+
+  // Tell Firefly when the forecast day changes (the user's slider or his own tools), so he
+  // answers about the day on screen instead of assuming today.
+  const forecastDay = useStore(app, (s) => s.forecastDay);
+  const sentDay = useRef(-1);
+  useEffect(() => {
+    if (!connected) { sentDay.current = -1; return; }
+    if (sentDay.current === -1) { sentDay.current = forecastDay; return; } // onConnect already sent it
+    if (sentDay.current === forecastDay) return;
+    sentDay.current = forecastDay;
+    convoRef.current.sendContextualUpdate(mapDayContext());
+  }, [connected, forecastDay]);
 
   // Prepare him once the map is up. He stays hidden until Ask is opened.
   const bootHidden = useStore(app, (s) => !!s.boot.hidden);

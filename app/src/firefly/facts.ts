@@ -518,5 +518,7 @@ export function windByDay(s: FactsSnapshot, lat: number, lng: number, day: numbe
   const compass = (deg: number) => COMPASS[Math.round((((deg % 360) + 360) % 360) / 45) % 8];
   return cell.days.slice(0, day + 1).map((d, i) => ({
     date: dateOf(s, i), from: compass(d.windFrom), toward: compass(d.windFrom + 180), kmh: Math.round(d.windNoon ?? d.wind),
+    // Why the projection grows fast or slow that day: fire danger and the FWI spread / fuel-dryness indices.
+    danger: d.danger, isi: r1(d.isi), bui: r1(d.bui),
   }));
 }

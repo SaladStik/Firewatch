@@ -11,7 +11,8 @@ const STATUS_LOOK: Partial<Record<NodeStatus, string>> = {
   [NodeStatus.High]: "orange hexes, risk index 68 to 84",
   [NodeStatus.Extreme]: "red hexes, risk index 85 and up",
   [NodeStatus.Burning]: "bright red raised, pulsing hexes with burning trees: an out-of-control wildfire reported by a fire agency",
-  [NodeStatus.Perimeter]: "pink raised hexes: inside an active mapped fire perimeter",
+  [NodeStatus.Perimeter]: "pink raised hexes: a reported wildfire being held, or inside an active mapped fire perimeter",
+  [NodeStatus.UnderControl]: "dark red hexes: a reported wildfire that is under control",
   [NodeStatus.Projected]: "violet hexes: where an active fire could reach by the selected forecast day (scenario, not a forecast)",
   [NodeStatus.Burned]: "dark brown hexes: burned earlier this season",
 };
