@@ -8,7 +8,7 @@ import type { Engine } from "../engine";
 import { NODE_STATUSES, NODE_TYPES } from "../hex/nodeTypes";
 import { project } from "../geo/projection";
 import { app, focusIndices, type Layers } from "../state/app";
-import { activeFires, briefing, crewRanking, explainAt, findPlace, fireList, placeReport, townsInPath, type FactsSnapshot } from "./facts";
+import { activeFires, briefing, crewRanking, explainAt, findPlace, fireList, placeReport, riskZones, townsInPath, type FactsSnapshot } from "./facts";
 import { flyFireflyTo, fireflyController } from "./mascot";
 
 export function snapshot(): FactsSnapshot {
@@ -51,7 +51,12 @@ function locate(s: FactsSnapshot, p: Params): { lat: number; lng: number; label:
   return "Give a place or a fire_id.";
 }
 
+/** Most samples per risk scan (≈ 25 ms in the worker). */
+const SCAN_SAMPLES = 15000;
+
 export function makeTools(engine: Engine) {
+  /** Zones from the last find_risk_areas, so fly_to can show "zone 2". */
+  let lastZones: ReturnType<typeof riskZones> = [];
   const guard = (fn: (p: Params) => Promise<string> | string) => async (p: Params = {}) => {
     try { fireflyController().setMood("thinking"); return await fn(p ?? {}); } catch (e) { return fail(String(e)); }
   };
@@ -118,7 +123,35 @@ export function makeTools(engine: Engine) {
       return json({ crews, picks: ranked, note: NOTE });
     }),
 
+    find_risk_areas: guard(async (p) => {
+      if (p.day !== undefined && p.day !== null && p.day !== "") {
+        await engine.setForecastDay(Math.min(7, Math.max(0, Math.round(Number(p.day)) || 0)));
+      }
+      const s = snapshot();
+      const pts = s.places.filter((pl) => s.focus.has(pl.region)).map((pl) => project(pl.lat, pl.lng));
+      if (!pts.length) return fail("No regions are in focus.");
+      const pad = 40;
+      const x0 = Math.min(...pts.map((q) => q.x)) - pad, x1 = Math.max(...pts.map((q) => q.x)) + pad;
+      const z0 = Math.min(...pts.map((q) => q.z)) - pad, z1 = Math.max(...pts.map((q) => q.z)) + pad;
+      const step = Math.max(3, Math.sqrt(((x1 - x0) * (z1 - z0)) / SCAN_SAMPLES));
+      const nx = Math.ceil((x1 - x0) / step) + 1, nz = Math.ceil((z1 - z0) / step) + 1;
+      const scan = await engine.riskScan(x0, z0, step, nx, nz);
+      lastZones = riskZones(s, { x0, z0, step, nx, nz, risk: scan.risk });
+      const date = s.weather[0]?.dates[s.forecastDay] ?? `+${s.forecastDay}d`;
+      if (!lastZones.length) return json({ date, result: "No High or Extreme danger areas on the map for this day." });
+      const top = lastZones[0];
+      void show(top.lat, top.lng, Math.min(250, Math.max(40, top.acrossKm * 1.3)));
+      return json({ date, zones: lastZones, showing: "zone 1", note: "Zones are unnamed areas of the risk layer; describe them by the nearest town." });
+    }),
+
     fly_to: guard(async (p) => {
+      const zone = Number(p.zone);
+      if (zone >= 1) {
+        const z = lastZones[zone - 1];
+        if (!z) return fail("No such zone. Call find_risk_areas first.");
+        void show(z.lat, z.lng, Math.min(250, Math.max(40, z.acrossKm * 1.3)));
+        return json({ ok: true, showing: `danger zone ${zone} ${z.near ?? ""}`.trim() });
+      }
       const at = locate(snapshot(), p);
       if (typeof at === "string") return fail(at);
       void show(at.lat, at.lng, at.fire ? 60 : 30); // answer now; the camera and Firefly keep flying

@@ -480,6 +480,11 @@ export class Engine {
     this.scene.world.setOverride(n.level, n.q, n.r, { line: "#7dd3ff", pulse: 0.6, lift: 0.15 });
   }
 
+  /** The map's risk on a grid of world points, from the current hazards (same as the hexes show). */
+  riskScan(x0: number, z0: number, step: number, nx: number, nz: number) {
+    return this.client.riskScan(x0, z0, step, nx, nz);
+  }
+
   flyToLatLng(lat: number, lng: number, dist = 25) {
     const w = project(lat, lng);
     this.scene.flyTo(w.x, w.z, dist);

@@ -45,6 +45,11 @@ const LINE_FALLBACK_MS = 1200;
 /** How long the mic stays open after the talk button is released (ms). */
 const MIC_TAIL_MS = 600;
 
+/** Words that mark a message as conversation rather than a map command. */
+const CHAT_WORDS = /\b(why|should|shouldn'?t|but|tho|though|don'?t|doesn'?t|didn'?t|not|wrong|instead|explain|mean|hey|um+|i see|next|another|previous|again|them|those|that one)\b/i;
+/** Longer than a command, or worded like a question to Firefly. */
+export const conversational = (text: string) => text.split(/\s+/).length > 8 || CHAT_WORDS.test(text);
+
 /** Expressive voices may tag delivery ("[laughs]"); keep those out of the bubble. */
 const clean = (t: string) => t.replace(/\[[a-z ]{2,24}\]\s*/gi, "").trim();
 
@@ -150,7 +155,9 @@ export function useFireflyAgent(engine: Engine | null) {
   const send = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed || !engine) return;
-    const local = answerLocally(engine, trimmed);
+    // Short map commands are answered on the spot; conversation ("why…", complaints, follow-ups)
+    // goes to Firefly even when it names a place, so the rule brain doesn't just fly there.
+    const local = AGENT_ID && conversational(trimmed) ? null : answerLocally(engine, trimmed);
     if (local) {
       push({ from: "you", text: trimmed });
       push({ from: "firefly", text: local.reply });

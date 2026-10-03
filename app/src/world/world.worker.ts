@@ -249,6 +249,18 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
         reply(c && { status: c.status, risk: c.risk, edges: c.edges }, c ? [c.status.buffer, c.risk.buffer, c.edges.buffer] : []);
         break;
       }
+      case "riskScan": {
+        const n = msg.nx * msg.nz;
+        const risk = new Float32Array(n), status = new Uint8Array(n);
+        for (let j = 0; j < msg.nz; j++) for (let i = 0; i < msg.nx; i++) {
+          const x = msg.x0 + i * msg.step, z = msg.z0 + j * msg.step;
+          const e = hazards.evaluate(x, z, terrain.landAt(x, z), msg.step);
+          risk[j * msg.nx + i] = e.risk;
+          status[j * msg.nx + i] = e.status;
+        }
+        reply({ risk, status }, [risk.buffer, status.buffer]);
+        break;
+      }
       case "sample": {
         reply({
           elevation: terrain.elevation(msg.x, msg.z),

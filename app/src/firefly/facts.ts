@@ -10,7 +10,7 @@ import { fireSources, type FireSource } from "../data/fireSpread";
 import { isPerimeterActive, SIM_WEATHER_BOOST } from "../data/hazards";
 import { weatherAt, type DayWeather, type WeatherGrid } from "../data/openMeteo";
 import type { Place } from "../data/places";
-import { project } from "../geo/projection";
+import { project, unproject } from "../geo/projection";
 import { growthLookup, type GrowthField } from "../world/fireGrowth";
 
 export type FactPlace = Place & { region: number };
@@ -229,4 +229,68 @@ export function crewRanking(s: FactsSnapshot, crews: number) {
     return { fire_id: f.fid, lat: r1(f.lat), lng: r1(f.lng), near: nearestPlaceText(s, f.lat, f.lng), score: r1(score), reasons: reasons.slice(0, 3) };
   });
   return ranked.sort((a, b) => b.score - a.score).slice(0, Math.max(1, Math.min(10, crews)));
+}
+
+/** Risk sampled on a grid of world points (engine.riskScan), row-major from (x0, z0). */
+export interface RiskGrid { x0: number; z0: number; step: number; nx: number; nz: number; risk: Float32Array }
+
+/** Map colour thresholds (hex/nodeTypes statusForRisk): High danger and up, Extreme. */
+const HIGH_RISK = 0.68, EXTREME_RISK = 0.85;
+
+/**
+ * The map's danger zones: connected areas at High danger or worse, biggest and worst first. They
+ * have no names, so each is described by its nearest town, size, peak, and what drives it.
+ */
+export function riskZones(s: FactsSnapshot, g: RiskGrid, max = 5) {
+  const seen = new Uint8Array(g.nx * g.nz);
+  const zones: { cells: number; extreme: number; peak: number; px: number; pz: number; sx: number; sz: number; w: number }[] = [];
+  for (let start = 0; start < g.risk.length; start++) {
+    if (seen[start] || g.risk[start] < HIGH_RISK) continue;
+    const z = { cells: 0, extreme: 0, peak: 0, px: 0, pz: 0, sx: 0, sz: 0, w: 0 };
+    const stack = [start];
+    seen[start] = 1;
+    while (stack.length) {
+      const k = stack.pop()!;
+      const i = k % g.nx, j = (k - i) / g.nx, r = g.risk[k];
+      const x = g.x0 + i * g.step, wz = g.z0 + j * g.step;
+      z.cells++;
+      if (r >= EXTREME_RISK) z.extreme++;
+      if (r > z.peak) { z.peak = r; z.px = x; z.pz = wz; }
+      z.sx += x * r; z.sz += wz * r; z.w += r;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const ni = i + di, nj = j + dj, nk = nj * g.nx + ni;
+        if (ni < 0 || nj < 0 || ni >= g.nx || nj >= g.nz || seen[nk] || g.risk[nk] < HIGH_RISK) continue;
+        seen[nk] = 1;
+        stack.push(nk);
+      }
+    }
+    zones.push(z);
+  }
+  const cellKm2 = g.step * g.step;
+  return zones
+    .map((z) => ({ z, score: z.peak * Math.sqrt(z.cells * cellKm2) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, max)
+    .map(({ z }, n) => {
+      const cx = z.sx / z.w, cz = z.sz / z.w;
+      const { lat, lng } = unproject(cx, cz);
+      const areaKm2 = z.cells * cellKm2;
+      const acrossKm = 2 * Math.sqrt(areaKm2 / Math.PI);
+      const fire = nearestFire(s, cx, cz);
+      const fireDriven = !!fire && fire.km < acrossKm / 2 + 10;
+      return {
+        zone: n + 1,
+        danger: z.peak >= EXTREME_RISK ? "Extreme" : "High",
+        peakRisk: Math.round(z.peak * 100),
+        areaKm2: Math.round(areaKm2),
+        extremeKm2: Math.round(z.extreme * cellKm2),
+        acrossKm: Math.round(acrossKm),
+        lat: r1(lat), lng: r1(lng),
+        near: nearestPlaceText(s, lat, lng),
+        nearestFire: fire ? { fire_id: fire.f.fid, km: Math.round(fire.km) } : null,
+        cause: fireDriven
+          ? "around an active fire: the fire's wind-driven reach on top of the day's fire weather"
+          : "fire weather on dry fuel (heat, low humidity, wind, days since rain)",
+      };
+    });
 }

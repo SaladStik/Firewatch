@@ -86,7 +86,11 @@ export type WorkerRequest =
   | { id: number; type: "restatus"; level: number; cx: number; cz: number }
   | { id: number; type: "hazards"; hazards: HazardSnapshot }
   | { id: number; type: "growth"; sources: GrowthSource[]; horizon: number; size: number }
-  | { id: number; type: "sample"; x: number; z: number };
+  | { id: number; type: "sample"; x: number; z: number }
+  | { id: number; type: "riskScan"; x0: number; z0: number; step: number; nx: number; nz: number };
+
+/** Map risk (0..1) on an nx × nz grid of world points, row-major from (x0, z0) — same evaluation as the hexes. */
+export interface RiskScan { risk: Float32Array; status: Uint8Array }
 
 export type WorkerResponse =
   | { id: number; ok: true; result: unknown }
