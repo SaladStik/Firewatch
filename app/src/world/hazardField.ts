@@ -5,7 +5,8 @@
  *   risk = weatherRisk(lat,lng) × fuel(landType) + wind-shaped boost near hotspots
  * weatherRisk = Fosberg FFWI / 100 × days-since-rain dryness × the day's rain damping.
  * Demo rainstorms damp the whole score under them (data/rain.ts).
- * Direct observations override: inside an active perimeter / a hotspot in the hex.
+ * Direct observations override: an agency-reported out-of-control fire / inside an active perimeter.
+ * Hotspots are unconfirmed heat detections: they add the boost but never mark a hex "Out of control".
  */
 import { growthLookup } from "./fireGrowth";
 import { blobDamping, blobRain } from "../data/rain";
@@ -99,8 +100,9 @@ export class HazardField {
 
   evaluate(x: number, z: number, land: LandClass, hexSize: number): { status: NodeStatus; risk: number } {
     const fuel = NODE_TYPES[land]?.fuel ?? 0;
-    // A hotspot pixel is ~375 m; count it if it falls inside this hex.
-    if (this.nearestHotspot(x, z, Math.max(hexSize * 0.95, 0.4)) < Infinity) return { status: NodeStatus.Burning, risk: 1 };
+    // An out-of-control fire whose reported area (or point, if small) touches this hex.
+    const reach = Math.max(hexSize * 0.95, 0.4);
+    if (this.snap.burning.some((f) => Math.hypot(f.x - x, f.z - z) <= f.r + reach)) return { status: NodeStatus.Burning, risk: 1 };
     const perim = this.inPerimeter(x, z);
     if (perim === 2) return { status: NodeStatus.Perimeter, risk: 0.95 };
     let risk = this.weatherRisk(x, z) * fuel;

@@ -10,7 +10,7 @@ const STATUS_LOOK: Partial<Record<NodeStatus, string>> = {
   [NodeStatus.Elevated]: "amber hexes, risk index 50 to 67",
   [NodeStatus.High]: "orange hexes, risk index 68 to 84",
   [NodeStatus.Extreme]: "red hexes, risk index 85 and up",
-  [NodeStatus.Burning]: "bright red raised, pulsing hexes with burning trees: a satellite hotspot in the hex right now",
+  [NodeStatus.Burning]: "bright red raised, pulsing hexes with burning trees: an out-of-control wildfire reported by a fire agency",
   [NodeStatus.Perimeter]: "pink raised hexes: inside an active mapped fire perimeter",
   [NodeStatus.Projected]: "violet hexes: where an active fire could reach by the selected forecast day (scenario, not a forecast)",
   [NodeStatus.Burned]: "dark brown hexes: burned earlier this season",
@@ -26,6 +26,6 @@ export function legendContext(): string {
     "Risk index = the day's fire danger (Canadian FWI System) times the land cover's fuel load, raised near fires in the wind's direction. Water, rock and roads have little or no fuel, so they stay low.",
     `Land covers and their fuel load: ${land}.`,
     `Layers (toggled in the Layers panel): ${layers}.`,
-    "Hotspot beacons are tall markers over satellite hotspots, not monitoring stations. Demo scenario adds clearly labelled simulated fires, a heatwave and a rainstorm.",
+    "Hotspot beacons are tall markers over satellite hotspots, not monitoring stations. Hotspots are unconfirmed heat detections (often farm or controlled burns), not confirmed wildfires. Demo scenario adds clearly labelled simulated fires, a heatwave and a rainstorm.",
   ].join("\n");
 }

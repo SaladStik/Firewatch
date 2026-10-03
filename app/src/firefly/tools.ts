@@ -8,7 +8,7 @@ import type { Engine } from "../engine";
 import { NODE_STATUSES, NODE_TYPES } from "../hex/nodeTypes";
 import { project } from "../geo/projection";
 import { app, focusIndices, type Layers } from "../state/app";
-import { activeFires, briefing, crewRanking, explainAt, findPlace, fireList, placeReport, riskZones, spreadHeading, townsInPath, windByDay, type FactsSnapshot } from "./facts";
+import { activeFires, briefing, crewRanking, explainAt, findPlace, fireList, fireView, HEAT_NOTE, heatDetections, heatView, placeReport, riskZones, spreadHeading, townsInPath, windByDay, type FactsSnapshot } from "./facts";
 import { flyFireflyTo, fireflyController } from "./mascot";
 
 export function snapshot(): FactsSnapshot {
@@ -16,6 +16,7 @@ export function snapshot(): FactsSnapshot {
   const sim = s.simulation ? s.regions.flatMap((r) => simulatedHotspots(r.demoSites)) : [];
   return {
     places: s.places, hotspots: [...s.hotspots, ...sim], perimeters: s.perimeters, weather: s.weather,
+    reported: s.reportedFires, reportedOk: s.dataStatus.reported !== "error",
     forecastDay: s.forecastDay, simulation: s.simulation, spread: s.spread, fireGrowth: s.fireGrowth,
     focus: new Set(focusIndices()), regionNames: s.regions.map((r) => r.name), now: Date.now(),
   };
@@ -39,10 +40,20 @@ function matchRegions(raw: string): { id: string; name: string }[] | string {
   return hits.length ? hits.map((r) => ({ id: r.id, name: r.name })) : "Unknown region. Use a province name or code, for example BC.";
 }
 
+/** An official fire or a heat detection by id (list_fires gives both). */
+function findFire(s: FactsSnapshot, id: unknown) {
+  const fire = activeFires(s).find((x) => x.fid === id);
+  if (fire) return { fire, heat: undefined };
+  const heat = heatDetections(s).find((x) => x.fid === id);
+  return heat ? { fire: undefined, heat } : null;
+}
+
 function locate(s: FactsSnapshot, p: Params): { lat: number; lng: number; label: string; fire: boolean } | string {
   if (typeof p.fire_id === "string" && p.fire_id) {
-    const f = activeFires(s).find((x) => x.fid === p.fire_id);
-    return f ? { lat: f.lat, lng: f.lng, label: `fire ${f.fid}`, fire: true } : `No active fire with id ${p.fire_id}. Call list_fires for ids.`;
+    const f = findFire(s, p.fire_id);
+    if (!f) return `No active fire or heat detection with id ${p.fire_id}. Call list_fires for ids.`;
+    const at = f.fire ?? f.heat!;
+    return { lat: at.lat, lng: at.lng, label: f.fire ? `fire ${f.fire.name}` : `heat detection ${f.heat!.fid}`, fire: true };
   }
   if (typeof p.place === "string" && p.place) {
     const r = findPlace(s.places, p.place);
@@ -77,17 +88,19 @@ export function makeTools(engine: Engine) {
     }),
 
     list_fires: guard(() => {
-      const fires = fireList(snapshot());
-      return fires.length ? json(fires) : json({ result: "No active fires right now." });
+      const list = fireList(snapshot());
+      if (!list.officialTotal && !list.heatDetectionsTotal) return json({ result: "No active wildfires reported and no satellite heat detections right now." });
+      return json(list);
     }),
 
     get_fire_details: guard(async (p) => {
-      const fire = activeFires(snapshot()).find((x) => x.fid === p.fire_id);
-      if (!fire) return fail(`No active fire with id ${String(p.fire_id)}. Call list_fires for ids.`);
+      const found = findFire(snapshot(), p.fire_id);
+      if (!found) return fail(`No active fire or heat detection with id ${String(p.fire_id)}. Call list_fires for ids.`);
       const days = Math.min(7, Math.max(1, Math.round(Number(p.days ?? 3)) || 3));
       await engine.setForecastDay(days);
       const s = snapshot();
-      const f = fireList(s).find((x) => x.fire_id === p.fire_id);
+      const fire = found.fire ?? found.heat!;
+      const f = found.fire ? fireView(s, found.fire) : { ...heatView(s, found.heat!), heatNote: HEAT_NOTE };
       void show(fire.lat, fire.lng, 60);
       // Towns reached by any fire's projection, kept to those plausibly from this one (≤ 150 km).
       const w = project(fire.lat, fire.lng);
@@ -124,7 +137,7 @@ export function makeTools(engine: Engine) {
     plan_crews: guard((p) => {
       const crews = Math.min(10, Math.max(1, Math.round(Number(p.crews ?? 1)) || 1));
       const ranked = crewRanking(snapshot(), crews);
-      if (!ranked.length) return json({ result: "No active fires right now." });
+      if (!ranked.length) return json({ result: "No active wildfires reported by the fire agencies right now. Satellite heat detections are unconfirmed, so they aren't ranked for crews." });
       return json({ crews, picks: ranked, note: NOTE });
     }),
 

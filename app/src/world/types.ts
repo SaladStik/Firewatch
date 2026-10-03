@@ -40,6 +40,8 @@ export interface ChunkData {
 export interface HazardSnapshot {
   /** dx/dz/stretch: the day's downwind direction at the hotspot (see world/spread.ts). */
   hotspots: { x: number; z: number; frp: number; fwi: number; dx: number; dz: number; stretch: number; scale: number }[];
+  /** Out-of-control fires (agency-reported, plus simulated ones in the demo): centre and radius in km. */
+  burning: { x: number; z: number; r: number }[];
   perimeters: { active: boolean; minX: number; maxX: number; minZ: number; maxZ: number; rings: number[][] }[];
   /** Regular lat/lng grids of weather risk (0..1), one per region. */
   weather: { lat0: number; lng0: number; step: number; nLat: number; nLng: number; risk: number[] }[];
