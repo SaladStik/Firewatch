@@ -59,12 +59,16 @@ export function AppBar({
   onScreen,
   center,
   extra,
+  askOpen,
+  onAsk,
 }: {
   engine: Engine | null;
   screen: "map" | "instruments";
   onScreen: (screen: "map" | "instruments") => void;
   center?: ReactNode;
   extra?: ReactNode;
+  askOpen?: boolean;
+  onAsk?: () => void;
 }) {
   return (
     <div className="app-chrome pointer-events-auto flex w-full items-center justify-between gap-4 px-4 py-2.5">
@@ -73,6 +77,7 @@ export function AppBar({
       <div className="flex shrink-0 items-center gap-2">
         <BarButton active={screen === "map"} onClick={() => onScreen("map")}>Map</BarButton>
         <BarButton active={screen === "instruments"} onClick={() => onScreen("instruments")}>Live instrument data</BarButton>
+        {onAsk && <BarButton active={askOpen} onClick={onAsk}>Ask</BarButton>}
         {extra}
         <ThemeToggle engine={engine} />
       </div>

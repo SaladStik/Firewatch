@@ -5,7 +5,6 @@
  */
 import { useMemo } from "react";
 import { communityThreats } from "../data/communityRisk";
-import { SIM_WEATHER_BOOST, simulatedHotspots } from "../data/hazards";
 import { FORECAST_DAYS } from "../data/openMeteo";
 import type { Engine } from "../engine";
 import { app } from "../state/app";
@@ -25,18 +24,18 @@ export function ForecastBar({ engine }: { engine: Engine | null }) {
   const sim = useStore(app, (s) => s.simulation);
   const hotspots = useStore(app, (s) => s.hotspots);
   const perimeters = useStore(app, (s) => s.perimeters);
-  const regions = useStore(app, (s) => s.regions);
   const spread = useStore(app, (s) => s.spread);
   const growth = useStore(app, (s) => s.fireGrowth);
   const focus = useFocusIndices();
 
   const atRisk = useMemo(() => {
-    const fires = sim ? [...hotspots, ...regions.flatMap((r) => simulatedHotspots(r.demoSites))] : hotspots;
+    // Live fires and weather only. The demo scenario and the demo instrument stations stay out of this list.
     return communityThreats({
       places: places.filter((p) => !p.landmark && p.pop >= MIN_POP && focus.has(p.region)),
-      hotspots: fires, perimeters, weather, day, boost: sim ? SIM_WEATHER_BOOST : 1, spread, growth,
+      hotspots: hotspots.filter((h) => h.agency !== "SIMULATION"),
+      perimeters, weather, day, boost: 1, spread: sim ? null : spread, growth,
     });
-  }, [places, weather, day, focus, sim, hotspots, perimeters, regions, spread, growth]);
+  }, [places, weather, day, focus, sim, hotspots, perimeters, spread, growth]);
 
   if (!weather.length) {
     // Keep the bar (and the layout) in place and say why there's no forecast, instead of vanishing.
