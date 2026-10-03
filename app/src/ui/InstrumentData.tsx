@@ -88,7 +88,8 @@ function riskColor(category: string | null) {
     case "Low": return "var(--color-water)";
     case "Moderate": return "var(--color-risk-elev)";
     case "High": return "var(--color-risk-high)";
-    case "Very high": return "var(--color-risk-ext)";
+    case "Very high":
+    case "Very High": return "var(--color-risk-ext)";
     case "Extreme": return "var(--color-fire)";
     default: return null;
   }
@@ -105,10 +106,10 @@ type SortId = (typeof SORTS)[number]["id"];
 
 function sortValue(item: Instrument, sort: SortId) {
   switch (sort) {
-    case "risk": return item.reading.risk_score;
+    case "risk": return item.reading.fwi;
     case "humidity": return item.reading.humidity_pct;
     case "temp": return item.reading.temperature_c;
-    case "wind": return item.reading.wind_mph;
+    case "wind": return item.reading.wind_kmh;
   }
 }
 
@@ -118,14 +119,22 @@ function metric(value: number | null, digits: number, unit: string) {
 }
 
 export function InstrumentData({ onBack, engine }: { onBack: () => void; engine: Engine | null }) {
-  const [instruments, setInstruments] = useState<Instrument[]>([]);
+  const weather = useStore(app, (s) => s.weather);
+  const day = useStore(app, (s) => s.forecastDay);
+  const status = useStore(app, (s) => s.dataStatus);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [province, setProvince] = useState<(typeof PROVINCES)[number]["id"] | null>(null);
   const [sort, setSort] = useState<SortId | null>("risk");
   const [sortDesc, setSortDesc] = useState(true);
   const rootRef = useRef<HTMLDivElement>(null);
+  const instruments = useMemo(
+    () => STATIONS.map((station) => ({ ...station, reading: readingAt(station, weather, day) })),
+    [weather, day],
+  );
+  const error = status.weather === "error" && !weather.length
+    ? `Weather unavailable${status.weatherError ? ` · ${status.weatherError}` : ""}`
+    : null;
 
   useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -144,30 +153,6 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const response = await fetch(INSTRUMENTS_URL, { cache: "no-store" });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const body = (await response.json()) as { instruments?: Instrument[] };
-        if (cancelled) return;
-        const rows = body.instruments ?? [];
-        setInstruments(rows);
-        setError(null);
-      } catch {
-        if (!cancelled) setError("Cannot reach the instrument server.");
-      }
-    };
-    void load();
-    const timer = window.setInterval(() => void load(), 4000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  const theme = useStore(app, (s) => s.theme);
   const selected = selectedId ? instruments.find((item) => item.id === selectedId) ?? null : null;
   const where = selected ? coords(selected.latitude, selected.longitude) : null;
   const needle = query.trim().toLowerCase();
