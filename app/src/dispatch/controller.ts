@@ -13,7 +13,10 @@ import { snapshot } from "../firefly/tools";
 import { project } from "../geo/projection";
 import { app } from "../state/app";
 import { FUEL_FOR_LAND } from "../world/fireGrowth";
-import { exposures, HAND_WEIGHTS, learnWeights, loadHistory, planCrews, type CrewFire, type PlaceLite, type RankInput } from "./crews";
+import { exposures, HAND_WEIGHTS, learnWeights, loadHistory, planCrews, type CrewFire, type PlaceLite, type RankInput, type Scored } from "./crews";
+import { AIR_ROS, dispatchFleet, LAKE_MAX_KM, makeFleet, type Lake } from "./fleet";
+import { loadAircraft, usingDataServer } from "../data/liveData";
+import { unproject } from "../geo/projection";
 import { SCHEDULE_DAYS, type Override, type Weather311 } from "./ops311";
 import type { FromWorker, ToWorker } from "./plan311.worker";
 import { dispatch, type DispatchState } from "./store";
@@ -25,6 +28,13 @@ const assets = CRITICAL_ASSETS.map((a) => ({ name: a.name, kind: a.kind, lat: a.
 /** Hook the dispatch cases up to the engine (once, after boot). */
 export function initDispatch(e: Engine) {
   engine = e;
+  let lastTab = dispatch.get().tab, lastOpen = dispatch.get().open;
+  dispatch.subscribe(() => {
+    const d = dispatch.get();
+    if (d.tab === lastTab && d.open === lastOpen) return;
+    lastTab = d.tab; lastOpen = d.open;
+    if (d.open && d.tab === "crews") void pollAircraft();
+  });
   // The forecast day drives the 311 schedule: switching days shows that day's plan.
   let lastDay = app.get().forecastDay;
   app.subscribe(() => {
@@ -129,7 +139,61 @@ export function recomputeCrews() {
   }
   const plan = input && input.fires.length ? planCrews(input, d.crews, d.cutPct, weights) : null;
   dispatch.set({ plan });
+  void recomputeFleet();
   if (app.get().simulation && d.source === "history") void engine?.pushHazards();
+}
+
+// ------------------------------------------------------------ wildfire dispatch (resources)
+/** Nearest scoopable lake per fire (null: none within reach), looked up once. */
+const lakes = new Map<string, Lake | null>();
+const fireKey = (s: Scored) => `${s.fire.year ?? ""}:${s.fire.id}:${s.fire.lat.toFixed(3)},${s.fire.lng.toFixed(3)}`;
+let fleetRun = 0;
+
+/**
+ * Send the fleet to the crewed fires (after the cut): ground crews follow the crew count (60 %
+ * helitack, 40 % unit crews), aircraft are set in the panel. Skimmers need a lake near the fire.
+ */
+export async function recomputeFleet() {
+  const run = ++fleetRun;
+  const d = dispatch.get(), plan = d.plan;
+  if (!plan) { dispatch.set({ fleetDispatch: [] }); return; }
+  const fires = plan.pickedCut;
+  const needAir = fires.filter((s) => (s.ros >= AIR_ROS || s.fire.crown) && !lakes.has(fireKey(s)));
+  if (engine && needAir.length) {
+    await Promise.all(needAir.map(async (s) => {
+      const w = project(s.fire.lat, s.fire.lng);
+      const hit = await engine!.findWater(w.x, w.z, LAKE_MAX_KM).catch(() => null);
+      lakes.set(fireKey(s), hit ? { ...unproject(hit.x, hit.z), km: hit.km } : null);
+    }));
+  }
+  if (run !== fleetRun) return;
+  const ground = plan.cutCrews, helitack = Math.round(ground * 0.6);
+  const fleet = makeFleet({ helitack, unit: ground - helitack, airtanker: d.airtankers, skimmer: d.skimmers });
+  dispatch.set({ fleetDispatch: dispatchFleet(fires, fleet, (s) => lakes.get(fireKey(s)) ?? null) });
+}
+
+export function setFleetOptions(patch: Partial<Pick<DispatchState, "airtankers" | "skimmers" | "showLiveAircraft" | "simulate">>) {
+  dispatch.set(patch);
+  if ("airtankers" in patch || "skimmers" in patch) void recomputeFleet();
+  if (patch.showLiveAircraft) void pollAircraft();
+}
+
+// ------------------------------------------------------------ live aircraft
+let aircraftTimer = 0;
+/** Poll firefighting aircraft every minute while Dispatch is open on the wildfire tab. */
+export async function pollAircraft() {
+  clearTimeout(aircraftTimer);
+  const d = dispatch.get();
+  if (!d.open || d.tab !== "crews" || !d.showLiveAircraft) return;
+  if (!usingDataServer) { dispatch.set({ aircraftStatus: "no-server" }); return; }
+  if (!d.liveAircraft.length) dispatch.set({ aircraftStatus: "loading" });
+  try {
+    const r = await loadAircraft();
+    if (r) dispatch.set({ liveAircraft: r.aircraft, aircraftAt: r.fetchedAt, aircraftStatus: "ready" });
+  } catch {
+    dispatch.set({ aircraftStatus: "error" });
+  }
+  aircraftTimer = window.setTimeout(() => void pollAircraft(), 60_000);
 }
 
 /** Change crew settings (and re-run the improvement round if the crew count changed). */
@@ -277,6 +341,7 @@ export function openDispatch(tab?: DispatchState["tab"]) {
   // 311 plans in its worker straight away; the wildfire table loads alongside.
   if ((tab ?? dispatch.get().tab) === "311" && !dispatch.get().plan311) void recompute311();
   void loadCases().then(() => { if (dispatch.get().source === "live") recomputeCrews(); });
+  void pollAircraft();
 }
 
 export function closeDispatch() {

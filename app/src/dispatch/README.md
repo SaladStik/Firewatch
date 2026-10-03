@@ -6,6 +6,7 @@ FIRE//WATCH's answer to two IEEE YP Industry Hackathon 2026 cases. In plain term
 |---|---|
 | `crews.ts` | Case 3: rank wildfires for N crews, compare with biggest-first, cut crews, learn the weights |
 | `ops311.ts` | Case 1: score Calgary 311 tickets, plan crews for the day, replan after a disruption |
+| `fleet.ts` | Wildfire dispatch: Alberta's bases, the fleet, who goes to each crewed fire and how soon |
 | `router.ts` | Street routing for 311 crews over Calgary's real road network |
 | `controller.ts` | Runs both against the app's live data; feeds the demo scenario the case fires |
 | `agent.ts` | The same plans for Firefly (voice tools and typed Ask) |
@@ -34,6 +35,12 @@ Reports: `npm run case:crews`, `npm run case:311`. Tests: `tests/dispatch.test.t
 - The fires that lose a crew in the cut (the lowest priorities on it).
 - The big-but-slow or remote fires that biggest-first would have crewed instead.
 - A spoken briefing from Firefly.
+
+**Who goes.** Once the list is set, each crewed fire gets real resources from Alberta Wildfire's bases:
+- a helitack crew for a small new fire, or a 20-person unit crew for a bigger one (driven when close, flown in when remote);
+- for a fire running fast or crowning, a skimmer group if there's a lake to scoop nearby, otherwise an air tanker group.
+
+Every assignment shows the base, the ETA and (for aircraft) drops per hour. The dispatcher works through them like a queue, and the dispatched ones fly their sorties on the map. Real firefighting aircraft in the air right now (from ADS-B) show too.
 
 ## Who 311 sends next (Case 1)
 

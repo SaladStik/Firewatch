@@ -267,6 +267,21 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
         reply(c && { status: c.status, risk: c.risk, edges: c.edges }, c ? [c.status.buffer, c.risk.buffer, c.edges.buffer] : []);
         break;
       }
+      case "water": {
+        // Rings outward 1 km at a time; a spot counts when it and four points 0.6 km around it are
+        // all open water (land cover "Water": lakes and reservoirs, not rivers or wetland).
+        const wet = (x: number, z: number) => terrain.landAt(x, z) === LandClass.Water;
+        let found: { x: number; z: number; km: number } | null = null;
+        for (let r = 0; r <= msg.maxKm && !found; r += 1) {
+          const n = Math.max(1, Math.round((2 * Math.PI * r) / 0.8));
+          for (let i = 0; i < n; i++) {
+            const a = (i / n) * Math.PI * 2, x = msg.x + Math.cos(a) * r, z = msg.z + Math.sin(a) * r;
+            if (wet(x, z) && wet(x + 0.6, z) && wet(x - 0.6, z) && wet(x, z + 0.6) && wet(x, z - 0.6)) { found = { x, z, km: r }; break; }
+          }
+        }
+        reply(found);
+        break;
+      }
       case "sample": {
         reply({
           elevation: terrain.elevation(msg.x, msg.z),

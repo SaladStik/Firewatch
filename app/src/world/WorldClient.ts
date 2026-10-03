@@ -93,6 +93,10 @@ export class WorldClient {
   sample(x: number, z: number) {
     return this.call<PointSample>({ type: "sample", x, z });
   }
+  /** Nearest open water at least ~1.2 km across (a lake a skimmer can scoop), within maxKm; null if none. */
+  water(x: number, z: number, maxKm: number) {
+    return this.call<{ x: number; z: number; km: number } | null>({ type: "water", x, z, maxKm });
+  }
   dispose() {
     for (const w of this.workers) w.terminate();
   }

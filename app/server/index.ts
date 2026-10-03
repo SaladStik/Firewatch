@@ -45,6 +45,7 @@ import { PROJECTION, REGIONS, type Region } from "../src/config/regions";
 import { fetchFwiStations, fetchHotspots, fetchPerimeters, type Perimeter } from "../src/data/cwfis";
 import { fetchFireHistory } from "../src/data/fireHistory";
 import { fetchOpen311 } from "../src/data/calgary311";
+import { fetchFireAircraft } from "../src/data/aircraft";
 import type { Site } from "../src/dispatch/cityContext";
 import { Worker } from "node:worker_threads";
 import { makeFwiSeed } from "../src/data/fwiSeed";
@@ -212,6 +213,8 @@ function scoreSites(rows: unknown[], fetchedAt: string): Promise<Record<string, 
     w.postMessage({ id, rows, fetchedAt });
   });
 }
+/** Firefighting aircraft in the air right now (adsb.lol), refreshed every 2 minutes. */
+const aircraft = new Cached("aircraft", 2 * MIN, () => fetchFireAircraft());
 const calgary311 = new Cached("calgary311", TTL.fires, async () => {
   const r = await fetchOpen311();
   let sites: Record<string, Site> | undefined;
@@ -337,7 +340,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const status = (c: Cached<unknown>) => ({ fresh: c.fresh, fetchedAt: c.fetchedAt ? new Date(c.fetchedAt).toISOString() : null, error: c.lastError || null });
     return sendJson(req, res, 200, {
       ok: true,
-      hotspots: status(hotspots as Cached<unknown>), perimeters: status(perimeters as Cached<unknown>), stations: status(stations as Cached<unknown>), calgary311: status(calgary311 as Cached<unknown>),
+      hotspots: status(hotspots as Cached<unknown>), perimeters: status(perimeters as Cached<unknown>), stations: status(stations as Cached<unknown>), calgary311: status(calgary311 as Cached<unknown>), aircraft: status(aircraft as Cached<unknown>),
       weather: Object.fromEntries([...weather].map(([id, c]) => [id, status(c)])),
       fireHistories: histories.size,
     });
@@ -346,6 +349,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (p === "/api/cwfis/perimeters") return serve(req, res, perimeters as Cached<unknown>);
   if (p === "/api/cwfis/stations") return serve(req, res, stations as Cached<unknown>);
   if (p === "/api/calgary311/open") return serve(req, res, calgary311 as Cached<unknown>);
+  if (p === "/api/aircraft") return serve(req, res, aircraft as Cached<unknown>);
 
   const wx = p.match(/^\/api\/weather\/([a-z-]+)$/);
   if (wx) {

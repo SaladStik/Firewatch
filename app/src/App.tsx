@@ -12,6 +12,7 @@ import { useStore } from "./state/store";
 import { DispatchPanel } from "./ui/DispatchPanel";
 import { DispatchPins } from "./ui/DispatchPins";
 import { RouteOverlay } from "./ui/RouteOverlay";
+import { AircraftLayer } from "./ui/AircraftLayer";
 import { TicketsView } from "./ui/TicketsView";
 import { Explore } from "./ui/Explore";
 import { InstrumentData } from "./ui/InstrumentData";
@@ -132,6 +133,7 @@ export default function App() {
         </div>
       </div>
       {screen === "map" && <RouteOverlay engine={engine} />}
+      {screen === "map" && <AircraftLayer engine={engine} />}
       {screen === "map" && <DispatchPins engine={engine} />}
       <HoverTip />
       <BootScreen />

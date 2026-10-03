@@ -176,3 +176,26 @@ test("311: the day is filled strictly by priority, so no waiting ticket outranks
     if ("overrides" in opts) assert.ok(p.morning.routes.size && [...p.morning.routes.values()].flat().some((t) => t.id === far.id));
   }
 });
+
+test("fleet: small fires get helitack, big ones unit crews, fast ones air; skimmers need a lake", async () => {
+  const { dispatchFleet, makeFleet, etaMin, FLY_IN_KM } = await import("../src/dispatch/fleet.ts");
+  const h = loadHistory(FIRES);
+  const ranked = rankFires({ fires: h.fires, exposures: exposures(h.fires, [], []) }, HAND_WEIGHTS);
+  const fleet = makeFleet({ helitack: 4, unit: 4, airtanker: 2, skimmer: 1 });
+  const lakeNear = { lat: 56.25, lng: -115.25, km: 6 };
+  const out = dispatchFleet(ranked, fleet, (s) => (s.fire.id === "A2" ? lakeNear : null));
+  const byId = (id: string) => out.find((x) => x.fire.fire.id === id)!;
+  // A2: 5 ha, fast crown fire → helitack + a skimmer (lake 6 km away).
+  assert.deepEqual(byId("A2").assignments.map((a) => a.resource.kind).sort(), ["helitack", "skimmer"]);
+  assert.ok(byId("A2").assignments.find((a) => a.resource.kind === "skimmer")!.dropsPerHour! > 5);
+  // A1: 900 ha, slow → a unit crew only.
+  assert.deepEqual(byId("A1").assignments.map((a) => a.resource.kind), ["unit"]);
+  // Each resource goes to one fire.
+  const ids = out.flatMap((x) => x.assignments.map((a) => a.resource.id));
+  assert.equal(new Set(ids).size, ids.length);
+  // Remote unit crews are flown in: far beats driving the whole way.
+  const unit = fleet.find((r) => r.kind === "unit")!;
+  const far = { lat: unit.base.lat + 3, lng: unit.base.lng };
+  assert.ok(etaMin(unit, far.lat, far.lng) < 60 + ((333 * 1.3) / 70) * 60);
+  assert.ok(FLY_IN_KM > 0);
+});

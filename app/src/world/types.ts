@@ -86,7 +86,8 @@ export type WorkerRequest =
   | { id: number; type: "restatus"; level: number; cx: number; cz: number }
   | { id: number; type: "hazards"; hazards: HazardSnapshot }
   | { id: number; type: "growth"; sources: GrowthSource[]; horizon: number; size: number }
-  | { id: number; type: "sample"; x: number; z: number };
+  | { id: number; type: "sample"; x: number; z: number }
+  | { id: number; type: "water"; x: number; z: number; maxKm: number };
 
 export type WorkerResponse =
   | { id: number; ok: true; result: unknown }

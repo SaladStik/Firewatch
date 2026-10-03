@@ -6,6 +6,8 @@
  */
 import { createStore } from "../state/store";
 import type { CrewPlan, HistoryLoad, Learned, RankInput } from "./crews";
+import type { FireDispatch } from "./fleet";
+import type { LiveAircraft } from "../data/aircraft";
 import type { DaySummary, Disruption, Load311, Override, Plan311 } from "./ops311";
 import type { CrewRoute } from "./router";
 
@@ -32,6 +34,19 @@ export interface DispatchState {
   plan: CrewPlan | null;
   /** Show the plan after the cut (fewer crews) on the map and list. */
   showCut: boolean;
+
+  // Wildfire dispatch: which resource goes to each crewed fire.
+  /** Aircraft in the fleet (ground crews follow the crew count after the cut). */
+  airtankers: number;
+  skimmers: number;
+  fleetDispatch: FireDispatch[];
+  /** Live firefighting aircraft (adsb.lol, through the data server). */
+  showLiveAircraft: boolean;
+  liveAircraft: LiveAircraft[];
+  aircraftAt: string;
+  aircraftStatus: "idle" | "loading" | "ready" | "error" | "no-server";
+  /** Animate the dispatched resources' sorties on the map. */
+  simulate: boolean;
 
   // Calgary 311
   roads: number;
@@ -92,6 +107,14 @@ export const dispatch = createStore<DispatchState>({
   useLearned: true,
   plan: null,
   showCut: true,
+  airtankers: 8,
+  skimmers: 3,
+  fleetDispatch: [],
+  showLiveAircraft: true,
+  liveAircraft: [],
+  aircraftAt: "",
+  aircraftStatus: "idle",
+  simulate: true,
   roads: 5,
   waste: 3,
   perCrew: 5,

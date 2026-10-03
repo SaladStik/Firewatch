@@ -18,6 +18,7 @@ import type { Region } from "../config/regions";
 import { fetchFwiStations, fetchHotspots, fetchPerimeters, type FwiStation, type Hotspot, type Perimeter } from "./cwfis";
 import { fetchFireHistory, type FireHistory } from "./fireHistory";
 import { fetchOpen311 } from "./calgary311";
+import type { LiveAircraft } from "./aircraft";
 import type { Row311 } from "../dispatch/ops311";
 import { fetchWeatherGrid, type FwiSeed, type WeatherGrid } from "./openMeteo";
 
@@ -48,6 +49,11 @@ export const loadHotspots = (bbox: BBox): Promise<Hotspot[]> => (usingDataServer
 export const loadPerimeters = (bbox: BBox): Promise<Perimeter[]> => (usingDataServer ? api("/cwfis/perimeters") : fetchPerimeters(bbox));
 /** Fire weather stations' observed FWI codes. */
 export const loadStations = (): Promise<FwiStation[]> => (usingDataServer ? api("/cwfis/stations") : fetchFwiStations());
+/**
+ * Firefighting aircraft in the air now (adsb.lol). Only through the data server: adsb.lol doesn't
+ * allow calls from web pages. Null without a server.
+ */
+export const loadAircraft = (): Promise<{ aircraft: LiveAircraft[]; fetchedAt: string; seenAircraft: number } | null> => (usingDataServer ? api("/aircraft") : Promise.resolve(null));
 /** Calgary's live 311 queue (open crew field work; Open Calgary). */
 export const loadCalgary311 = (): Promise<{ rows: Row311[]; fetchedAt: string }> => (usingDataServer ? api("/calgary311/open") : fetchOpen311());
 /** One region's weather grid with the FWI System (the server seeds it itself). */

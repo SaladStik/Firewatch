@@ -474,6 +474,43 @@ All seasons together, 40 crews: biggest first reaches 15 escapes, FIRE//WATCH 28
 - travel time isn't included;
 - the 2023–2025 table mixes three seasons as if they burned at once, which is what the case asks for.
 
+### 13.1b Wildfire dispatch: who goes to each crewed fire
+
+The ranking decides *which* fires get a crew. Dispatch decides *who* goes and how soon. It's worked through as a queue (Dispatch / Skip).
+
+**Bases.** Alberta Wildfire's airtanker bases and forest-area headquarters, at their airports:
+- Calgary (Springbank), Rocky Mountain House, Edson, Whitecourt, Grande Prairie, Peace River;
+- High Level, Slave Lake, Lac La Biche, Fort McMurray, Pincher Creek, Fort Chipewyan.
+
+**Fleet.** Ground crews follow the crew count after the cut: 60 % helitack, 40 % unit crews. The air tanker and skimmer groups are set in the panel. *Assumption:* how many of each resource sits at each base isn't published, so they're spread across the bases where that kind normally works.
+
+| Resource | Speed | Getaway | Role |
+|---|---|---|---|
+| Helitack crew (helicopter) | 200 km/h | 15 min | Initial attack |
+| Unit crew (20 people) | 70 km/h by road (× 1.3 for winding roads), flown in at 250 km/h after 60 min beyond 100 km | 30 min | Sustained action |
+| Air tanker group | 450 km/h | 15 min | Retardant; reloads at its base (20 min) |
+| Skimmer group (CL-415) | 300 km/h | 15 min | Scoops from a lake (about 2 min per scoop) |
+
+The speeds and times are typical values, not Alberta's own figures.
+
+**Rules,** in the fires' priority order:
+1. Every fire gets a ground crew: a helitack crew while it's ≤ 10 ha (initial attack), a unit crew when it's bigger (sustained action). If none of the wanted type is free, it gets the other type.
+2. Fires spreading ≥ 15 m/min, or crowning, also get air support: a skimmer group if there's a scoopable lake within 30 km, otherwise an air tanker group.
+3. A scoopable lake is the nearest spot where the land cover (ESA WorldCover) is open water across at least 1.2 km. Rivers and wetlands don't count.
+4. Each resource goes to one fire: the nearest free one of its kind.
+
+Each aircraft's cycle is two legs plus the scoop or reload, which gives its drops per hour. For example, a skimmer with a lake 5 km from the fire makes about 15 drops an hour; an air tanker 150 km from its base makes about 1.4.
+
+**On the map.** Dispatched resources fly their sorties at 120× speed (simulated, labelled SIM). Only the fire on the queue card and the fires already dispatched are shown.
+
+**Real aircraft.** Firefighting aircraft in the air now come from adsb.lol's open ADS-B feed, picked by type:
+- skimmers (CL-415/215);
+- Air Tractor Fire Bosses;
+- Electra, RJ85, Convair 580 and MD-87 tankers;
+- C-130s and 737s only with a tanker callsign.
+
+Helicopters and bird dogs can't be told from other traffic by type, so they're left out. Positions are moved forward between updates from speed and track.
+
 ### 13.2 Calgary 311 (Case 1)
 
 **Data.** Two ticket sets:

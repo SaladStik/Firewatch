@@ -8,10 +8,11 @@
 import { Check, ChevronDown, ChevronLeft, ChevronRight, Flame, Map as MapIcon, Minus, Navigation, Route, Send, Snowflake, Ticket as TicketIcon, Volume2, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { crewColor } from "../dispatch/colors";
-import { calgarySnowForecast, closeDispatch, flyTo, openTickets, recompute311, refreshLive311, set311Options, setCrewOptions, setShortestOrder, setSource311 } from "../dispatch/controller";
+import { calgarySnowForecast, closeDispatch, flyTo, openTickets, recompute311, refreshLive311, setFleetOptions, set311Options, setCrewOptions, setShortestOrder, setSource311 } from "../dispatch/controller";
 import { dutyBriefing, EXPOSURE_KM, HAND_WEIGHTS, label, type Scored } from "../dispatch/crews";
 import { priorityParts, supervisor8am, supervisorNoon, typeOf, weatherFactor, type Disruption, type Plan311, type Ticket, type Weather311 } from "../dispatch/ops311";
 import { dispatch, type DispatchTab } from "../dispatch/store";
+import { KIND, type FireDispatch } from "../dispatch/fleet";
 import type { Engine } from "../engine";
 import { fireflyController } from "../firefly/mascot";
 import { app } from "../state/app";
@@ -162,6 +163,22 @@ function FireRow({ s, rank, lost, state, current, onPick }: { s: Scored; rank: n
   );
 }
 
+/** What's sent to a fire: each resource, from where, how soon, and (air) how often it drops. */
+function Resources({ fd }: { fd: FireDispatch | null }) {
+  if (!fd) return null;
+  return (
+    <ul className="mt-1.5 flex flex-col gap-0.5">
+      {fd.assignments.map((a) => (
+        <li key={a.resource.id} className="text-[11px]" title={KIND[a.resource.kind].note}>
+          <span className="font-semibold text-ink">{KIND[a.resource.kind].label}</span> {a.resource.id} from {a.resource.base.name} · <b className="text-ink">ETA {Math.round(a.eta)} min</b>
+          {a.dropsPerHour ? ` · ${a.dropsPerHour.toFixed(1)} drops/h` : ""} <span className="text-ink-mute">({a.why})</span>
+        </li>
+      ))}
+      {fd.unmet.map((u) => <li key={u} className="text-[11px] text-risk-high">{u}</li>)}
+    </ul>
+  );
+}
+
 function CrewsTab({ engine }: { engine: Engine | null }) {
   const d = useStore(dispatch, (s) => s);
   const simulation = useStore(app, (s) => s.simulation);
@@ -191,10 +208,43 @@ function CrewsTab({ engine }: { engine: Engine | null }) {
   return (
     <div className="flex flex-col gap-3">
       <Seg value={d.source} options={[["history", "Alberta 2023–2025"], ["live", "Live fires"]]} onChange={(source) => setCrewOptions({ source })} />
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         <Num label="Crews" value={d.crews} min={1} max={120} onChange={(crews) => setCrewOptions({ crews })} />
         <Num label="Cut" value={d.cutPct} min={0} max={90} suffix="%" onChange={(cutPct) => setCrewOptions({ cutPct })} />
+        <Num label="Tankers" value={d.airtankers} min={0} max={20} onChange={(airtankers) => setFleetOptions({ airtankers })} />
+        <Num label="Skimmers" value={d.skimmers} min={0} max={10} onChange={(skimmers) => setFleetOptions({ skimmers })} />
       </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-dim">
+        <label className="flex cursor-pointer items-center gap-1.5"><input type="checkbox" checked={d.simulate} onChange={(e) => setFleetOptions({ simulate: e.target.checked })} /> Fly the sorties (sim)</label>
+        <label className="flex cursor-pointer items-center gap-1.5"><input type="checkbox" checked={d.showLiveAircraft} onChange={(e) => setFleetOptions({ showLiveAircraft: e.target.checked })} /> Live aircraft</label>
+      </div>
+      {(d.simulate || d.showLiveAircraft) && (
+        <div className="flex flex-col gap-1 border border-line px-2 py-1.5 text-[10.5px] text-ink-dim">
+          {d.simulate && (
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+              <span className="text-ink-mute">Simulated sorties:</span>
+              {(["helitack", "unit", "airtanker", "skimmer"] as const).map((k) => (
+                <span key={k} className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full" style={{ background: { helitack: "#ffd23f", unit: "#2ee38a", airtanker: "#ff5a36", skimmer: "#36b8ff" }[k] }} />{KIND[k].label}</span>
+              ))}
+            </div>
+          )}
+          {d.showLiveAircraft && (
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-2 w-2 rounded-full" style={{ background: "#ff9f1a" }} />
+              <span>
+                <b className="text-ink">Real aircraft</b> (labelled with registration):{" "}
+                {d.aircraftStatus === "no-server" ? "needs the data server (adsb.lol blocks calls from web pages)"
+                  : d.aircraftStatus === "loading" ? "checking ADS-B…"
+                    : d.aircraftStatus === "error" ? "adsb.lol is unavailable right now"
+                      : d.aircraftStatus === "ready" ? (d.liveAircraft.length
+                        ? `${d.liveAircraft.length} firefighting aircraft in the air right now`
+                        : "none of the skimmer or air tanker fleet is in the air right now (adsb.lol)")
+                        : ""}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {d.status === "loading" && <p className="text-[12px] text-ink-mute">Loading the fires…</p>}
       {d.status === "learning" && <p className="text-[12px] text-ink-mute">Learning from past seasons…</p>}
@@ -217,8 +267,11 @@ function CrewsTab({ engine }: { engine: Engine | null }) {
           step={at + 1} total={crewed.length} done={done}
           title={label(cur)}
           sub={<>{shortReason(cur)}{cur.fire.year ? ` · ${cur.fire.year}` : ""}</>}
-          why={<>Priority #{at + 1}: {cur.reason}.{cur.exposure.sites[0] ? ` Nearest critical site: ${cur.exposure.sites[0].name}.` : ""}</>}
-          sendLabel="Send crew" state={d.decided[fireKey(cur)]}
+          why={<>
+            <div>Priority #{at + 1}: {cur.reason}.{cur.exposure.sites[0] ? ` Nearest critical site: ${cur.exposure.sites[0].name}.` : ""}</div>
+            <Resources fd={d.fleetDispatch.find((x) => x.fire === cur) ?? null} />
+          </>}
+          sendLabel="Dispatch" state={d.decided[fireKey(cur)]}
           onSend={() => decide("sent")} onSkip={() => decide("skipped")} onPrev={() => go(at - 1)} onNext={() => go(at + 1)}
         />
       )}

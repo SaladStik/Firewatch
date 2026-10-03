@@ -405,6 +405,11 @@ export class Engine {
   }
 
   /** Ground elevation (m) at a world point, from the terrain rasters (no hex needs to be loaded). */
+  /** Nearest lake a skimmer can scoop from, within maxKm of a world point (null if none). */
+  findWater(x: number, z: number, maxKm: number) {
+    return this.client.water(x, z, maxKm);
+  }
+
   async groundElevation(x: number, z: number): Promise<number> {
     return (await this.client.sample(x, z)).elevation;
   }

@@ -5,7 +5,8 @@
  */
 import { app } from "../state/app";
 import { label, type CrewPlan, type Scored } from "./crews";
-import { calgarySnowForecast, flyTo, loadCases, openDispatch, recompute311, recomputeCrews, setCrewOptions } from "./controller";
+import { calgarySnowForecast, flyTo, loadCases, openDispatch, recompute311, recomputeCrews, recomputeFleet, setCrewOptions } from "./controller";
+import { KIND } from "./fleet";
 import { dutyBriefing } from "./crews";
 import { supervisor8am, supervisorNoon, typeOf, type Disruption } from "./ops311";
 import { dispatch, type CrewSource } from "./store";
@@ -30,7 +31,12 @@ export async function crewPlanFacts(opts: { crews?: number; cutPct?: number; sou
   });
   if (source === "history") await loadCases().then(() => recomputeCrews());
   openDispatch("crews");
+  await recomputeFleet();
   const plan = dispatch.get().plan;
+  const sent = (s: Scored) => dispatch.get().fleetDispatch.find((x) => x.fire === s)?.assignments.map((a) => ({
+    resource: `${KIND[a.resource.kind].label} ${a.resource.id}`, from: a.resource.base.name, etaMin: Math.round(a.eta),
+    ...(a.dropsPerHour ? { dropsPerHour: r1(a.dropsPerHour) } : {}), why: a.why,
+  })) ?? [];
   if (!plan) return { result: source === "live" ? "No active fires in the regions in focus. Offer the Alberta 2023–2025 season instead (source history)." : "Case data is still loading." };
   const learned = dispatch.get().learned;
   const first = plan.pickedCut[0];
@@ -38,7 +44,7 @@ export async function crewPlanFacts(opts: { crews?: number; cutPct?: number; sou
   return {
     source: source === "history" ? "Alberta historical wildfires 2023–2025 (Government of Alberta)" : "live CWFIS fires",
     crews: plan.crews, crewsAfterCut: plan.cutCrews,
-    top: plan.pickedCut.slice(0, 5).map((s, i) => fireFact(s, i + 1)),
+    top: plan.pickedCut.slice(0, 5).map((s, i) => ({ ...fireFact(s, i + 1), dispatched: sent(s) })),
     lostCrew: plan.lostCrew.map((s) => fireFact(s, plan.picked.indexOf(s) + 1)),
     skippedVsBiggestFirst: plan.skippedVsBaseline.slice(0, 5).map((s) => ({ fire: label(s), sizeHa: r1(s.fire.sizeHa), spreadMMin: r1(s.ros) })),
     vsBiggestFirst: plan.grades ? {

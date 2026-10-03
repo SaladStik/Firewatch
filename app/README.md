@@ -66,6 +66,12 @@ The **Dispatch** button (top bar) opens the IEEE YP Industry Hackathon 2026 case
 - Baseline: biggest first. Cut crews by 20% (adjustable) and see which fires lost a crew, ringed red on the map.
 - Improvement round: the weights are fitted on two seasons and tested on the third.
 - Duty-officer paragraph, which Firefly reads out on request.
+- **Dispatch:** every crewed fire gets specific resources from Alberta Wildfire's bases, with ETAs, worked through as a queue (Dispatch / Skip):
+  - helitack crews for initial attack;
+  - unit crews for bigger fires, driven when close and flown in to remote ones;
+  - for fast or crowning fires, a skimmer group if a lake is close enough to scoop, otherwise an air tanker group.
+- **On the map:** dispatched resources fly their sorties (simulated, labelled SIM). Skimmers shuttle fire ↔ lake, air tankers shuttle fire ↔ base to reload, helitack crews fly out and land.
+- **Real aircraft:** firefighting aircraft in the air right now, from ADS-B (adsb.lol), labelled with their registration.
 
 With 40 crews, cut to 32 (`npm run case:crews`):
 
@@ -129,6 +135,7 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 | Fire perimeters (current season) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) M3 perimeters (`public:m3_polygons_current`) | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Active-perimeter and burn-scar hexes, burned-area total |
 | Fire weather stations: observed FWI moisture codes (FFMC, DMC, DC) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) `public:firewx_stns_current` | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Seeds the FWI System per weather cell with official values (with the FWI codes CWFIS attaches to each hotspot). Refreshed at most hourly |
 | Fire growth history (per fire) | [CWFIS](https://cwfis.cfs.nrcan.gc.ca/) hotspot archive (`public:hotspots`, every detection since 2012), queried per active perimeter since its start date | [Open Government Licence – Canada](https://open.canada.ca/en/open-government-licence-canada) | Each fire's daily burned-area growth; calibrates how far that fire is projected to spread. Fetched for active fires in focused provinces, at most hourly |
+| Firefighting aircraft in the air (skimmers CL-415/215, Air Tractor Fire Bosses, Electra, RJ85, Convair 580, MD-87 and tanker C-130 / 737) | [adsb.lol](https://adsb.lol) open ADS-B feed (community receivers), `/api/aircraft` on the data server | [ODbL](https://opendatacommons.org/licenses/odbl/) | Live aircraft on the wildfire dispatch map. Refreshed every 2 minutes; data server only (adsb.lol blocks calls from web pages) |
 | Calgary's open 311 queue (crew field work: roads, sidewalks, signs, signals, back lanes, waste) | [Open Calgary 311 Service Requests](https://data.calgary.ca/Services-and-Amenities/311-Service-Requests/iahh-g8bj) (`/api/calgary311/open` on the data server) | Open Government Licence – City of Calgary | Live 311 dispatch. Refreshed every 10 minutes; the data server attaches each ticket's site facts |
 | Weather (12:00 local hourly temperature, humidity and wind for the FWI System; daily peaks and rain totals; 14 past days + today + 7-day forecast; live current conditions incl. wind and precipitation) | [Open-Meteo](https://open-meteo.com/) | Data [CC BY 4.0](https://open-meteo.com/en/license); free API for non-commercial use | 1.5° grid (coarser for very large provinces, ≤ ~90 points each), focused provinces only; Canadian FWI System per day (with Fosberg for comparison), wind direction for spread, live wind and rain animation. Refreshed at most hourly |
 
