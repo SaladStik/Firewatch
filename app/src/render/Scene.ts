@@ -16,6 +16,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { BASE_ELEVATION_M, GRID, RELIEF_EXPONENT, verticalScale } from "../config/grid";
 import { reliefKm } from "./heights";
+import { stepCamera } from "./cameraKeys";
 import { project, unproject } from "../geo/projection";
 import type { Place } from "../data/places";
 import type { WorldClient } from "../world/WorldClient";
@@ -44,6 +45,30 @@ export interface Beacon {
 
 const MIN_DIST = 2.5;
 
+// ---------------------------------------------------------------- keyboard camera
+/**
+ * Arrows drive the camera, Ctrl (or Shift) + arrows orbit and tilt it, +/- zoom. The key map
+ * and all the maths live in `cameraKeys.ts`; this file only tracks which keys are held.
+ *
+ * Ctrl is what most people reach for, but macOS claims all four Ctrl+arrows for Mission
+ * Control and Spaces before the page ever sees them, so Shift does the same job.
+ *
+ * Held keys move the camera a little every frame rather than stepping once per keypress, so
+ * the motion is smooth and doesn't depend on the OS key-repeat rate.
+ */
+/** `KeyboardEvent.code` values the camera takes: physical keys, so they survive modifiers. */
+const CAMERA_KEYS = new Set([
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "Equal", "Minus", "NumpadAdd", "NumpadSubtract",
+]);
+
+/** Keystrokes meant for a text box are never the camera's. */
+function isTyping(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || !el.tagName) return false;
+  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable === true;
+}
+
 export class Scene {
   readonly world: HexWorld;
   private renderer: WebGLRenderer;
@@ -56,6 +81,12 @@ export class Scene {
   private pointer = new Vector2();
   private pointerDirty = false;
   private downAt: { x: number; y: number } | null = null;
+  /** Camera keys currently held, by `KeyboardEvent.code`. */
+  private keys = new Set<string>();
+  /** Whether Ctrl or Shift is down, so the arrows orbit and tilt instead of panning. */
+  private keyMod = false;
+  /** Removed on dispose, so a hot reload doesn't stack listeners. */
+  private keyListeners: (() => void)[] = [];
   private raf = 0;
   private lastT = performance.now();
   private fps = 60;
@@ -296,6 +327,7 @@ export class Scene {
 
   private bindInput() {
     const c = this.canvas;
+    this.bindCameraKeys();
     // Dev: Ctrl+Shift+D tints hexes by detail level (L3 red, L4 yellow, L5 cyan…), stand-ins magenta.
     window.addEventListener("keydown", (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "d") {
@@ -303,6 +335,65 @@ export class Scene {
         sharedUniforms.uDebug.value = sharedUniforms.uDebug.value ? 0 : 1;
       }
     });
+    this.bindPointer(c);
+  }
+
+  /** Arrow-key camera. See the notes by PAN_PER_S for the key map and why Shift works too. */
+  private bindCameraKeys() {
+    const down = (e: KeyboardEvent) => {
+      this.keyMod = e.ctrlKey || e.shiftKey;
+      // Leave anything with Meta or Alt to the OS and the browser.
+      if (e.metaKey || e.altKey) return;
+      if (!CAMERA_KEYS.has(e.code) || isTyping(e.target) || isTyping(document.activeElement)) return;
+      this.keys.add(e.code);
+      e.preventDefault(); // arrows would scroll the page
+    };
+    const up = (e: KeyboardEvent) => {
+      this.keyMod = e.ctrlKey || e.shiftKey;
+      this.keys.delete(e.code);
+    };
+    // A key still held when the window loses focus would otherwise stay down for ever.
+    const clear = () => { this.keys.clear(); this.keyMod = false; };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", clear);
+    this.keyListeners.push(
+      () => window.removeEventListener("keydown", down),
+      () => window.removeEventListener("keyup", up),
+      () => window.removeEventListener("blur", clear),
+    );
+  }
+
+  /**
+   * Move the camera for whatever keys are held. Called once per frame before the controls
+   * update, which is also how flyTo and the terrain clamp drive the camera.
+   */
+  private applyKeys(dt: number) {
+    if (!this.keys.size) return;
+    const k = this.keys;
+    const t = this.controls.target;
+    const cam = this.camera.position;
+    const next = stepCamera(
+      { tx: t.x, ty: t.y, tz: t.z, cx: cam.x, cy: cam.y, cz: cam.z },
+      {
+        fwd: (k.has("ArrowUp") ? 1 : 0) - (k.has("ArrowDown") ? 1 : 0),
+        side: (k.has("ArrowRight") ? 1 : 0) - (k.has("ArrowLeft") ? 1 : 0),
+        zoom: (k.has("Minus") || k.has("NumpadSubtract") ? 1 : 0) - (k.has("Equal") || k.has("NumpadAdd") ? 1 : 0),
+        mod: this.keyMod,
+        dt,
+      },
+      {
+        minDist: MIN_DIST,
+        maxDist: this.maxDist,
+        minPolar: this.controls.minPolarAngle,
+        maxPolar: this.controls.maxPolarAngle,
+      },
+    );
+    t.set(next.tx, next.ty, next.tz);
+    cam.set(next.cx, next.cy, next.cz);
+  }
+
+  private bindPointer(c: HTMLCanvasElement) {
     c.addEventListener("pointermove", (e) => {
       const r = c.getBoundingClientRect();
       this.pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
@@ -347,6 +438,7 @@ export class Scene {
     this.fps = this.fps * 0.95 + (1 / Math.max(dt, 1e-3)) * 0.05;
     sharedUniforms.uTime.value = now / 1000;
 
+    this.applyKeys(dt);
     this.controls.update();
     const dist = this.distance;
     sharedUniforms.uVScale.value = verticalScale(dist);
@@ -567,6 +659,8 @@ export class Scene {
     this.disposed = true;
     cancelAnimationFrame(this.raf);
     this.ro.disconnect();
+    for (const off of this.keyListeners) off();
+    this.keyListeners = [];
     this.controls.dispose();
     this.world.dispose();
     for (const l of this.labels) l.el.remove();

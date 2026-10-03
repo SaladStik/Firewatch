@@ -18,6 +18,9 @@ The baked files for every region ship in `public/data/<region>/`, so you only ne
 
 **Controls:**
 - Left-drag pans; right-drag, middle-drag or Ctrl+drag rotates and tilts; scroll zooms toward the cursor.
+- **Keyboard:** arrow keys drive the camera (**Up** goes the way you're facing, so it follows wherever you've turned), **Ctrl+arrows** orbit and tilt (**Ctrl+Right** turns the compass clockwise, **Ctrl+Up** lifts towards a bird's-eye view), and **+** / **−** zoom. Holding a key moves a little every frame rather than stepping once per press, and the speed scales with how far out you are, so it feels the same at every zoom. Tilt and zoom stop at the same limits the mouse has.
+  - **Shift+arrows** do the same as Ctrl+arrows, because macOS claims all four Ctrl+arrows for Mission Control and Spaces before the page ever sees them.
+  - Arrows are ignored while you're typing in a panel, and the key map plus its maths are in `render/cameraKeys.ts` (pure, no three.js, unit-tested).
 - Click a hex to inspect it. Clicking a greyed province brings it into focus.
 - The **Explore** panel has two tabs:
   - **Regions:** choose which provinces are in focus.
