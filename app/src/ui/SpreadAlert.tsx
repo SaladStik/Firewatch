@@ -8,7 +8,7 @@ import { useStore } from "../state/store";
 import { useFocusIndices } from "./region";
 import { dayLabel } from "./weatherFormat";
 
-const MAX_SHOWN = 6;
+const MAX_SHOWN = 3;
 const VIOLET = "#6b3d8a";
 
 export function SpreadAlert({ engine }: { engine: Engine | null }) {
@@ -32,24 +32,29 @@ export function SpreadAlert({ engine }: { engine: Engine | null }) {
 
   if (!threatened.length) return null;
   return (
-    <div className="panel pointer-events-auto flex max-w-[min(920px,calc(100vw-32px))] items-center gap-1 px-2 py-1.5" style={{ borderColor: `${VIOLET}66` }}>
-      <span className="label-xs mr-1 shrink-0" style={{ color: VIOLET }}>
-        In projected path · by {day === 0 ? "end of today" : dayLabel(day, dates)}
+    <div
+      className="panel hud-strip pointer-events-auto flex items-center"
+      style={{ borderColor: `${VIOLET}55` }}
+      title="Scenario, not a forecast"
+    >
+      <span className="label-xs shrink-0" style={{ color: VIOLET }}>
+        Path · {day === 0 ? "today" : dayLabel(day, dates)}
       </span>
       <div className="scroll-thin flex min-w-0 gap-1 overflow-x-auto">
         {threatened.slice(0, MAX_SHOWN).map((p) => (
           <button
             key={`${p.region}-${p.name}-${p.lat}`}
             onClick={() => engine?.flyToLatLng(p.lat, p.lng, 25)}
-            className="shrink-0 whitespace-nowrap border px-2 py-1 text-[10.5px] text-ink-dim transition hover:text-ink"
-            style={{ borderColor: `${VIOLET}66` }}
+            className="hud-chip shrink-0"
+            style={{ borderColor: `${VIOLET}55` }}
           >
             {p.name}
           </button>
         ))}
-        {threatened.length > MAX_SHOWN && <span className="shrink-0 self-center text-[10px] text-ink-mute">+{threatened.length - MAX_SHOWN} more</span>}
+        {threatened.length > MAX_SHOWN && (
+          <span className="shrink-0 self-center text-[9px] text-ink-mute">+{threatened.length - MAX_SHOWN}</span>
+        )}
       </div>
-      <span className="ml-auto shrink-0 pl-2 text-[10px] text-ink-mute">Scenario, not a forecast</span>
     </div>
   );
 }

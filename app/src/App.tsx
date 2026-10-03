@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Engine } from "./engine";
 import { mountLodTuner } from "./dev/LodTuner";
 import { app } from "./state/app";
-import { FireFeed } from "./ui/FireFeed";
-import { ForecastBar } from "./ui/ForecastBar";
+import { StatusDock } from "./ui/StatusDock";
 import { AppBar, LodReadout } from "./ui/Hud";
 import { Explore } from "./ui/Explore";
 import { InstrumentData } from "./ui/InstrumentData";
@@ -11,8 +10,7 @@ import { LayerDock, Legend } from "./ui/Layers";
 import { BootScreen, HoverTip, NavControls } from "./ui/Overlays";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { SectorPanel } from "./ui/SectorPanel";
-import { SpreadAlert } from "./ui/SpreadAlert";
-import { TrafficAlert } from "./ui/TrafficAlert";
+import { ValuesAtRisk } from "./ui/ValuesAtRisk";
 import { AgentPanel } from "./ui/AgentPanel";
 
 export default function App() {
@@ -56,33 +54,31 @@ export default function App() {
         />
         <div className="flex min-h-0 flex-1 flex-col justify-between p-4">
           <div className="flex min-h-0 flex-1 items-start justify-between gap-4 py-3">
-            <div className="hidden max-h-full min-h-0 gap-2 md:flex">
+            <div className="hidden max-h-[min(70vh,calc(100%-6rem))] min-h-0 gap-2 md:flex">
               <div className="flex flex-col gap-2">
                 <ErrorBoundary name="LayerDock"><LayerDock engine={engine} /></ErrorBoundary>
                 <Legend />
               </div>
-              <div className="flex max-h-full min-h-0 flex-col self-start">
+              <div className="flex max-h-full min-h-0 flex-col self-start overflow-hidden">
                 <ErrorBoundary name="Explore"><Explore engine={engine} /></ErrorBoundary>
               </div>
             </div>
             <div className="scroll-thin ml-auto max-h-full self-start overflow-y-auto">
               <ErrorBoundary name="SectorPanel"><SectorPanel engine={engine} /></ErrorBoundary>
+              <ErrorBoundary name="ValuesAtRisk"><ValuesAtRisk engine={engine} /></ErrorBoundary>
             </div>
           </div>
-          <div className="flex items-end justify-between gap-4">
+          <div className="flex items-end justify-between gap-3">
             <div className="w-9" />
-            <div className="flex min-w-0 flex-col items-center gap-2">
-              <ErrorBoundary name="SpreadAlert"><SpreadAlert engine={engine} /></ErrorBoundary>
-              <ErrorBoundary name="TrafficAlert"><TrafficAlert engine={engine} /></ErrorBoundary>
-              <ErrorBoundary name="ForecastBar"><ForecastBar engine={engine} /></ErrorBoundary>
-              <ErrorBoundary name="FireFeed"><FireFeed engine={engine} /></ErrorBoundary>
+            <div className="min-w-0 max-w-[min(36rem,calc(100vw-11rem))] flex-1">
+              <ErrorBoundary name="StatusDock"><StatusDock engine={engine} /></ErrorBoundary>
             </div>
             <NavControls engine={engine} />
           </div>
         </div>
       </div>
       {askOpen && screen === "map" && (
-        <div className="pointer-events-none absolute bottom-40 left-4 z-30 w-[min(22rem,calc(100%-2rem))]">
+        <div className="pointer-events-none absolute bottom-24 left-4 z-30 w-[min(22rem,calc(100%-2rem))]">
           <ErrorBoundary name="AgentPanel"><AgentPanel engine={engine} /></ErrorBoundary>
         </div>
       )}
