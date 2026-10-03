@@ -35,11 +35,11 @@ Typed questions go to a model on Databricks Model Serving through the data serve
 
 ## Merge and deploy
 
-- [ ] Merge the stacked branches into `main`, in order:
+- [x] Merge the stacked branches into `main`, in order:
   1. `feature/next-crew-ranking`
   2. `feature/wildfire-dispatch`
   3. `feature/firefly-dispatch-ai`
-- [ ] Run `npm test` and `npm run build` on `main` after the merge.
+- [x] Run `npm test` and `npm run build` on `main` after the merge.
 
 ## Demo prep
 
