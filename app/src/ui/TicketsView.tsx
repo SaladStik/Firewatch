@@ -87,7 +87,7 @@ export function TicketsView() {
   }, [rows, q, status, unit, plan, sort]);
 
   // A new filter or sort starts at the top.
-  useEffect(() => { if (scroller.current) scroller.current.scrollTop = 0; setScrollTop(0); }, [q, status, unit, plan, sort]);
+  useEffect(() => { if (scroller.current) scroller.current.scrollTop = 0; }, [q, status, unit, plan, sort]); // the scroll event updates scrollTop
   const win = { start: Math.max(0, Math.floor(scrollTop / ROW_H) - 10), end: 0 };
   win.end = Math.min(shown.length, win.start + Math.ceil(viewH / ROW_H) + 25);
   const counts = useMemo(() => ({
