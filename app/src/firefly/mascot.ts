@@ -1,32 +1,24 @@
-/** Firefly on the map page: the shared mascot stage. */
+/** Firefly on the map page: the shared mascot stage, parked bottom-left above the dock. */
 import { getStage } from "../mascot/firefly/script";
 import type { Engine } from "../engine";
 import { FIREFLY_CONFIG } from "../firefly.config";
 import { project } from "../geo/projection";
 
-/** SVG frame: body centre is this far down a box `size` px wide (see Firefly.tsx VIEW). */
-const BODY_FROM_TOP = 92 / 210;
+/** Low on the screen, just above the bottom bar, so the bubble above him stays in view. */
+function restY() {
+  return Math.max(140, innerHeight - 118);
+}
 
-/** Where he rests: beside the Ask chat while it is open, otherwise on the Ask Firefly button. */
+/** Where he rests: beside the Ask chat when it is open, otherwise the lower left of the map. */
 export function homePoint() {
+  const y = restY();
   const chat = document.querySelector("[data-ask-chat]")?.getBoundingClientRect();
-  if (chat && chat.width > 40) return { x: chat.right + 28, y: chat.top + 64 };
-  const btn = document.querySelector("[data-ask-button]")?.getBoundingClientRect();
-  if (btn && btn.width > 8) return poseOnButton(btn);
-  return { x: innerWidth - 240, y: 48 };
+  if (chat && chat.width > 40) return { x: Math.min(chat.right + 52, innerWidth - 150), y };
+  return { x: 88, y };
 }
 
-/** Pose whose body sits on the button, nudged down if the drawing would leave the screen. */
-function poseOnButton(btn: DOMRect) {
-  const size = getStage().sizePx() || Math.round(0.085 * Math.min(innerWidth, innerHeight));
-  const bodyFromTop = BODY_FROM_TOP * size;
-  const x = btn.left + btn.width / 2;
-  const bodyY = Math.max(btn.top + btn.height / 2, 4 + bodyFromTop);
-  return { x, y: bodyY + size / 2 - bodyFromTop };
-}
-
-/** True after the chat closes, until Ask is opened again. */
-let tucked = false;
+/** Hidden until Ask is opened, and again after the chat closes. */
+let tucked = true;
 export const fireflyTucked = () => tucked;
 /** Bumps cancel an in-flight vanish or return. */
 let burst = 0;
@@ -40,7 +32,6 @@ export function showFirefly() {
   st.setVisible(true);
   const h = homePoint();
   st.controller.teleport(h.x, h.y);
-  st.controller.follow(() => homePoint());
   return st;
 }
 
@@ -62,7 +53,7 @@ export const fireflyController = () => getStage().controller;
 let flight = 0;
 
 /** Where he parks while showing a spot: right of the screen centre (the camera centres the spot). */
-const parkPoint = () => ({ x: innerWidth / 2 + Math.min(200, Math.max(110, innerWidth * 0.12)), y: innerHeight / 2 - 30 });
+const parkPoint = () => ({ x: innerWidth / 2 + Math.min(200, Math.max(110, innerWidth * 0.12)), y: restY() });
 
 /**
  * While the camera flies to (lat, lng), Firefly does one round loop around the screen centre,
@@ -99,7 +90,6 @@ export async function flyFireflyHome() {
   const ctl = fireflyController();
   ctl.lookAt(null);
   await ctl.flyTo(h.x, h.y);
-  if (id === flight) ctl.follow(() => homePoint());
   return id === flight;
 }
 
@@ -121,11 +111,6 @@ export async function dismissFirefly() {
   ctl.halt();
   ctl.lookAt(null);
   ctl.clearSpeech();
-  const btn = document.querySelector("[data-ask-button]")?.getBoundingClientRect();
-  if (btn && btn.width > 8) {
-    const spot = poseOnButton(btn);
-    if (Math.hypot(ctl.pose.x - spot.x, ctl.pose.y - spot.y) < 160) ctl.teleport(spot.x, spot.y);
-  }
   const from = ctl.pose.scale || 1;
   const t0 = performance.now();
   const seconds = 0.42;
@@ -177,7 +162,6 @@ export async function revealFirefly() {
   });
   if (token !== burst) return;
   dropBurst(ctl);
-  ctl.follow(() => homePoint());
 }
 
 /** True while he's away from where he rests (showing a spot). */
