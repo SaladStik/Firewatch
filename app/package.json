@@ -18,7 +18,9 @@
     "validate:fwi": "tsx scripts/validate-fwi.ts",
     "server": "tsx server/index.ts",
     "deploy:databricks": "bash scripts/deploy-databricks.sh",
-    "deploy:pages": "bash scripts/deploy-pages.sh"
+    "deploy:pages": "bash scripts/deploy-pages.sh",
+    "case:crews": "tsx scripts/case-crews.ts",
+    "case:311": "tsx scripts/case-311.ts"
   },
   "dependencies": {
     "@elevenlabs/react": "^1.16.0",
