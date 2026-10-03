@@ -4,13 +4,14 @@ import type { Engine } from "../engine";
 import { project } from "../geo/projection";
 
 /**
- * Where he rests: perched above the right end of the dock, clear of the Layers/Legend column
- * (follows the dock as its chips and history drawer come and go).
+ * Where he rests: perched above the right end of the dock (and the Ask panel when it's open),
+ * clear of the Layers/Legend column. Follows the stack as its chips and drawers come and go.
  */
 export function homePoint() {
   const dock = document.querySelector("[data-tour=firefly]")?.getBoundingClientRect();
   if (!dock || !dock.width) return { x: 70, y: innerHeight - 230 };
-  return { x: dock.right - 36, y: dock.top - 40 };
+  const stack = document.querySelector("[data-firefly-stack]")?.getBoundingClientRect();
+  return { x: dock.right - 36, y: Math.min(dock.top, stack?.top ?? dock.top) - 40 };
 }
 
 export function showFirefly() {

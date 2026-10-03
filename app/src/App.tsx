@@ -75,9 +75,17 @@ export default function App() {
           </div>
           <div className="flex items-end justify-between gap-4">
             <div className="w-9 shrink-0 md:hidden" />
-            {/* Firefly dock sits in the layout so the Layers/Legend column ends above it; ml clears the FF button. */}
-            <div className="hidden shrink-0 md:ml-10 md:block">
-              <ErrorBoundary name="FireflyDock"><FireflyDock engine={engine} /></ErrorBoundary>
+            {/* Bottom-left stack: the Ask panel (when open) above the Firefly dock. It sits in the layout so the
+                Layers/Legend column ends above it; ml clears the FF button. */}
+            <div className="flex shrink-0 flex-col gap-2 md:ml-10" data-firefly-stack>
+              {askOpen && screen === "map" && (
+                <div className="pointer-events-none w-[min(22rem,calc(100vw-2rem))] md:w-[340px]">
+                  <ErrorBoundary name="AgentPanel"><AgentPanel engine={engine} /></ErrorBoundary>
+                </div>
+              )}
+              <div className="hidden md:block">
+                <ErrorBoundary name="FireflyDock"><FireflyDock engine={engine} /></ErrorBoundary>
+              </div>
             </div>
             <div className="flex min-w-0 flex-col items-center gap-2">
               <ErrorBoundary name="SpreadAlert"><SpreadAlert engine={engine} /></ErrorBoundary>
@@ -89,11 +97,6 @@ export default function App() {
           </div>
         </div>
       </div>
-      {askOpen && screen === "map" && (
-        <div className="pointer-events-none absolute bottom-40 left-4 z-30 w-[min(22rem,calc(100%-2rem))]">
-          <ErrorBoundary name="AgentPanel"><AgentPanel engine={engine} /></ErrorBoundary>
-        </div>
-      )}
       <HoverTip />
       <BootScreen />
       {screen === "instruments" && <InstrumentData engine={engine} onBack={() => setScreen("map")} />}
