@@ -13,6 +13,8 @@ import { BootScreen, HoverTip, NavControls } from "./ui/Overlays";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { SectorPanel } from "./ui/SectorPanel";
 import { ValuesAtRisk } from "./ui/ValuesAtRisk";
+import { IncidentBoard } from "./ui/IncidentBoard";
+import { WatchoutsPanel } from "./ui/WatchoutsPanel";
 import { AgentPanel } from "./ui/AgentPanel";
 
 export default function App() {
@@ -69,7 +71,9 @@ export default function App() {
             </div>
             <div className="scroll-thin ml-auto max-h-full self-start overflow-y-auto">
               <ErrorBoundary name="SectorPanel"><SectorPanel engine={engine} /></ErrorBoundary>
+              <ErrorBoundary name="IncidentBoard"><IncidentBoard engine={engine} /></ErrorBoundary>
               <ErrorBoundary name="ValuesAtRisk"><ValuesAtRisk engine={engine} /></ErrorBoundary>
+              <ErrorBoundary name="WatchoutsPanel"><WatchoutsPanel engine={engine} /></ErrorBoundary>
             </div>
           </div>
           <div className="flex items-end justify-between gap-3">
