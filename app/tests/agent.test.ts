@@ -223,12 +223,12 @@ test("a risk question about a place is answered, not just flown to", () => {
   }
 });
 
-test("questions the rule brain can only act on go to the model; commands stay local", () => {
+test("with Firefly available, questions go to him (spoken); map commands stay local", () => {
   const goesToModel = (q: string) => needsModel(q, planRequest(q, brief()));
-  for (const q of ["will it rain in calgary", "how is alberta today", "calgary?", "what about calgary", "any fires near calgary", "is alberta risky"]) {
+  for (const q of ["How risky is Calgary?", "is calgary risky today?", "Which communities are at risk?", "Where is the largest fire?", "will it rain in calgary", "calgary?", "active fires in alberta"]) {
     assert.ok(goesToModel(q), q);
   }
-  for (const q of ["show me calgary", "focus alberta", "turn wind on", "is calgary risky today?", "active fires in alberta"]) {
+  for (const q of ["show me calgary", "focus alberta", "turn wind on", "take me to the largest fire"]) {
     assert.ok(!goesToModel(q), q);
   }
 });

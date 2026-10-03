@@ -312,15 +312,13 @@ export function planRequest(raw: string, brief: Brief): Plan {
 const COMMAND = /^(show|fly|go|take|zoom|focus|turn|switch|set|enable|disable|hide|open|just|only|move|center|centre|start|stop|end)\b/;
 
 /**
- * When a model (Firefly) is available, should it answer instead of this plan? Yes when the plan
- * only moves the map for something that isn't a command ("is calgary risky?" must not become
- * "Flew to Calgary"), and for fires near a place (the rule brain lists a whole province).
+ * When a model (Firefly) is available, should it answer instead of this plan? Yes for anything
+ * that isn't a map command: Firefly answers out loud, while a local answer is only a silent
+ * bubble ("is calgary risky?" must not become "Flew to Calgary" either). Commands stay instant.
  */
 export function needsModel(raw: string, plan: Plan): boolean {
-  const text = norm(raw);
   if (plan.reply === "unknown" || plan.reply === "ambiguous") return true;
-  if (plan.reply === "done") return !COMMAND.test(text);
-  return plan.reply === "fires" && /\b(near|around|close to|by)\b/.test(text);
+  return !COMMAND.test(norm(raw));
 }
 
 export const ruleBrain: AgentBrain = { plan: planRequest };

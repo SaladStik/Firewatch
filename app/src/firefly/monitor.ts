@@ -46,10 +46,12 @@ export function diffAlerts(prev: Watch | null, next: Watch): Alert[] {
   return out;
 }
 
-/** Ambient mood from the situation (speaking/thinking moods override it in useFireflyAgent). */
+/**
+ * Ambient (resting) mood (speaking/thinking moods override it in useFireflyAgent). Calm unless a
+ * town is inside a fire's projected path: high danger somewhere in a province is nearly always
+ * true in season, and a permanently worried face just reads as sad. Alerts set "alert" while
+ * they play.
+ */
 export function situationMood(w: Watch): MoodName {
-  if (w.threatened.some((t) => inPath(t.reason))) return "alert";
-  if (w.extremeTomorrow.length) return "worried";
-  if (w.threatened.length) return "curious";
-  return "idle";
+  return w.threatened.some((t) => inPath(t.reason)) ? "worried" : "idle";
 }

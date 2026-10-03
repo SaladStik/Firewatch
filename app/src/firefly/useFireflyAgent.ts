@@ -65,6 +65,8 @@ export function useFireflyAgent(engine: Engine | null) {
   const toolsRef = useRef<ReturnType<typeof makeTools> | null>(null);
   /** Ambient mood from the last situation check; restored after each reply. */
   const moodRef = useRef<MoodName>("idle");
+  /** The microphone was refused: sessions run text-only (no voice) from then on. */
+  const textOnly = useRef(false);
   /** Messages typed before the session finished connecting; sent on connect. */
   const queue = useRef<string[]>([]);
   /** Last typed message, so its transcript echo isn't shown twice. */
@@ -97,7 +99,19 @@ export function useFireflyAgent(engine: Engine | null) {
       lines.current.push({ text, at: performance.now() });
     },
     onInterruption: () => { lines.current = []; },
-    onError: (message) => push({ from: "alert", text: `Firefly hit a problem (${String(message)}).` }),
+    onError: (message) => {
+      fireflyController().setMood(moodRef.current);
+      // A voice session needs the microphone even for typed questions. Blocked: answer in text.
+      if (!textOnly.current && /permission|notallowed|microphone|getusermedia/i.test(String(message))) {
+        textOnly.current = true;
+        push({ from: "alert", text: "The microphone is blocked, so Firefly will answer in text. Allow the microphone for this site to hear him talk." });
+        window.setTimeout(() => deliver(), 300);
+        return;
+      }
+      push({ from: "alert", text: `Firefly hit a problem (${String(message)}).` });
+    },
+    // Don't leave him stuck "thinking" if the session ends before he answers.
+    onDisconnect: () => fireflyController().setMood(moodRef.current),
   });
   // The hook returns a new object every render: callbacks and effects read the latest through this ref.
   const convoRef = useRef(convo);
@@ -169,7 +183,7 @@ export function useFireflyAgent(engine: Engine | null) {
     if (c.status === "connected") { if (text) c.sendUserMessage(text); return; }
     if (text) queue.current.push(text);
     if (!AGENT_ID || !toolsRef.current || c.status !== "disconnected") return;
-    c.startSession({ agentId: AGENT_ID, connectionType: "websocket", clientTools: toolsRef.current });
+    c.startSession({ agentId: AGENT_ID, connectionType: "websocket", clientTools: toolsRef.current, ...(textOnly.current ? { textOnly: true } : {}) });
   }, []);
 
   const send = useCallback((text: string) => {
