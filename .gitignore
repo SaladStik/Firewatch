@@ -1,0 +1,4 @@
+# Local environment files. The root .env is a reference sheet for the Cloudflare Pages
+# variables (see DEPLOY-DATABRICKS.md); app/.env holds the site's build variables.
+.env
+.env.local
