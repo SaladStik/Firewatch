@@ -15,27 +15,27 @@ const LABEL_MODES: { mode: LabelMode; label: string; hint: string }[] = [
   { mode: "off", label: "Off", hint: "No labels" },
 ];
 
-export function Explore({ engine }: { engine: Engine | null }) {
+export function Explore({ engine, dock }: { engine: Engine | null; dock?: boolean }) {
   const [tab, setTab] = useState<"regions" | "places">("regions");
   return (
     <Panel
       className="flex max-h-full w-[240px] flex-col"
       title="Explore"
       tour="explore"
-      right={
-        <div className="flex gap-1">
-          {(["regions", "places"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-1.5 text-[10px] tracking-widest uppercase ${tab === t ? "text-phos" : "text-ink-mute hover:text-ink"}`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-      }
+      dock={dock}
+      collapsible={!!dock}
     >
+      <div className="flex gap-1 border-b border-line px-3 py-1.5">
+        {(["regions", "places"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-1.5 text-[10px] tracking-widest uppercase ${tab === t ? "text-phos" : "text-ink-mute hover:text-ink"}`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
       {tab === "regions" ? <Regions engine={engine} /> : <Places engine={engine} />}
     </Panel>
   );
@@ -125,7 +125,7 @@ function Places({ engine }: { engine: Engine | null }) {
           className="w-full bg-transparent text-[11px] text-ink outline-none placeholder:text-ink-mute"
         />
       </label>
-      <ul className="scroll-thin mt-1.5 min-h-0 flex-1 overflow-y-auto pb-1.5" style={{ maxHeight: 320 }}>
+      <ul className="scroll-none mt-1.5 max-h-72 pb-1.5">
         {list.map((p) => (
           <li key={`${p.region}:${p.name}:${p.lat}`}>
             <button

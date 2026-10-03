@@ -1,0 +1,2 @@
+# Repo-root virtualenv. Project rules live in app/ and wildfire/.
+.venv/
