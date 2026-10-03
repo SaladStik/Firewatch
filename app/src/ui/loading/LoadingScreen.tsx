@@ -23,6 +23,7 @@
  */
 import { memo, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { Firefly, useFirefly, type FireflyController } from "../../mascot/firefly";
+import { FIREFLY_CONFIG } from "../../firefly.config";
 
 export interface LoadingScreenProps {
   /** 0..1 */
@@ -368,7 +369,7 @@ const Flight = memo(function Flight({ shown, arrived }: { shown: RefObject<numbe
       // Sparkles on a canvas (cheap; no DOM nodes).
       if (speed > 0.2 && Math.random() < 0.5) sparks.push({ x: x + (Math.random() - 0.5) * 4, y: y + SPRITE * 0.25, vx: (Math.random() - 0.5) * 10, vy: 8 + Math.random() * 12, life: 1, r: 0.6 + Math.random() * 1.1 });
       g.clearRect(0, 0, STAGE_W, STAGE_H);
-      g.fillStyle = "#fff3a6";
+      g.fillStyle = FIREFLY_CONFIG.palette.bodyLight;
       sparks = sparks.filter((s) => {
         s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 20 * dt; s.life -= dt * 1.4;
         if (s.life <= 0) return false;
@@ -383,15 +384,17 @@ const Flight = memo(function Flight({ shown, arrived }: { shown: RefObject<numbe
     return () => cancelAnimationFrame(raf);
   }, [len, shown]);
 
+  // The comet tail is the firefly's own colours, so re-skinning him re-skins his trail.
+  const pal = FIREFLY_CONFIG.palette;
   const tailBase = { d: FLIGHT, fill: "none", strokeLinecap: "round" as const, pathLength: 1, strokeDasharray: "0 2" };
   return (
     <>
       <svg ref={trailRef} className="pointer-events-none absolute inset-0" width={STAGE_W} height={STAGE_H} style={{ overflow: "visible", zIndex: 3 }}>
         <defs><filter id="ew-soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2" /></filter></defs>
         <path ref={pathRef} d={FLIGHT} fill="none" stroke="none" />
-        <path ref={(el) => { tails.current[0] = el; }} {...tailBase} stroke="#ffd93b" strokeOpacity="0.18" strokeWidth="5" filter="url(#ew-soft)" />
-        <path ref={(el) => { tails.current[1] = el; }} {...tailBase} stroke="#ffe86a" strokeOpacity="0.35" strokeWidth="2" />
-        <path ref={(el) => { tails.current[2] = el; }} {...tailBase} stroke="#fff3a6" strokeOpacity="0.85" strokeWidth="1.2" />
+        <path ref={(el) => { tails.current[0] = el; }} {...tailBase} stroke={pal.body} strokeOpacity="0.18" strokeWidth="5" filter="url(#ew-soft)" />
+        <path ref={(el) => { tails.current[1] = el; }} {...tailBase} stroke={pal.lantern} strokeOpacity="0.35" strokeWidth="2" />
+        <path ref={(el) => { tails.current[2] = el; }} {...tailBase} stroke={pal.bodyLight} strokeOpacity="0.85" strokeWidth="1.2" />
       </svg>
       <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" style={{ width: STAGE_W, height: STAGE_H, zIndex: 3 }} />
       <div ref={spriteRef} className="pointer-events-none absolute left-0 top-0" style={{ width: SPRITE, zIndex: 4, willChange: "transform", transformOrigin: "center" }}>
@@ -405,5 +408,5 @@ const Flight = memo(function Flight({ shown, arrived }: { shown: RefObject<numbe
 function MascotSprite({ onController }: { onController: (c: FireflyController) => void }) {
   const ctl = useFirefly({ mood: "happy" });
   useEffect(() => { onController(ctl); }, [ctl, onController]);
-  return <Firefly pose={ctl.pose} size={SPRITE} />;
+  return <Firefly pose={ctl.pose} config={FIREFLY_CONFIG} size={SPRITE} />;
 }
