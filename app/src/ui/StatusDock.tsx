@@ -43,7 +43,7 @@ function Metric({ label, value, color }: { label: string; value: string | number
   );
 }
 
-export function StatusDock({ engine }: { engine: Engine | null }) {
+export function StatusDock({ engine, embedded }: { engine: Engine | null; embedded?: boolean }) {
   const hotspots = useStore(app, (s) => s.hotspots);
   const perimeters = useStore(app, (s) => s.perimeters);
   const weather = useStore(app, (s) => s.weather);
@@ -129,9 +129,9 @@ export function StatusDock({ engine }: { engine: Engine | null }) {
   const hasAlerts = pathTowns.length > 0 || !!airHere || airOthers.length > 0 || roadChips.length > 0;
 
   return (
-    <div data-tour="fire-feed" className="panel hud-dock pointer-events-auto flex w-full flex-col">
+    <div data-tour="fire-feed" className={embedded ? "flex w-full min-w-0 flex-col justify-center" : "panel hud-dock pointer-events-auto flex w-full flex-col"}>
       {/* Sitrep + day on one row */}
-      <div className="flex min-w-0 items-center gap-2 px-2 py-1">
+      <div className="flex h-9 min-w-0 items-center gap-2 px-2">
         <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
           <span className="label-xs mr-1 shrink-0">Sitrep</span>
           <Metric label="hot" value={focusHs.length} color="var(--color-fire)" />

@@ -75,9 +75,9 @@ export function AppBar({
       <Brand />
       <div className="flex min-w-0 flex-1 justify-center">{center}</div>
       <div className="flex shrink-0 items-center gap-2">
+        {onAsk && <BarButton active={askOpen} onClick={onAsk}>Ask Firefly</BarButton>}
         <BarButton active={screen === "map"} onClick={() => onScreen("map")}>Map</BarButton>
         <BarButton active={screen === "instruments"} onClick={() => onScreen("instruments")}>Live instrument data</BarButton>
-        {onAsk && <BarButton active={askOpen} onClick={onAsk}>Ask</BarButton>}
         {extra}
         <ThemeToggle engine={engine} />
       </div>
