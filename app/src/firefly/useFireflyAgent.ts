@@ -11,6 +11,8 @@ import type { Engine } from "../engine";
 import type { MoodName } from "../mascot/firefly";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
+import { answerLocally } from "../agent/tools";
+import { UNKNOWN_REPLY } from "../agent/reply";
 import { activeFires, nearestPlaceText, threatsFor } from "./facts";
 import { fireflyAway, fireflyController, flyFireflyHome, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
 import { diffAlerts, situationMood, type Alert, type Watch } from "./monitor";
@@ -44,6 +46,7 @@ export function useFireflyAgent(engine: Engine | null) {
   const [history, setHistory] = useState<ChatLine[]>([]);
   const [pendingAlert, setPendingAlert] = useState<Alert | null>(null);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [showThreats, setShowThreats] = useState(false);
   const [muted, setMuted] = useState(true);
   const toolsRef = useRef<ReturnType<typeof makeTools> | null>(null);
   /** Ambient mood from the last situation check; restored after each reply. */
@@ -120,12 +123,28 @@ export function useFireflyAgent(engine: Engine | null) {
   }, []);
 
   const send = useCallback((text: string) => {
-    if (!text.trim()) return;
-    push({ from: "you", text });
-    lastTyped.current = clean(text);
+    const trimmed = text.trim();
+    if (!trimmed || !engine) return;
+    const local = answerLocally(engine, trimmed);
+    if (local) {
+      push({ from: "you", text: trimmed });
+      push({ from: "firefly", text: local.reply });
+      setShowThreats(local.threats);
+      const ctl = fireflyController();
+      ctl.say(local.reply, Math.max(3, Math.min(12, local.reply.length * 0.05)));
+      ctl.setMood(moodRef.current);
+      return;
+    }
+    setShowThreats(false);
+    push({ from: "you", text: trimmed });
+    if (!AGENT_ID) {
+      push({ from: "firefly", text: UNKNOWN_REPLY });
+      return;
+    }
+    lastTyped.current = clean(trimmed);
     fireflyController().setMood("thinking");
-    deliver(text);
-  }, [deliver]);
+    deliver(trimmed);
+  }, [deliver, engine]);
 
   /** Hold to talk. The mic stays open a moment after release so the last word isn't cut off. */
   const holdTalk = useCallback((down: boolean) => {
@@ -180,7 +199,7 @@ export function useFireflyAgent(engine: Engine | null) {
   }, [pendingAlert, deliver]);
 
   return {
-    available: Boolean(AGENT_ID), status: convo.status, connected, speaking: convo.isSpeaking, history,
+    available: Boolean(AGENT_ID), status: convo.status, connected, speaking: convo.isSpeaking, history, showThreats,
     send, holdTalk, inputLevel, voiceOn, toggleVoice, pendingAlert, askAboutAlert, end: () => convo.endSession(),
   };
 }

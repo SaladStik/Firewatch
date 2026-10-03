@@ -13,7 +13,6 @@ import { BootScreen, HoverTip, NavControls } from "./ui/Overlays";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { SectorPanel } from "./ui/SectorPanel";
 import { ValuesAtRisk } from "./ui/ValuesAtRisk";
-import { AgentPanel } from "./ui/AgentPanel";
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -55,10 +54,14 @@ export default function App() {
             setAskOpen((open) => !open);
           }}
         />
-        <div className="flex min-h-0 flex-1 flex-col justify-between p-4">
+        <div className="flex min-h-0 flex-1">
+          <div className={askOpen && screen === "map" ? "pointer-events-auto h-full w-[min(24rem,88vw)] shrink-0" : "hidden"}>
+            <ErrorBoundary name="Ask"><FireflyDock engine={engine} open={askOpen && screen === "map"} onClose={() => setAskOpen(false)} /></ErrorBoundary>
+          </div>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col justify-between p-4">
           <div className="flex min-h-0 flex-1 items-start justify-between gap-4 py-3">
             <div className="hidden max-h-[min(70vh,calc(100%-6rem))] min-h-0 gap-2 md:flex">
-              {/* Ends above the Firefly dock: the Legend shrinks (and scrolls inside) on short screens. */}
+              {/* Ends above the status dock: the Legend shrinks (and scrolls inside) on short screens. */}
               <div className="flex max-h-full min-h-0 flex-col gap-2">
                 <ErrorBoundary name="LayerDock"><LayerDock engine={engine} /></ErrorBoundary>
                 <Legend />
@@ -74,21 +77,11 @@ export default function App() {
           </div>
           <div className="flex items-end justify-between gap-3">
             <div className="w-9 shrink-0 md:hidden" />
-            {/* Bottom-left: Ask panel above the Firefly dock. */}
-            <div className="flex shrink-0 flex-col gap-2 md:ml-10" data-firefly-stack>
-              {askOpen && screen === "map" && (
-                <div className="pointer-events-none w-[min(22rem,calc(100vw-2rem))] md:w-[340px]">
-                  <ErrorBoundary name="AgentPanel"><AgentPanel engine={engine} /></ErrorBoundary>
-                </div>
-              )}
-              <div className="hidden md:block">
-                <ErrorBoundary name="FireflyDock"><FireflyDock engine={engine} /></ErrorBoundary>
-              </div>
-            </div>
             <div className="min-w-0 max-w-[min(36rem,calc(100vw-11rem))] flex-1">
               <ErrorBoundary name="StatusDock"><StatusDock engine={engine} /></ErrorBoundary>
             </div>
             <NavControls engine={engine} />
+          </div>
           </div>
         </div>
       </div>
