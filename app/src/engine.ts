@@ -404,6 +404,11 @@ export class Engine {
     this.scene.setWind(s.layers.wind ? new WindField(s.weather, s.forecastDay) : null);
   }
 
+  /** Ground elevation (m) at a world point, from the terrain rasters (no hex needs to be loaded). */
+  async groundElevation(x: number, z: number): Promise<number> {
+    return (await this.client.sample(x, z)).elevation;
+  }
+
   setSimulation(on: boolean) {
     app.set({ simulation: on });
     void this.pushHazards();

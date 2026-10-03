@@ -63,6 +63,10 @@ export function DispatchPins({ engine }: { engine: Engine | null }) {
   useEffect(() => {
     if (!engine || !pins.length) return;
     const world = pins.map((p) => project(p.lat, p.lng));
+    // Ground elevation per pin, so pins stay on the surface where no hex is loaded under them.
+    const elev: (number | undefined)[] = [];
+    let alive = true;
+    void Promise.all(world.map((w) => engine.groundElevation(w.x, w.z).catch(() => undefined))).then((e) => { if (alive) e.forEach((v, i) => { elev[i] = v; }); });
     let raf = 0;
     const tick = () => {
       const scene = engine.scene;
@@ -70,7 +74,7 @@ export function DispatchPins({ engine }: { engine: Engine | null }) {
         pins.forEach((_, i) => {
           const el = refs.current[i];
           if (!el) return;
-          const s = scene.screenOf(world[i].x, world[i].z);
+          const s = scene.screenOf(world[i].x, world[i].z, elev[i]);
           if (!s.visible) { el.style.display = "none"; return; }
           el.style.display = "";
           el.style.transform = `translate(${s.x.toFixed(1)}px, ${s.y.toFixed(1)}px) translate(-50%, -50%)`;
@@ -79,7 +83,7 @@ export function DispatchPins({ engine }: { engine: Engine | null }) {
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => { alive = false; cancelAnimationFrame(raf); };
   }, [engine, pins]);
 
   if (!pins.length) return null;

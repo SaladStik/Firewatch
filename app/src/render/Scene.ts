@@ -551,9 +551,15 @@ export class Scene {
   }
 
   /** Viewport pixel position of a world point on the terrain surface (for overlays like the mascot). */
-  screenOf(x: number, z: number): { x: number; y: number; visible: boolean } {
+  /**
+   * Screen position of a map point, on top of its hex. Where no hex is loaded at that point (far
+   * away, between detail rings), `elevM` (the ground's elevation, m) keeps it on the surface
+   * instead of dropping to sea level, under the map.
+   */
+  screenOf(x: number, z: number, elevM?: number): { x: number; y: number; visible: boolean } {
     const node = this.world.nodeAt(x, z);
-    const v = new Vector3(x, node ? this.world.topY(node) : 0, z).project(this.camera);
+    const y = node ? this.world.topY(node) : elevM !== undefined ? reliefKm(elevM) * sharedUniforms.uVScale.value : 0;
+    const v = new Vector3(x, y, z).project(this.camera);
     const r = this.canvas.getBoundingClientRect();
     return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height, visible: v.z < 1 && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1 };
   }
