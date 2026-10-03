@@ -26,3 +26,6 @@ scripts/.cache
 server/.cache/
 __pycache__/
 *.pyc
+
+# Local secrets and ids (see .env.example)
+.env

@@ -2,7 +2,7 @@
 
 Firefly's voice and brain run on an ElevenLabs Agent. This file is the source of truth for its
 dashboard settings; recreate the agent from it if needed. The app connects with the agent ID in
-`app/.env.local` → `VITE_ELEVENLABS_AGENT_ID=agent_…` (public agent, no API key in the app).
+`app/.env` → `VITE_ELEVENLABS_AGENT_ID=agent_…` (public agent, no API key in the app). `.env` is gitignored; `app/.env.example` records the variable.
 
 ## First message
 Hi, I'm Firefly. I watch the fire map for you. Ask me what's burning, how risky a town is, or where crews should go.

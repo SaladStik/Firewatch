@@ -29,7 +29,7 @@ export function FireflyDock({ engine }: { engine: Engine | null }) {
   }, [holding, inputLevel]);
 
   if (!ff.available) {
-    return <div className="panel pointer-events-auto px-3 py-2 text-[10.5px] text-ink-mute">Firefly is offline (set VITE_ELEVENLABS_AGENT_ID in app/.env.local).</div>;
+    return <div className="panel pointer-events-auto px-3 py-2 text-[10.5px] text-ink-mute">Firefly is offline (set VITE_ELEVENLABS_AGENT_ID in app/.env).</div>;
   }
   const submit = () => { ff.send(text); setText(""); };
   const talk = (down: boolean) => { setHolding(down); ff.holdTalk(down); };

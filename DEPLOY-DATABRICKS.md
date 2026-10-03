@@ -110,37 +110,68 @@ curl -X POST https://<workspace-host>/oidc/v1/token \
 
 Use the Databricks SDK in the proxy rather than this by hand, so refreshing is taken care of.
 
-## 5. The proxy, and pointing the site at it
+## 5. The website on Cloudflare Pages
 
-One function at the site's own address, mounted on `/api/*`:
+The site is static, so Pages serves it directly, and a single Pages Function forwards `/api/*`
+to the app. The browser only ever talks to its own origin: no CORS, no login, and the data
+server's ETags still work end to end.
 
-```js
-export default async function handler(req, res) {
-  const token = await getDatabricksToken();            // cache until ~5 min before it expires
-  const upstream = `${process.env.APP_URL}${req.url}`; // req.url already starts with /api
-  const r = await fetch(upstream, { headers: { Authorization: `Bearer ${token}` } });
-  res.status(r.status);
-  for (const h of ["content-type", "etag", "x-fetched-at", "content-encoding"]) {
-    const v = r.headers.get(h);
-    if (v) res.setHeader(h, v);
-  }
-  res.send(Buffer.from(await r.arrayBuffer()));
-}
-```
+`app/functions/api/[[path]].ts` is that function and is already in the repo. It mints a
+service-principal token, caches it at module scope (they last about an hour, so no KV namespace
+is needed), forwards `if-none-match` up and `etag` back, and deliberately does **not** pass
+`content-encoding` or `content-length` through — the Workers runtime has already decompressed
+the body, so repeating those headers would describe it wrongly.
 
-Pass `etag` through in both directions and forward the browser's `if-none-match`: the data
-server's bodyless 304s are most of what keeps it cheap, and a proxy that drops them throws that
-away. Don't add a second cache with its own lifetime either — the server already serves stale
-data instantly while one refresh runs behind it.
+### It fits, but only just worth checking
 
-Then build the site so the page calls its own `/api`, which is now the proxy:
+| | This site | Pages limit (free) |
+|---|---|---|
+| Files | 2,846 | 20,000 |
+| Largest file | 6.3 MB (`british-columbia/terrain.png`) | 25 MiB |
+| Total | ~916 MB | no documented cap |
+
+### Build and upload it yourself
+
+Prefer this over Pages' git integration: the baked map data makes the repo about a gigabyte, so
+a clone-and-build in Pages' build container is slow and close to its time limit, and there is
+nothing to gain from rebuilding remotely.
 
 ```bash
+cd app
 VITE_DATA_SERVER=same-origin npm run build
+npx wrangler pages deploy dist --project-name firewatch
 ```
 
-Visitors never see Databricks, there's no CORS, and the server's own ETag and
-stale-while-revalidate behaviour is untouched.
+`same-origin` is what makes the page call its own `/api`, which is the function above.
+Subsequent deploys only upload files whose hashes changed, so the first one is the slow one.
+
+If you would rather connect the git repository instead, the settings are: root directory `app`,
+build command `npm run build`, output directory `dist`, and environment variables
+`VITE_DATA_SERVER=same-origin`, `NODE_VERSION=22` (the project needs Node 22 or newer) and
+`VITE_ELEVENLABS_AGENT_ID` — `app/.env` is gitignored, so a remote build has no other way to
+learn the firefly's agent id.
+
+### Secrets
+
+In **Pages → Settings → Variables and Secrets**, for the production environment:
+
+| Name | Value | Secret? |
+|---|---|---|
+| `DATABRICKS_HOST` | `https://dbc-….cloud.databricks.com` | no |
+| `DATABRICKS_APP_URL` | `https://<app>-<id>.<region>.databricksapps.com` | no |
+| `DATABRICKS_CLIENT_ID` | the service principal's id | no |
+| `DATABRICKS_CLIENT_SECRET` | the service principal's secret | **yes** |
+
+### Two things to do once the domain exists
+
+- **Lock the ElevenLabs agent down.** `app/.env` is gitignored, which keeps the agent id out of
+  the repository but does *not* keep it private: Vite inlines it into the shipped JavaScript, so
+  anyone can read it out of the deployed site. The host allowlist is the actual protection — add
+  the Pages domain to the agent in the ElevenLabs dashboard, or anyone can run sessions on your
+  account.
+- **Check the whole chain**, not just the site: `/api/health` through the proxy should return
+  `ok: true` with every source `fresh`. If the sources show errors, the app can reach the
+  internet but not its upstreams — that is the egress policy in step 3, not the proxy.
 
 ## What to expect
 
