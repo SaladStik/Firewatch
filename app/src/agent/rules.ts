@@ -52,7 +52,8 @@ const LAYER_WORDS: { key: keyof Layers; word: string }[] = [
 ];
 
 function norm(text: string): string {
-  return text.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  // Strip accents first, so "Whatì" is "whati" rather than "what" (which matched the word "what").
+  return text.toLowerCase().normalize("NFD").replace(/\p{M}/gu, "").replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function hasPhrase(text: string, phrase: string): boolean {

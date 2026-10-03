@@ -150,10 +150,13 @@ export function runPlan(engine: Engine, plan: Plan): { results: ToolResult[]; re
   return { results, reply: renderReply(plan, results) };
 }
 
-/** A map answer from data already loaded, or null when the question needs the model. */
-export function answerLocally(engine: Engine, text: string): { reply: string; threats: boolean } | null {
+/**
+ * A map answer from data already loaded, or null when the question needs the model.
+ * `handOffAmbiguous`: return null instead of "Several places match…" (the model can ask better).
+ */
+export function answerLocally(engine: Engine, text: string, handOffAmbiguous = false): { reply: string; threats: boolean } | null {
   const plan = ruleBrain.plan(text, buildBrief(engine));
-  if (plan.reply === "unknown") return null;
+  if (plan.reply === "unknown" || (handOffAmbiguous && plan.reply === "ambiguous")) return null;
   try {
     if (plan.calls.length && plan.reply !== "ambiguous") {
       return { reply: runPlan(engine, plan).reply, threats: plan.reply === "threats" };

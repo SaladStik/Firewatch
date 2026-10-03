@@ -49,7 +49,7 @@ const VIEW_SETTLE_MS = 8000;
 const MIC_TAIL_MS = 600;
 
 /** Words that mark a message as conversation rather than a map command. */
-const CHAT_WORDS = /\b(why|should|shouldn'?t|but|tho|though|don'?t|doesn'?t|didn'?t|not|wrong|instead|explain|mean|hey|um+|i see|next|another|previous|again|them|those|that one)\b/i;
+const CHAT_WORDS = /\b(why|should|shouldn'?t|but|tho|though|don'?t|doesn'?t|didn'?t|not|wrong|instead|explain|mean|hey|um+|i see|next|another|previous|again|them|those|that|this|it)\b/i;
 /** Longer than a command, or worded like a question to Firefly. */
 export const conversational = (text: string) => text.split(/\s+/).length > 8 || CHAT_WORDS.test(text);
 
@@ -166,7 +166,7 @@ export function useFireflyAgent(engine: Engine | null) {
     // goes to him ("yes", "next one" are replies to him), and so does conversation ("why…",
     // complaints) even when it names a place, so the rule brain doesn't just fly there.
     const inConversation = convoRef.current.status === "connected";
-    const local = AGENT_ID && (inConversation || conversational(trimmed)) ? null : answerLocally(engine, trimmed);
+    const local = AGENT_ID && (inConversation || conversational(trimmed)) ? null : answerLocally(engine, trimmed, Boolean(AGENT_ID));
     if (local) {
       push({ from: "you", text: trimmed });
       push({ from: "firefly", text: local.reply });

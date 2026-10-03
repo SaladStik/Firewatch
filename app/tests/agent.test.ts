@@ -200,3 +200,10 @@ test("a reply copies the day, the wind layer, the FWI, and the threat reason", (
   assert.match(text, /fire 18 km W/);
   assert.match(text, /simulation/i);
 });
+
+test("accented names don't match plain words, and still match when said", () => {
+  const b = brief({ places: [...brief().places, place({ name: "Whatì", pop: 500, lat: 63.1, lng: -117.3, regionId: "northwest-territories", focused: false })] });
+  assert.ok(!planRequest("what is that", b).calls.some((c) => c.tool === "flyToPlace"));
+  const fly = planRequest("fly to whati", b).calls.find((c) => c.tool === "flyToPlace");
+  assert.ok(fly && fly.tool === "flyToPlace" && fly.args.name === "Whatì");
+});
