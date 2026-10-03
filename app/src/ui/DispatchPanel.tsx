@@ -5,10 +5,10 @@
  *  - Calgary 311: today's crew plan vs oldest-first, and the noon replan after a disruption.
  * Method, data notes and the improvement round sit in "How it works", folded away.
  */
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Flame, Map as MapIcon, Minus, Send, Snowflake, Ticket as TicketIcon, Volume2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Flame, Map as MapIcon, Minus, Navigation, Route, Send, Snowflake, Ticket as TicketIcon, Volume2, X } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { crewColor } from "../dispatch/colors";
-import { calgarySnowForecast, closeDispatch, flyTo, openTickets, set311Options, setCrewOptions } from "../dispatch/controller";
+import { calgarySnowForecast, closeDispatch, flyTo, openTickets, recomputeRoutes, set311Options, setCrewOptions, setShortestOrder } from "../dispatch/controller";
 import { dutyBriefing, EXPOSURE_KM, HAND_WEIGHTS, label, type Scored } from "../dispatch/crews";
 import { priorityParts, supervisor8am, supervisorNoon, typeOf, type Disruption, type Plan311, type Ticket, type Weather311 } from "../dispatch/ops311";
 import { dispatch, type DispatchTab } from "../dispatch/store";
@@ -316,17 +316,24 @@ function Ops311Tab() {
   const view = noon ? p!.noon! : p?.morning;
   const crews = noon ? p!.noonCrews : p?.crews ?? [];
   const moved = new Set(p?.moved.map((m) => m.ticket.id));
+  useEffect(() => { if (p && (d.roadStatus === "idle" || d.roadStatus === "ready") && !Object.keys(d.routes).length) recomputeRoutes(); }, [p, d.roadStatus, d.routes]);
+  const [saved, setSaved] = useState<Record<string, number>>({});
   // The work queue walks the crews: review a crew's run, send it out.
   const at = Math.min(d.cursor311, Math.max(0, crews.length - 1));
   const crew = crews[at];
-  const jobs = crew && view ? view.routes.get(crew.id) ?? [] : [];
+  const planned = crew && view ? view.routes.get(crew.id) ?? [] : [];
+  const route = crew ? d.routes[crew.id] : undefined;
+  // Stops in driving order (the route planner may have re-ordered them for less driving).
+  const jobs = route && route.order.length === planned.length ? route.order.map((i) => planned[i]) : planned;
+  const shortest = !!(crew && d.routeOrder[crew.id]);
+  const totalKm = Object.values(d.routes).reduce((t, r) => t + r.km, 0);
   const sentCount = crews.filter((c) => d.dispatched[c.id]).length;
   const goCrew = (i: number) => {
     if (!crews.length || !view) return;
     const j = (i + crews.length) % crews.length;
     dispatch.set({ cursor311: j });
     const first = view.routes.get(crews[j].id)?.[0];
-    if (first) flyTo(first.lat, first.lng, 4);
+    if (first) flyTo(first.lat, first.lng, 6);
   };
   const sendCrew = () => {
     if (!crew) return;
@@ -372,13 +379,18 @@ function Ops311Tab() {
         <QueueCard
           step={at + 1} total={crews.length} done={sentCount}
           title={<span className="inline-flex items-center gap-2"><span className="inline-block h-3 w-3 rounded-full" style={{ background: crewColor(p!.crews.findIndex((x) => x.id === crew.id)) }} />Crew {crew.id} · {crew.unit === "WRS" ? "Waste & Recycling" : "Roads"}</span>}
-          sub={`${jobs.length} job${jobs.length === 1 ? "" : "s"}${jobs[0] ? `, starting in ${title(jobs[0].community)}` : ""}`}
+          sub={route
+            ? <span className="inline-flex items-center gap-1.5"><Route size={12} /> {jobs.length} stops · <b className="text-ink">{route.km.toFixed(1)} km</b> · {Math.round(route.minutes)} min driving{shortest ? " · shortest order" : ""}</span>
+            : `${jobs.length} job${jobs.length === 1 ? "" : "s"}${d.roadStatus === "loading" ? " · planning the route…" : ""}`}
           why={jobs.length ? (
             <ol className="flex flex-col gap-0.5">
+              {route && <li className="text-ink-mute"><Navigation size={10} className="mr-1 inline" />Depot, Roads &amp; WRS yard</li>}
               {jobs.map((t, i) => {
                 const pp = priorityParts(t, p!.today, noon ? p!.noonCtx : p!.ctx);
+                const leg = route?.legs[i];
                 return (
                   <li key={t.id}>
+                    {leg && <div className="pl-3 text-[10.5px] text-ink-mute">↓ {leg.km < 0.05 ? "same block" : `${leg.km.toFixed(1)} km, ${Math.max(1, Math.round(leg.minutes))} min${leg.mainRoadShare > 0.5 ? ", mostly main roads" : ""}`}</div>}
                     <button type="button" onClick={() => flyTo(t.lat, t.lng, 1.5)} className="text-left hover:text-phos">
                       <span className="tabular-nums text-ink-mute">{i + 1}.</span> {t.simulated && <Snowflake size={10} className="inline" />} <span className="text-ink">{typeOf(t.service).label}</span>, {title(t.community)} <span className="text-ink-mute">· p{pp.total}{pp.why.length > 1 ? ` · ${pp.why.slice(1, 3).join(", ")}` : ""}{moved.has(t.id) && noon ? " · moved here" : ""}</span>
                     </button>
@@ -391,6 +403,19 @@ function Ops311Tab() {
           onSend={sendCrew} onPrev={() => goCrew(at - 1)} onNext={() => goCrew(at + 1)}
         />
       )}
+
+      {crew && route && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          <button type="button" onClick={() => { const s = setShortestOrder(crew.id, !shortest); setSaved({ ...saved, [crew.id]: s }); }} className={`border px-2 py-1 transition hover:border-phos ${shortest ? "border-phos text-ink" : "border-line text-ink-dim"}`}>
+            {shortest ? "Back to priority order" : "Shortest order"}
+          </button>
+          <label className="flex cursor-pointer items-center gap-1.5 text-ink-dim"><input type="checkbox" checked={d.showAllRoutes} onChange={(e) => dispatch.set({ showAllRoutes: e.target.checked })} /> All crews' routes</label>
+          <span className="text-ink-mute">
+            {shortest && saved[crew.id] > 0.5 ? `Saves ${Math.round(saved[crew.id])} min. ` : shortest ? "Already the shortest. " : ""}All crews: {totalKm.toFixed(0)} km by road
+          </span>
+        </div>
+      )}
+      {d.roadStatus === "error" && <p className="text-[11px] text-risk-high">Couldn't load Calgary's streets for routing.</p>}
 
       <div className="grid grid-cols-2 gap-1.5">
         <button type="button" onClick={() => flyTo(51.045, -114.06, 12)} className="flex items-center justify-center gap-1.5 border border-line px-2 py-1.5 text-[11px] text-ink-dim transition hover:border-phos hover:text-phos"><MapIcon size={12} /> Show Calgary</button>

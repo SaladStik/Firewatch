@@ -14,7 +14,8 @@ import { project } from "../geo/projection";
 import { app } from "../state/app";
 import { FUEL_FOR_LAND } from "../world/fireGrowth";
 import { exposures, HAND_WEIGHTS, learnWeights, loadHistory, planCrews, type CrewFire, type PlaceLite, type RankInput } from "./crews";
-import { load311, plan311, type Override, type Weather311 } from "./ops311";
+import { DEPOT, load311, plan311, type Override, type Weather311 } from "./ops311";
+import { RoadGraph, routeStops, shortestOrder } from "./router";
 import { dispatch, type DispatchState } from "./store";
 
 let engine: Engine | null = null;
@@ -133,10 +134,69 @@ export function setCrewOptions(patch: Partial<Pick<DispatchState, "source" | "cr
 }
 
 // ------------------------------------------------------------ Calgary 311
+// ------------------------------------------------------------ route planner
+/** Calgary's street network (built once from the map's OpenStreetMap line tiles). */
+let roads: RoadGraph | null = null;
+let roadsLoading: Promise<void> | null = null;
+const CALGARY_ROADS: [number, number, number, number] = [-114.40, 50.80, -113.80, 51.26];
+
+function loadRoads(): Promise<void> {
+  if (roadsLoading) return roadsLoading;
+  dispatch.set({ roadStatus: "loading" });
+  roadsLoading = (async () => {
+    try {
+      const url = `${base()}data/alberta/lines`;
+      const index = (await (await fetch(`${url}/index.json`)).json()) as { q: number; tiles: string[] };
+      const names: string[] = [];
+      for (let la = Math.floor(CALGARY_ROADS[1]); la <= Math.floor(CALGARY_ROADS[3]); la++) for (let ln = Math.floor(CALGARY_ROADS[0]); ln <= Math.floor(CALGARY_ROADS[2]); ln++) names.push(`${la}_${ln}`);
+      const tiles = await Promise.all(names.filter((n) => index.tiles.includes(n)).map((n) => fetch(`${url}/${n}.json`).then((r) => r.json())));
+      await new Promise((r) => setTimeout(r, 20)); // let "Loading streets…" paint before the build (~0.7 s)
+      roads = new RoadGraph(tiles, index.q, CALGARY_ROADS);
+      dispatch.set({ roadStatus: "ready" });
+      recomputeRoutes();
+    } catch {
+      roadsLoading = null;
+      dispatch.set({ roadStatus: "error" });
+    }
+  })();
+  return roadsLoading;
+}
+
+/** Route every crew on the plan on screen (8 a.m. or noon), in the order the dispatcher chose. */
+export function recomputeRoutes() {
+  const d = dispatch.get(), p = d.plan311;
+  if (!p) return;
+  if (!roads) { void loadRoads(); return; }
+  const view = d.at === "noon" && p.noon ? p.noon : p.morning;
+  const routes: DispatchState["routes"] = {};
+  view.routes.forEach((jobs, crew) => {
+    if (!jobs.length) return;
+    const order = d.routeOrder[crew]?.length === jobs.length ? d.routeOrder[crew] : undefined;
+    routes[crew] = routeStops(roads!, DEPOT, jobs, order);
+  });
+  dispatch.set({ routes });
+}
+
+/** Re-order one crew's stops for the least driving (or back to priority order). Returns the time saved (min). */
+export function setShortestOrder(crew: string, on: boolean): number {
+  const d = dispatch.get(), p = d.plan311;
+  if (!p || !roads) return 0;
+  const view = d.at === "noon" && p.noon ? p.noon : p.morning;
+  const jobs = view.routes.get(crew) ?? [];
+  const next = { ...d.routeOrder };
+  if (on) next[crew] = shortestOrder(roads, DEPOT, jobs); else delete next[crew];
+  const before = d.routes[crew]?.minutes ?? 0;
+  dispatch.set({ routeOrder: next });
+  recomputeRoutes();
+  return before - (dispatch.get().routes[crew]?.minutes ?? before);
+}
+
 export function recompute311() {
   const d = dispatch.get();
   if (!d.load311) return;
-  dispatch.set({ plan311: plan311(d.load311, { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption, overrides: d.overrides, weather: calgaryWeather() }) });
+  // A new plan changes the crews' jobs: chosen stop orders no longer apply.
+  dispatch.set({ plan311: plan311(d.load311, { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption, overrides: d.overrides, weather: calgaryWeather() }), routeOrder: {} });
+  if (d.open && d.tab === "311") recomputeRoutes();
 }
 
 /** Dispatcher override on one ticket (null clears it); the day is replanned at once. */
@@ -153,7 +213,10 @@ export function openTickets(open = true) {
 }
 
 export function set311Options(patch: Partial<Pick<DispatchState, "roads" | "waste" | "perCrew" | "disruption" | "at">>) {
+  const onlyView = Object.keys(patch).every((k) => k === "at");
   dispatch.set(patch);
+  // Switching 8 a.m. / noon only changes which plan is routed.
+  if (onlyView) { dispatch.set({ routeOrder: {} }); recomputeRoutes(); return; }
   void loadCases().then(recompute311);
 }
 
@@ -180,7 +243,10 @@ export function calgarySnowForecast(): { day: number; mm: number } | null {
 // ------------------------------------------------------------ panel and map
 export function openDispatch(tab?: DispatchState["tab"]) {
   dispatch.set({ open: true, ...(tab ? { tab } : {}) });
-  void loadCases().then(() => { if (dispatch.get().source === "live") recomputeCrews(); });
+  void loadCases().then(() => {
+    if (dispatch.get().source === "live") recomputeCrews();
+    if (dispatch.get().tab === "311") recomputeRoutes();
+  });
 }
 
 export function closeDispatch() {

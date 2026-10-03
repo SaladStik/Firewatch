@@ -556,12 +556,13 @@ export class Scene {
    * away, between detail rings), `elevM` (the ground's elevation, m) keeps it on the surface
    * instead of dropping to sea level, under the map.
    */
-  screenOf(x: number, z: number, elevM?: number): { x: number; y: number; visible: boolean } {
+  screenOf(x: number, z: number, elevM?: number): { x: number; y: number; visible: boolean; front: boolean } {
     const node = this.world.nodeAt(x, z);
     const y = node ? this.world.topY(node) : elevM !== undefined ? reliefKm(elevM) * sharedUniforms.uVScale.value : 0;
     const v = new Vector3(x, y, z).project(this.camera);
     const r = this.canvas.getBoundingClientRect();
-    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height, visible: v.z < 1 && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1 };
+    // `front`: in front of the camera (lines may run off screen); `visible`: on screen too.
+    return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height, visible: v.z < 1 && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1, front: v.z < 1 && Math.abs(v.x) < 4 && Math.abs(v.y) < 4 };
   }
 
   flyTo(x: number, z: number, dist = 30, duration = 1.6) {

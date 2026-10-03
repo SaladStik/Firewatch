@@ -516,6 +516,17 @@ Safety levels by service type:
 - **Replan:** the same assignment, plus a bonus for keeping a job on its morning crew, so fewer crews' afternoons change. We count jobs that changed crew, moved to tomorrow, or are new.
 - **Overrides:** the dispatcher can mark a ticket urgent (+100 priority) or hold it (out of today's plan) in the ticket list, and the day replans.
 
+**Routes.** Each crew's run is routed over Calgary's street network: the OpenStreetMap line tiles the map draws, inside the city (about 82,000 nodes and 102,000 edges, built in the browser in under a second).
+- **Joining the network:**
+  - the bake simplifies lines, so roads that cross often share no point; a junction is inserted at every crossing;
+  - dead ends within 30 m of another road are snapped onto it;
+  - stops attach to the nearest point on the main connected network.
+- **Speeds:** each edge costs travel time at a typical speed for its class: highway 80, arterial 60, collector 50, residential 35, track 20 km/h.
+- **Routing:** A* with a straight-line-at-80-km/h heuristic finds each leg.
+- **Shortest order:** the travelling-salesman order from the depot, using a matrix of road times: exhaustive up to 7 stops, 2-opt beyond.
+- **Result:** all 8 crews' runs total about 163 km by road (the 112 km straight-line figure above is what the planner optimises). Re-ordering a run for the least driving saves a few minutes, because the plan already keeps crews in a neighbourhood.
+- **Limits:** no one-way or turn restrictions, and no live traffic.
+
 **The dispatcher's workflow.** The Dispatch panel is a queue. For wildfire crews, the dispatcher steps through the crewed fires in priority order: the map flies to each one, the card says why it's ranked there, and Send crew / Skip records the decision (Enter / S; J / K move). For 311 the queue is the crews: review a crew's run (its stops and why each is there), then dispatch it. Progress and decisions show in the lists.
 
 **Result** (5 Roads + 3 Waste crews × 5 jobs, no weather adjustments):

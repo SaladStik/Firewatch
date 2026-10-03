@@ -81,6 +81,7 @@ With 40 crews, cut to 32 (`npm run case:crews`):
 - Baseline: oldest first.
 - Noon disruption: a **blizzard** (ice and snow calls jump; suggested automatically when our forecast shows snow in Calgary) or a **sick crew**, then a replan that counts jobs moved.
 - **All tickets:** every ticket with its priority, crew and stop. Mark one **urgent** or **hold** it and the day replans.
+- **Route planner:** each crew's drive from the depot through its stops along Calgary's real streets (OpenStreetMap), drawn on the map in the crew's colour, with the distance and minutes for each leg. **Shortest order** re-orders the stops for the least driving.
 - Supervisor notes for 8 a.m. and noon.
 
 With 8 crews × 5 jobs (`npm run case:311`): 25 safety jobs instead of 19, and 112 km of driving instead of 440.

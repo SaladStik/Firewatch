@@ -36,8 +36,11 @@ export function DispatchPins({ engine }: { engine: Engine | null }) {
       const view = noon ? p.noon! : p.morning;
       const out: Pin[] = [];
       const assigned = new Set<string>();
-      view.routes.forEach((jobs, crew) => {
+      view.routes.forEach((planned, crew) => {
         const i = p.crews.findIndex((c) => c.id === crew);
+        // Stop numbers follow the driving order when the route planner re-ordered the stops.
+        const order = d.routes[crew]?.order;
+        const jobs = order && order.length === planned.length ? order.map((j) => planned[j]) : planned;
         jobs.forEach((t, k) => {
           assigned.add(t.id);
           out.push({ key: t.id, lat: t.lat, lng: t.lng, text: `${k + 1}`, title: `${crew} stop ${k + 1}: ${typeOf(t.service).label}, ${t.community}`, color: crewColor(i), ring: t.simulated ? "#bfe6ff" : undefined, zoom: 2.5 });
@@ -57,7 +60,7 @@ export function DispatchPins({ engine }: { engine: Engine | null }) {
       title: `#${i + 1} ${label(s)}${lost.has(`${s.fire.year}:${s.fire.id}`) ? " (lost a crew in the cut)" : ""}: ${s.reason}`,
       color: "#ff7a1a", ring: lost.has(`${s.fire.year}:${s.fire.id}`) ? "#ff2f4f" : undefined, zoom: 40,
     }));
-  }, [d.open, d.tab, d.plan311, d.at, d.plan]);
+  }, [d.open, d.tab, d.plan311, d.at, d.plan, d.routes]);
 
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   useEffect(() => {

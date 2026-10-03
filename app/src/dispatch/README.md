@@ -6,6 +6,7 @@ FIRE//WATCH's answer to two IEEE YP Industry Hackathon 2026 cases. In plain term
 |---|---|
 | `crews.ts` | Case 3: rank wildfires for N crews, compare with biggest-first, cut crews, learn the weights |
 | `ops311.ts` | Case 1: score Calgary 311 tickets, plan crews for the day, replan after a disruption |
+| `router.ts` | Street routing for 311 crews over Calgary's real road network |
 | `controller.ts` | Runs both against the app's live data; feeds the demo scenario the case fires |
 | `agent.ts` | The same plans for Firefly (voice tools and typed Ask) |
 | `store.ts` | Panel state, including the dispatcher's decisions |
@@ -57,6 +58,14 @@ Reports: `npm run case:crews`, `npm run case:311`. Tests: `tests/dispatch.test.t
 - A sick crew removes the busiest Roads crew.
 - The replan keeps jobs on their morning crew where it can, and reports what changed crew, what moved to tomorrow, and what's new.
 - When our forecast shows snow in Calgary, the panel suggests planning for the blizzard.
+
+**Driving routes.** Every crew gets a route from the depot through its stops along Calgary's real streets.
+- **The network:** every road the map draws, from OpenStreetMap: highways, arterials, collectors, residential streets and tracks. That's about 82,000 junctions.
+- **The route:** the fastest drive at typical city speeds for each road class (35 km/h on residential streets up to 80 on highways).
+- **On the map:** the route is drawn in the crew's colour.
+- **In the crew card:** each leg shows its distance and minutes.
+- **Shortest order:** re-orders a crew's stops for the least driving. With up to 7 stops it checks every order.
+- **Limits:** OpenStreetMap's one-way and turn restrictions aren't in our bake, so routes are good drivable paths rather than turn-by-turn directions.
 
 **What the dispatcher does.**
 - Steps through the crews: each card shows the crew's stops and why each is on its list.

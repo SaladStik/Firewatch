@@ -7,6 +7,7 @@
 import { createStore } from "../state/store";
 import type { CrewPlan, HistoryLoad, Learned, RankInput } from "./crews";
 import type { Disruption, Load311, Override, Plan311 } from "./ops311";
+import type { CrewRoute } from "./router";
 
 export type DispatchTab = "crews" | "311";
 export type CrewSource = "history" | "live";
@@ -53,6 +54,16 @@ export interface DispatchState {
   /** 311 crews the dispatcher has sent out. */
   dispatched: Record<string, true>;
   cursor311: number;
+
+  // Route planner (311 crews).
+  /** "idle" until Dispatch's 311 tab first needs routes; the street network then loads once. */
+  roadStatus: "idle" | "loading" | "ready" | "error";
+  /** Each crew's driving route for the plan on screen (8 a.m. or noon). */
+  routes: Record<string, CrewRoute>;
+  /** Stop orders the dispatcher switched to "shortest" (indexes into the crew's jobs), by crew. */
+  routeOrder: Record<string, number[]>;
+  /** Map: only the crew in the queue, or every crew's route. */
+  showAllRoutes: boolean;
 }
 
 export const dispatch = createStore<DispatchState>({
@@ -83,4 +94,8 @@ export const dispatch = createStore<DispatchState>({
   cursor: 0,
   dispatched: {},
   cursor311: 0,
+  roadStatus: "idle",
+  routes: {},
+  routeOrder: {},
+  showAllRoutes: false,
 });

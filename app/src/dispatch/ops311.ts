@@ -176,7 +176,7 @@ export interface Assignment {
 
 const canDo = (c: Crew, t: Ticket) => { const u = typeOf(t.service).unit; return u === "Other" || u === c.unit; };
 /** Depot the day starts from (Calgary Roads / WRS operations, approximate). */
-const DEPOT = { lat: 51.0447, lng: -114.0719 };
+export const DEPOT = { lat: 51.0447, lng: -114.0719 };
 const KM_COST = 1.5, SAME_COMMUNITY = 6, SAME_TYPE_NEAR = 5, KEEP_CREW = 8;
 
 export type Strategy = "fifo" | "priority";

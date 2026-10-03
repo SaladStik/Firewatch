@@ -128,3 +128,31 @@ test("311: similar reports close together raise each other's priority", async ()
   const twin = { ...l.open.find((t) => t.id === "3")!, id: "3b", lat: 51.0412 };
   assert.equal(similarNearby([...l.open, twin]).get("3"), 1);
 });
+
+test("router: drives along streets, joins crossing roads, and finds the shortest stop order", async () => {
+  const { RoadGraph, routeStops, shortestOrder } = await import("../src/dispatch/router.ts");
+  // A 1 km grid of local streets as two lines that cross without sharing a point (like the bake),
+  // plus a dead-end stub 10 m short of the east-west street.
+  const q = 1e5, o: [number, number] = [51, -114];
+  const line = (id: number, kind: number, pts: [number, number][]) => {
+    const out = [id, kind];
+    let px = 0, py = 0;
+    for (const [la, ln] of pts) { const x = Math.round((ln - o[1]) * q), y = Math.round((la - o[0]) * q); out.push(x - px, y - py); px = x; py = y; }
+    return out;
+  };
+  const tile = { o, l: [
+    line(1, 8, [[51.00, -114.00], [51.00, -113.97]]),            // east-west
+    line(2, 8, [[50.99, -113.985], [51.01, -113.985]]),           // north-south, crosses line 1 mid-segment
+    line(3, 8, [[51.0001, -113.975], [51.005, -113.975]]),        // stub ending ~10 m north of line 1
+  ] };
+  const g = new RoadGraph([tile], q, [-114.01, 50.98, -113.96, 51.02]);
+  const r = g.route({ lat: 50.99, lng: -113.985 }, { lat: 51.0, lng: -114.0 })!;
+  assert.ok(r, "crossing streets are joined");
+  assert.ok(r.km > 1.5 && r.km < 2.4, `goes up the street and along, ${r.km}`); // ~1.1 km north + ~1.05 km west
+  assert.ok(g.route({ lat: 51.005, lng: -113.975 }, { lat: 51.0, lng: -114.0 }), "the stub is snapped on");
+  const depot = { lat: 51.0, lng: -114.0 };
+  const stops = [{ lat: 51.0, lng: -113.97 }, { lat: 51.0, lng: -113.985 }];
+  const ord = shortestOrder(g, depot, stops);
+  assert.deepEqual(ord, [1, 0]); // the nearer stop first
+  assert.ok(routeStops(g, depot, stops, ord).km < routeStops(g, depot, stops).km);
+});
