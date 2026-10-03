@@ -68,8 +68,16 @@ export async function onRequestGet(ctx: { request: Request; env: Env }): Promise
   const headers = new Headers({ Authorization: `Bearer ${token}` });
   const etag = ctx.request.headers.get("if-none-match");
   if (etag) headers.set("If-None-Match", etag);
+  // Firefly's chat (POST /api/ai/chat) carries a JSON body; data requests are GETs.
+  const post = ctx.request.method === "POST";
+  if (post) headers.set("Content-Type", "application/json");
+  // The server limits AI requests per device; every request reaches it from here, so say who asked.
+  const ip = ctx.request.headers.get("cf-connecting-ip");
+  if (post && ip) headers.set("X-Forwarded-For", ip);
 
-  const res = await fetch(`${ctx.env.DATABRICKS_APP_URL.replace(/\/+$/, "")}${url.pathname}${url.search}`, { headers });
+  const res = await fetch(`${ctx.env.DATABRICKS_APP_URL.replace(/\/+$/, "")}${url.pathname}${url.search}`, {
+    method: post ? "POST" : "GET", headers, ...(post ? { body: await ctx.request.text() } : {}),
+  });
 
   // Pass through only what the browser needs. Not content-encoding or content-length: the
   // runtime has already decompressed the body, so repeating them would describe it wrongly.
@@ -79,4 +87,10 @@ export async function onRequestGet(ctx: { request: Request; env: Env }): Promise
     if (v) out.set(h, v);
   }
   return new Response(res.status === 304 ? null : res.body, { status: res.status, headers: out });
+}
+
+/** Only Firefly's chat is posted; everything else under /api is read-only. */
+export function onRequestPost(ctx: { request: Request; env: Env }): Promise<Response> {
+  if (new URL(ctx.request.url).pathname !== "/api/ai/chat") return Promise.resolve(Response.json({ error: "Method not allowed" }, { status: 405 }));
+  return onRequestGet(ctx);
 }

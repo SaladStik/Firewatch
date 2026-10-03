@@ -87,7 +87,8 @@ function findNamedPlace(text: string, places: BriefPlace[]): BriefPlace | null {
 function matchQuery(query: string, places: BriefPlace[]): { place: BriefPlace } | { names: string[] } | null {
   const q = norm(query);
   if (q.length < 3) return null;
-  const hits = places.filter((p) => norm(p.name).includes(q));
+  // Partial names match from the start of a word ("calg" → Calgary), not mid-word ("fail" isn't Innisfail).
+  const hits = places.filter((p) => ` ${norm(p.name)}`.includes(` ${q}`));
   if (!hits.length) return null;
   const exact = hits.filter((p) => norm(p.name) === q);
   const pool = exact.length ? exact : hits;

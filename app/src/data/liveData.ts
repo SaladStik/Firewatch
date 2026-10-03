@@ -23,13 +23,15 @@ import type { Row311 } from "../dispatch/ops311";
 import { fetchWeatherGrid, type FwiSeed, type WeatherGrid } from "./openMeteo";
 
 /** The data server's address, or "" to fetch sources directly. */
-const SERVER = ((import.meta.env.VITE_DATA_SERVER as string | undefined) ?? "").trim();
+const SERVER = ((import.meta.env?.VITE_DATA_SERVER as string | undefined) ?? "").trim();
 /** The API base the page calls: `<address>/api` for a built site pointed at an http(s) address, otherwise
  * the page's own /api (proxied by Vite in dev; served by the data server for `same-origin`). */
-const API = !SERVER ? "" : !import.meta.env.DEV && /^https?:\/\//.test(SERVER) ? `${SERVER.replace(/\/+$/, "")}/api` : "/api";
+const API = !SERVER ? "" : !import.meta.env?.DEV && /^https?:\/\//.test(SERVER) ? `${SERVER.replace(/\/+$/, "")}/api` : "/api";
 
 /** True when live data comes from the data server. */
 export const usingDataServer = API.length > 0;
+/** A data server URL for `path` (e.g. "/ai/chat"). */
+export const apiUrl = (path: string) => `${API}${path}`;
 
 type BBox = [number, number, number, number];
 

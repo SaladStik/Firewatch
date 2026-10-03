@@ -37,7 +37,12 @@ The baked files for every region ship in `public/data/<region>/`, so you only ne
 
 ## Firefly agent
 
-Firefly, the mascot, is also a voice and text agent that flies over the map. Type in the bottom-left box or **hold the mic** to talk. He answers out loud, in his speech bubble, and in the history drawer. His brain and voice run on an **ElevenLabs Agent**. Everything he says comes from **client tools**, functions in the page that read the same app state the map shows (`src/firefly/tools.ts` → `src/firefly/facts.ts`).
+Firefly, the mascot, is also a voice and text agent that flies over the map. Type in the bottom-left box or **hold the mic** to talk. He answers out loud, in his speech bubble, and in the history drawer. Everything he says comes from **client tools**, functions in the page that read and act on the same app state the map shows (`src/firefly/tools.ts` → `src/firefly/facts.ts`, `knowledge.ts`).
+
+Two AIs drive those tools:
+- **Typed questions: a model on Databricks Model Serving** (`src/firefly/llm.ts`, through the data server's `/api/ai/chat`, `server/ai.ts`). It plans, calls as many tools as the question needs (for example: search Beltline's tickets, then mark the worst one urgent), reads the results and answers. Under each reply the chat shows which model answered and the tools it used. The tool definitions live in code, so nothing needs setting up in a dashboard.
+- **Voice: an ElevenLabs Agent** (hold the mic) with the same tools as client tools. Typed questions also go to it when no Databricks model is configured.
+- If neither is reachable, the same tools answer directly from the app's data (`knowledgeAsk.ts`), so a question never goes unanswered.
 
 What he can do:
 - **Situation briefing:** what's burning, hotspots in the last 24 h, the biggest fires, threatened communities, the worst forecast day.
@@ -51,15 +56,17 @@ What he can do:
 - **Everything else in the data, and the dispatching itself:**
   - Questions: "why is ticket 26-00654913 ranked there?", "potholes in Beltline", "who's going to HWF121?", "any water bombers flying?", "smoke near Edson", "which highways are at risk?", "this week's schedule", "how do you rank fires?".
   - Commands: "dispatch the next fire", "skip it", "send crew R2", "mark ticket … urgent", "shortest route for R3".
-  - Two tools cover all of it (`ask_data`, `do_dispatch`). Typed questions like these are answered right away from the app's data, even without the voice agent.
+  - Two tools cover all of it (`ask_data`, `do_dispatch`). The model chains them; without a model, typed questions like these are still answered from the app's data.
 - **Mood:** alert (red lantern) when a town is in a projected path, worried before an extreme day, curious when a town is listed, and idle when it's calm — idle is also where he starts.
 - **Look:** `src/firefly.config.ts`, pasted out of the preview page's "copy config" (`/firefly.html`). The mascot module keeps its own default; this is the one the map applies.
 
-Setup:
+Setup (Databricks model, for typed questions): start the data server with `DATABRICKS_HOST` and `DATABRICKS_TOKEN` (see [RUNBOOK.md](../RUNBOOK.md)), or deploy it as a Databricks App, which supplies its own credentials ([DEPLOY-DATABRICKS.md](../DEPLOY-DATABRICKS.md)). The token stays on the server; the page never sees it.
+
+Setup (ElevenLabs, for voice):
 1. Create an agent in the ElevenLabs dashboard from [`src/firefly/AGENT.md`](src/firefly/AGENT.md): first message, system prompt, and the 15 client tools (names and parameters must match `tools.ts`).
 2. Copy `app/.env.example` to `app/.env` and put its ID in: `VITE_ELEVENLABS_AGENT_ID=agent_…`, then restart `npm run dev`. Without it, the dock shows "Firefly is offline". `.env` is the only file it reads (Vite loads `.env` in every mode) and is gitignored, so the ID stays out of the repo.
 
-Privacy: while a session is connected, typed text and voice go to ElevenLabs. The mic stays muted unless the talk button is held, though the browser asks for mic permission once when a session starts. The agent ID is public (no API key in the app); restrict it with the dashboard's host allowlist when deploying. Projected spread is a **scenario**, and Firefly says so.
+Privacy: typed questions and the tool results go to the Databricks endpoint; while a voice session is connected, voice goes to ElevenLabs. The mic stays muted unless the talk button is held, though the browser asks for mic permission once when a session starts. The agent ID is public (no API key in the app); restrict it with the dashboard's host allowlist when deploying. Projected spread is a **scenario**, and Firefly says so.
 
 ## Dispatch: who gets the next crew
 

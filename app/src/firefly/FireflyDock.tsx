@@ -49,7 +49,7 @@ export function FireflyDock({ engine, open, onClose }: { engine: Engine | null; 
   useEffect(() => {
     const log = logRef.current;
     if (log) log.scrollTop = log.scrollHeight;
-  }, [ff.history, ff.showThreats]);
+  }, [ff.history, ff.showThreats, ff.working]);
 
   useEffect(() => {
     void flyFireflyHome();
@@ -109,8 +109,15 @@ export function FireflyDock({ engine, open, onClose }: { engine: Engine | null; 
           <div key={i} className={line.from === "you" ? "max-w-[85%] self-end border border-line bg-[color-mix(in_srgb,var(--color-phos)_8%,transparent)] px-3 py-2" : "max-w-[92%]"}>
             <p className="label-xs mb-1">{line.from === "you" ? "You" : line.from === "alert" ? "Alert" : "Firefly"}</p>
             <p className={`text-[13px] leading-relaxed ${line.from === "alert" ? "text-risk-high" : "text-ink"}`}>{line.text}</p>
+            {line.via && <p className="mt-1 text-[10px] leading-snug text-ink-mute">AI · {line.via}</p>}
           </div>
         ))}
+        {ff.working && (
+          <div className="max-w-[92%]" aria-live="polite">
+            <p className="label-xs mb-1">Firefly</p>
+            <p className="animate-pulse text-[12px] text-ink-dim">{ff.working}…</p>
+          </div>
+        )}
       </div>
       {ff.pendingAlert && (
         <button type="button" onClick={ff.askAboutAlert} className="mx-4 mb-2 border border-risk-high px-3 py-2 text-left text-[12px] text-risk-high">

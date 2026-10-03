@@ -4,6 +4,8 @@ Firefly's voice and brain run on an ElevenLabs Agent. This file is the source of
 dashboard settings; recreate the agent from it if needed. The app connects with the agent ID in
 `app/.env` → `VITE_ELEVENLABS_AGENT_ID=agent_…` (public agent, no API key in the app). `.env` is gitignored; `app/.env.example` records the variable.
 
+Typed questions go to a model on Databricks Model Serving instead (`llm.ts`, `server/ai.ts`) with the same tools, defined there as function schemas; `tests/llm.test.ts` checks the two tool lists match this file's table. The voice agent below handles speech.
+
 ## First message
 (empty) A session always starts from the user's first message or a mic press, so a greeting would talk over it.
 

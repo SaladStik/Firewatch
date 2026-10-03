@@ -104,6 +104,20 @@ The server fetches two hosts and nothing else. Allow them in a network policy:
 Deploy it as an ordinary app, **not** in an App Space: those have no public internet egress at
 all, so every source would fail.
 
+### Firefly's AI model
+
+The server also forwards Firefly's typed questions to a Model Serving endpoint (`server/ai.ts`).
+On Databricks Apps it uses the app's own service principal (Databricks sets `DATABRICKS_HOST`,
+`DATABRICKS_CLIENT_ID` and `DATABRICKS_CLIENT_SECRET` for it), so nothing needs storing:
+
+1. Serving → pick the endpoint (default `databricks-meta-llama-3-3-70b-instruct`; set
+   `FIREWATCH_AI_ENDPOINT` in `app.yaml` for another, e.g. a Claude endpoint) → Permissions → give
+   the app's service principal **Can query**. Or add it as an app resource (Serving endpoint,
+   Can query) under the app's settings.
+2. Redeploy, then check `<app url>/api/ai`: `{"available": true, ...}`.
+
+The Pages proxy forwards `POST /api/ai/chat` like any other API call.
+
 ## 4. A service principal for the proxy
 
 `terraform/` does this — service principal, OAuth secret, and the `CAN_USE` grant on the app —

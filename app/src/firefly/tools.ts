@@ -12,6 +12,7 @@ import { activeFires, briefing, explainAt, findPlace, fireList, placeReport, tow
 import { flyFireflyTo, fireflyController } from "./mascot";
 import { crewPlanFacts, plan311Facts } from "../dispatch/agent";
 import { openDispatch } from "../dispatch/controller";
+import { dispatch } from "../dispatch/store";
 import { askData, doDispatch } from "./knowledge";
 
 export function snapshot(): FactsSnapshot {
@@ -41,6 +42,17 @@ function locate(s: FactsSnapshot, p: Params): { lat: number; lng: number; label:
     return r.place ? { lat: r.place.lat, lng: r.place.lng, label: r.place.name, fire: false } : `Unknown place "${p.place}". Did you mean: ${r.suggestions.join(", ")}?`;
   }
   return "Give a place or a fire_id.";
+}
+
+/** What's on screen right now, for the model's system prompt (so it knows the context without a tool call). */
+export function llmContext(): string {
+  const s = app.get(), d = dispatch.get();
+  const date = s.weather[0]?.dates[s.forecastDay];
+  return [
+    `Map day: ${s.forecastDay === 0 ? "today" : `+${s.forecastDay} days`}${date ? ` (${date})` : ""}. Demo scenario: ${s.simulation ? "on" : "off"}.`,
+    `Dispatch panel: ${d.open ? `open on ${d.tab === "311" ? "Calgary 311" : "wildfire crews"}` : "closed"}. Wildfire list: ${d.source === "history" ? "Alberta 2023–2025 fires" : "live fires"}, ${d.crews} crews, cut ${d.cutPct}%. 311 queue: ${d.source311}.`,
+    s.selected ? `Selected hex: ${s.selected.lat.toFixed(3)}, ${s.selected.lng.toFixed(3)}.` : "",
+  ].filter(Boolean).join(" ");
 }
 
 export function makeTools(engine: Engine) {

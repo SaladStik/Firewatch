@@ -18,11 +18,13 @@ import { UNKNOWN_REPLY } from "../agent/reply";
 import { activeFires, nearestPlaceText, threatsFor } from "./facts";
 import { fireflyAway, fireflyController, flyFireflyHome, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
 import { diffAlerts, situationMood, type Alert, type Watch } from "./monitor";
-import { makeTools, snapshot } from "./tools";
+import { llmContext, makeTools, snapshot } from "./tools";
+import { askLlm, llmStatus, type LlmMessage } from "./llm";
 
 export const AGENT_ID = import.meta.env.VITE_ELEVENLABS_AGENT_ID ?? "";
 
-export interface ChatLine { from: "you" | "firefly" | "alert"; text: string }
+/** `via`: which AI answered and the tools it used, shown under the reply. */
+export interface ChatLine { from: "you" | "firefly" | "alert"; text: string; via?: string }
 
 function buildWatch(): Watch {
   const s = snapshot();
@@ -44,6 +46,8 @@ const SECS_PER_CHAR = 0.065;
 const LINE_FALLBACK_MS = 1200;
 /** How long to wait for the agent's first reply before answering from the data (ms). */
 const AGENT_TIMEOUT_MS = 25_000;
+/** After the model fails, try it again after this long (ms). */
+const LLM_RETRY_MS = 60_000;
 /** How long the mic stays open after the talk button is released (ms). */
 const MIC_TAIL_MS = 600;
 
@@ -74,6 +78,19 @@ export function useFireflyAgent(engine: Engine | null) {
   /** Agent lines waiting for their audio, so the bubble shows what he's saying, not what's coming. */
   const lines = useRef<{ text: string; at: number }[]>([]);
   const push = (line: ChatLine) => setHistory((h) => [...h.slice(-40), line]);
+  /** The reasoning model on the data server (Databricks), if one is configured. */
+  const [llm, setLlm] = useState<{ available: boolean; model: string | null }>({ available: false, model: null });
+  useEffect(() => { void llmStatus().then(setLlm); }, []);
+  /** What the model is doing right now ("ask_data: tickets"), or null when idle. */
+  const [working, setWorking] = useState<string | null>(null);
+  /** The model's conversation so far (text turns), so follow-ups like "dispatch it" have context. */
+  const llmHistory = useRef<LlmMessage[]>([]);
+  /** The model failed: use the voice agent / offline answers until then (ms timestamp). */
+  const llmDownUntil = useRef(0);
+  /** Questions to the model run one at a time, in order (each sees the answers before it). */
+  const llmChain = useRef<Promise<void>>(Promise.resolve());
+  /** answerElsewhere, for send (declared before it). */
+  const answerElsewhereRef = useRef<(q: string) => void>(() => {});
 
   const convo = useConversation({
     micMuted: muted,
@@ -189,15 +206,43 @@ export function useFireflyAgent(engine: Engine | null) {
   }, [engine]);
 
   /**
-   * Firefly's AI (the ElevenLabs agent) answers whenever it's available: it reasons over the data
-   * and acts through its tools (ask_data, do_dispatch, plan_crews, …). Without an agent, or if it
-   * can't be reached, the same tools answer directly (answerOffline).
+   * Firefly's AI answers whenever it's available. Typed: the reasoning model on Databricks (through
+   * the data server) plans and calls the tools (ask_data, do_dispatch, plan_crews, …) itself; without
+   * it, the ElevenLabs agent; without either, the same tools answer directly (answerOffline).
+   * Spoken questions always go to the ElevenLabs agent.
    */
   const send = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed || !engine) return;
     setShowThreats(false);
     push({ from: "you", text: trimmed });
+    // Typed questions: the reasoning model with Firefly's tools, when the data server has one.
+    if (llm.available && Date.now() > llmDownUntil.current && toolsRef.current) {
+      const tools = toolsRef.current, ctl = fireflyController();
+      ctl.setMood("thinking");
+      setWorking("Thinking");
+      llmChain.current = llmChain.current.then(() => (Date.now() < llmDownUntil.current
+        ? Promise.resolve(answerElsewhereRef.current(trimmed)) // the model failed on an earlier question
+        : askLlm(tools, llmHistory.current, trimmed, { context: llmContext(), onStep: (step) => setWorking(step) })
+        .then((a) => {
+          llmHistory.current = [...llmHistory.current, { role: "user" as const, content: trimmed }, { role: "assistant" as const, content: a.text }].slice(-12);
+          push({ from: "firefly", text: a.text, via: `${a.model}${a.tools.length ? ` · ${a.tools.join(", ")}` : ""}` });
+          ctl.say(a.text, Math.max(3, Math.min(14, a.text.length * 0.045)));
+          ctl.setMood(moodRef.current);
+        })
+        .catch((e) => {
+          llmDownUntil.current = Date.now() + LLM_RETRY_MS;
+          push({ from: "alert", text: `Firefly's AI model isn't answering (${e instanceof Error ? e.message : String(e)}).` });
+          answerElsewhereRef.current(trimmed);
+        })))
+        .finally(() => setWorking(null));
+      return;
+    }
+    answerElsewhereRef.current(trimmed);
+  }, [engine, llm.available]);
+
+  /** Without the model: the voice agent (typed), or the app's own answers. */
+  const answerElsewhere = useCallback((trimmed: string) => {
     if (!AGENT_ID || agentDown.current) { answerOffline(trimmed); return; }
     lastTyped.current = clean(trimmed);
     pending.current = trimmed;
@@ -210,7 +255,7 @@ export function useFireflyAgent(engine: Engine | null) {
       push({ from: "alert", text: "Firefly's AI is taking too long: answering from the map's data." });
       answerOfflineRef.current(trimmed);
     }, AGENT_TIMEOUT_MS);
-  }, [deliver, engine, answerOffline]);
+  }, [deliver, answerOffline]);
 
   /** Hold to talk. The mic stays open a moment after release so the last word isn't cut off. */
   const holdTalk = useCallback((down: boolean) => {
@@ -225,7 +270,7 @@ export function useFireflyAgent(engine: Engine | null) {
     return c.status === "connected" ? c.getInputVolume() : 0;
   }, []);
 
-  useLayoutEffect(() => { answerOfflineRef.current = answerOffline; });
+  useLayoutEffect(() => { answerOfflineRef.current = answerOffline; answerElsewhereRef.current = answerElsewhere; });
 
   const toggleVoice = useCallback(() => setVoiceOn((v) => !v), []);
 
@@ -267,7 +312,7 @@ export function useFireflyAgent(engine: Engine | null) {
   }, [pendingAlert, deliver]);
 
   return {
-    available: Boolean(AGENT_ID), status: convo.status, connected, speaking: convo.isSpeaking, history, showThreats,
+    available: Boolean(AGENT_ID), model: llm.available ? llm.model : null, working, status: convo.status, connected, speaking: convo.isSpeaking, history, showThreats,
     send, holdTalk, inputLevel, voiceOn, toggleVoice, pendingAlert, askAboutAlert, end: () => convo.endSession(),
   };
 }

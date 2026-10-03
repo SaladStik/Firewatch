@@ -17,6 +17,9 @@ import { daysWaiting, priorityParts, typeOf, type Ticket } from "../dispatch/ops
 import { dispatch } from "../dispatch/store";
 import type { Engine } from "../engine";
 import { app, focusIndices } from "../state/app";
+import { DATA_TOPICS, DISPATCH_ACTIONS } from "./topics";
+
+export { DATA_TOPICS, DISPATCH_ACTIONS };
 
 type P = Record<string, unknown>;
 const r1 = (v: number) => Math.round(v * 10) / 10;
@@ -24,14 +27,6 @@ const str = (v: unknown) => (typeof v === "string" ? v.trim() : v == null ? "" :
 const num = (v: unknown) => (v === undefined || v === null || v === "" ? undefined : Number(v));
 const title = (s: string) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
-export const DATA_TOPICS = [
-  "air_quality", "highways", "values_at_risk", "aircraft", "fleet", "wildfire_queue", "fire",
-  "tickets", "ticket", "crews_311", "schedule_311", "methodology", "data_sources",
-] as const;
-export const DISPATCH_ACTIONS = [
-  "dispatch_fire", "skip_fire", "next_fire", "set_crews", "dispatch_crew_311", "next_crew_311", "ticket_urgent", "ticket_hold", "ticket_clear",
-  "set_311", "shortest_route", "show_tickets", "show_day",
-] as const;
 
 // ------------------------------------------------------------ helpers
 const fireKey = (s: Scored) => `${s.fire.year}:${s.fire.id}`;

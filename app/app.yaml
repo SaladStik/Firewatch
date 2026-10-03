@@ -1,7 +1,7 @@
 # Databricks Apps: how to start the FIRE//WATCH data server. See DEPLOY-DATABRICKS.md.
 #
-# DATABRICKS_APP_PORT is the only variable Databricks injects, and it is substituted into
-# `command` at run time; the server itself reads PORT.
+# DATABRICKS_APP_PORT is substituted into `command` at run time; the server itself reads PORT.
+# Databricks also sets DATABRICKS_HOST / _CLIENT_ID / _CLIENT_SECRET, which Firefly's AI uses.
 #
 # Do not set NODE_ENV=production here: `npm run server` runs through tsx, which is a
 # devDependency, and Databricks skips devDependencies when NODE_ENV is production.
@@ -24,3 +24,6 @@ env:
   # makes the server skip the site entirely. The real site is on Cloudflare Pages.
   - name: FIREWATCH_DIST
     value: "/tmp/firewatch-no-site"
+  # Firefly's reasoning model (server/ai.ts). The app's service principal needs "Can query" on it.
+  - name: FIREWATCH_AI_ENDPOINT
+    value: "databricks-meta-llama-3-3-70b-instruct"

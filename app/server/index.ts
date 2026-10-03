@@ -31,6 +31,8 @@
  *   FIREWATCH_CACHE_DIR  where the disk cache lives (default server/.cache). Point this at a
  *                        writable path when the app directory isn't one, e.g. on Databricks
  *                        Apps or any read-only container (see DEPLOY-DATABRICKS.md)
+ *   DATABRICKS_HOST, DATABRICKS_TOKEN (or _CLIENT_ID/_SECRET), FIREWATCH_AI_ENDPOINT
+ *                        Firefly's reasoning model on Databricks Model Serving (see server/ai.ts)
  */
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
@@ -51,6 +53,7 @@ import { Worker } from "node:worker_threads";
 import { makeFwiSeed } from "../src/data/fwiSeed";
 import { fetchWeatherGrid } from "../src/data/openMeteo";
 import { setProjection } from "../src/geo/projection";
+import { AI_MAX_BODY, aiChat, aiStatus } from "./ai";
 
 const gzipAsync = promisify(gzip);
 
@@ -330,8 +333,19 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? "/", "http://localhost");
   const p = url.pathname;
   if (req.method === "OPTIONS") {
-    res.writeHead(204, { ...CORS, "Access-Control-Allow-Methods": "GET, HEAD", "Access-Control-Allow-Headers": "*", "Access-Control-Max-Age": "86400" });
+    res.writeHead(204, { ...CORS, "Access-Control-Allow-Methods": "GET, HEAD, POST", "Access-Control-Allow-Headers": "*", "Access-Control-Max-Age": "86400" });
     return res.end();
+  }
+  // Firefly's model: the page posts the chat, the server adds the credential (server/ai.ts).
+  if (p === "/api/ai/chat" && req.method === "POST") {
+    let body = "";
+    for await (const chunk of req) {
+      body += chunk;
+      if (body.length > AI_MAX_BODY) return sendJson(req, res, 413, { error: "Chat too long" });
+    }
+    const ip = String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim();
+    const r = await aiChat(body, ip);
+    return sendJson(req, res, r.status, r.body);
   }
   if (req.method !== "GET" && req.method !== "HEAD") return sendJson(req, res, 405, { error: "Method not allowed" });
   if (!p.startsWith("/api/")) return serveStatic(req, res, p);
@@ -343,6 +357,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       hotspots: status(hotspots as Cached<unknown>), perimeters: status(perimeters as Cached<unknown>), stations: status(stations as Cached<unknown>), calgary311: status(calgary311 as Cached<unknown>), aircraft: status(aircraft as Cached<unknown>),
       weather: Object.fromEntries([...weather].map(([id, c]) => [id, status(c)])),
       fireHistories: histories.size,
+      ai: aiStatus(),
     });
   }
   if (p === "/api/cwfis/hotspots") return serve(req, res, hotspots as Cached<unknown>);
@@ -350,6 +365,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (p === "/api/cwfis/stations") return serve(req, res, stations as Cached<unknown>);
   if (p === "/api/calgary311/open") return serve(req, res, calgary311 as Cached<unknown>);
   if (p === "/api/aircraft") return serve(req, res, aircraft as Cached<unknown>);
+  if (p === "/api/ai") return sendJson(req, res, 200, aiStatus());
 
   const wx = p.match(/^\/api\/weather\/([a-z-]+)$/);
   if (wx) {
@@ -403,6 +419,8 @@ server.listen(PORT, () => {
   for (const ip of lanAddresses()) console.log(`  Other devices:  http://${ip}:${PORT}`);
   console.log(`  API:  /api/health, /api/cwfis/{hotspots,perimeters,stations}, /api/weather/<region>, /api/fire-history/<id>`);
   console.log(`  Site: ${existsSync(DIST) ? DIST : "(not built — run npm run build to serve it here)"}`);
+  const ai = aiStatus();
+  console.log(`  Firefly AI: ${ai.available ? `${ai.provider} ${ai.model}` : "(not configured: set DATABRICKS_HOST and DATABRICKS_TOKEN)"}`);
   console.log(`  Kept warm: fire data + weather for ${PREWARM.join(", ") || "(none)"}`);
   void warm();
 });

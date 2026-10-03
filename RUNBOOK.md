@@ -44,6 +44,20 @@ Without `VITE_DATA_SERVER`, the app ignores the server.
 
 Check the server at http://localhost:8787/api/health.
 
+### Firefly's AI model (optional)
+
+Typed questions go to a model on Databricks Model Serving through the data server. Set these before `npm run server`:
+
+```bash
+# macOS / Linux / Git Bash
+DATABRICKS_HOST=https://<workspace>.cloud.databricks.com DATABRICKS_TOKEN=<token> npm run server
+
+# Windows PowerShell
+$env:DATABRICKS_HOST="https://<workspace>.cloud.databricks.com"; $env:DATABRICKS_TOKEN="<token>"; npm run server
+```
+
+The endpoint defaults to `databricks-meta-llama-3-3-70b-instruct`. Set `FIREWATCH_AI_ENDPOINT` for another one. Check it at http://localhost:8787/api/ai.
+
 ## 4. Let other devices connect (optional)
 
 Start the app with `--host`:
