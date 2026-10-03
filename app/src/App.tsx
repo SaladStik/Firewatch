@@ -5,7 +5,12 @@ import { FireflyDock } from "./firefly/FireflyDock";
 import { mountLodTuner } from "./dev/LodTuner";
 import { app } from "./state/app";
 import { StatusDock } from "./ui/StatusDock";
-import { AppBar, LodReadout } from "./ui/Hud";
+import { AppBar, BarButton, LodReadout } from "./ui/Hud";
+import { closeDispatch, openDispatch } from "./dispatch/controller";
+import { dispatch } from "./dispatch/store";
+import { useStore } from "./state/store";
+import { DispatchPanel } from "./ui/DispatchPanel";
+import { DispatchPins } from "./ui/DispatchPins";
 import { Explore } from "./ui/Explore";
 import { InstrumentData } from "./ui/InstrumentData";
 import { LayerDock, Legend } from "./ui/Layers";
@@ -39,6 +44,7 @@ export default function App() {
   const [screen, setScreen] = useState<"map" | "instruments">("map");
   const [askOpen, setAskOpen] = useState(false);
   const [mapMenuOpen, setMapMenuOpen] = useState(false);
+  const dispatchOpen = useStore(dispatch, (s) => s.open);
 
   useEffect(() => {
     const e = new Engine();
@@ -63,6 +69,7 @@ export default function App() {
           screen={screen}
           onScreen={setScreen}
           center={<LodReadout engine={engine} />}
+          extra={<BarButton active={dispatchOpen && screen === "map"} onClick={() => { if (screen !== "map") setScreen("map"); if (dispatchOpen && screen === "map") closeDispatch(); else openDispatch(); }}>Dispatch</BarButton>}
           askOpen={askOpen && screen === "map"}
           onAsk={() => {
             if (screen !== "map") {
@@ -77,6 +84,11 @@ export default function App() {
           <div className={askOpen && screen === "map" ? "pointer-events-auto h-full w-[min(24rem,88vw)] shrink-0" : "hidden"}>
             <ErrorBoundary name="Ask"><FireflyDock engine={engine} open={askOpen && screen === "map"} onClose={() => setAskOpen(false)} /></ErrorBoundary>
           </div>
+          {dispatchOpen && screen === "map" && (
+            <div className="pointer-events-auto h-full w-[min(26rem,90vw)] shrink-0">
+              <ErrorBoundary name="Dispatch"><DispatchPanel engine={engine} /></ErrorBoundary>
+            </div>
+          )}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col justify-between p-4">
           <div className="flex min-h-0 flex-1 items-start justify-end gap-4 py-3">
             <div className="scroll-thin ml-auto max-h-full self-start overflow-y-auto">
@@ -111,6 +123,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      {screen === "map" && <DispatchPins engine={engine} />}
       <HoverTip />
       <BootScreen />
       {screen === "instruments" && <InstrumentData engine={engine} onBack={() => setScreen("map")} />}

@@ -11,6 +11,7 @@ import { growthCalibration, type FireGrowth, type FireHistory } from "./data/fir
 import { fireSources, growthSources } from "./data/fireSpread";
 import { growthCellSize } from "./world/fireGrowth";
 import { buildSnapshot, isPerimeterActive, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
+import { caseHotspots, initDispatch, loadCases } from "./dispatch/controller";
 import { FORECAST_DAYS, weatherAt, type WeatherGrid } from "./data/openMeteo";
 import { demoStorms, RainField, type RainBlob } from "./data/rain";
 import { WindField } from "./data/wind";
@@ -65,6 +66,7 @@ export class Engine {
       setProjection(PROJECTION);
       await this.client.init(PROJECTION);
       this.scene = new Scene(canvas, overlay, this.client, { onHover: (n) => app.set({ hover: n }), onSelect: (n) => this.onSelect(n), onStats: (s) => app.set({ stats: s }) });
+      initDispatch(this);
       this.setTheme(app.get().theme);
       this.applyLayers(app.get().layers);
       this.setLabelMode(app.get().labelMode);
@@ -271,7 +273,13 @@ export class Engine {
   private allHotspots() {
     const s = app.get();
     if (!s.simulation) return s.hotspots;
-    const sims = s.regions.flatMap((r, i) => simulatedHotspots(r.demoSites).map((h) => ({ ...h, region: i })));
+    // Demo scenario: replay the hackathon case fires (Alberta 2023–2025, dispatch/controller.ts);
+    // invented fires at each region's demo sites until that table has loaded.
+    const ab = s.regions.findIndex((r) => r.id === "alberta");
+    const cases = caseHotspots();
+    const sims = cases && ab >= 0
+      ? cases.map((h) => ({ ...h, region: ab }))
+      : s.regions.flatMap((r, i) => simulatedHotspots(r.demoSites).map((h) => ({ ...h, region: i })));
     return [...s.hotspots, ...sims];
   }
 
@@ -399,6 +407,8 @@ export class Engine {
   setSimulation(on: boolean) {
     app.set({ simulation: on });
     void this.pushHazards();
+    // The demo replays the case fires: load them (once), then redraw with them.
+    if (on) void loadCases().then(() => { if (app.get().simulation) void this.pushHazards(); });
   }
 
   /** Re-score the map with forecast weather for `day` (0 = today, 1..7 ahead). */

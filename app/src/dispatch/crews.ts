@@ -139,7 +139,17 @@ export function loadHistory(csv: string): HistoryLoad {
  * records only carry the day's weather, so the moisture codes are those that weather settles to
  * after two dry weeks (the FWI System run forward from its standard start-up values).
  */
+const fbpCache = new WeakMap<CrewFire, number>();
+
 export function fbpRos(f: CrewFire): number {
+  const hit = fbpCache.get(f);
+  if (hit !== undefined) return hit;
+  const v = fbpRosUncached(f);
+  fbpCache.set(f, v);
+  return v;
+}
+
+function fbpRosUncached(f: CrewFire): number {
   let isiV: number, buiV: number;
   if (f.fwi) ({ isi: isiV, bui: buiV } = f.fwi);
   else {
@@ -403,4 +413,6 @@ export function dutyBriefing(plan: CrewPlan, opts: { live?: boolean } = {}): str
   ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 }
 
-export const label = (s: Scored) => `${s.fire.id}${s.fire.name ? ` ${s.fire.name.trim()}` : ""}`;
+/** "SWF085 Red Earth East Complex"; live hotspot clusters (no fire number) go by where they are. */
+export const label = (s: Scored) =>
+  s.fire.id.startsWith("cluster-") ? `fire ${s.fire.name ?? s.fire.id.slice(8)}` : `${s.fire.id}${s.fire.name ? ` ${s.fire.name.trim()}` : ""}`;

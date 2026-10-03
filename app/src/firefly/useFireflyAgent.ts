@@ -12,6 +12,7 @@ import type { MoodName } from "../mascot/firefly";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
 import { answerLocally } from "../agent/tools";
+import { answerDispatch, isDispatchQuestion } from "../dispatch/agent";
 import { UNKNOWN_REPLY } from "../agent/reply";
 import { activeFires, nearestPlaceText, threatsFor } from "./facts";
 import { fireflyAway, fireflyController, flyFireflyHome, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
@@ -148,6 +149,20 @@ export function useFireflyAgent(engine: Engine | null) {
   const send = useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed || !engine) return;
+    // Crew allocation and 311 dispatch: planned here from the case data and live fires, shown in Dispatch.
+    if (isDispatchQuestion(trimmed)) {
+      push({ from: "you", text: trimmed });
+      setShowThreats(false);
+      const ctl = fireflyController();
+      ctl.setMood("thinking");
+      void answerDispatch(trimmed).then((reply) => {
+        const text = reply ?? "I couldn't plan that one.";
+        push({ from: "firefly", text });
+        ctl.say(text, Math.max(4, Math.min(14, text.length * 0.045)));
+        ctl.setMood(moodRef.current);
+      });
+      return;
+    }
     const local = answerLocally(engine, trimmed);
     if (local) {
       push({ from: "you", text: trimmed });

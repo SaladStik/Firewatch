@@ -8,8 +8,10 @@ import type { Engine } from "../engine";
 import { NODE_STATUSES, NODE_TYPES } from "../hex/nodeTypes";
 import { project } from "../geo/projection";
 import { app, focusIndices, type Layers } from "../state/app";
-import { activeFires, briefing, crewRanking, explainAt, findPlace, fireList, placeReport, townsInPath, type FactsSnapshot } from "./facts";
+import { activeFires, briefing, explainAt, findPlace, fireList, placeReport, townsInPath, type FactsSnapshot } from "./facts";
 import { flyFireflyTo, fireflyController } from "./mascot";
+import { crewPlanFacts, plan311Facts } from "../dispatch/agent";
+import { openDispatch } from "../dispatch/controller";
 
 export function snapshot(): FactsSnapshot {
   const s = app.get();
@@ -100,11 +102,32 @@ export function makeTools(engine: Engine) {
       return json(explainAt(s, lat, lng, hex));
     }),
 
-    plan_crews: guard((p) => {
-      const crews = Math.min(10, Math.max(1, Math.round(Number(p.crews ?? 1)) || 1));
-      const ranked = crewRanking(snapshot(), crews);
-      if (!ranked.length) return json({ result: "No active fires right now." });
-      return json({ crews, picks: ranked, note: NOTE });
+    // Case 3: rank fires for N crews (live, or Alberta 2023–2025), beat biggest-first, cut and report who lost a crew.
+    plan_crews: guard(async (p) => {
+      const source = p.source === "history" || p.source === "live" ? p.source : app.get().hotspots.length ? "live" : "history";
+      const facts = await crewPlanFacts({
+        crews: Number(p.crews) || undefined,
+        cutPct: p.cut_percent !== undefined ? Number(p.cut_percent) : undefined,
+        source,
+        year: p.year !== undefined ? Number(p.year) || 0 : undefined,
+      });
+      return json({ ...facts, note: source === "live" ? NOTE : "Historical replay: these fires burned in 2023–2025." });
+    }),
+
+    // Case 1: Calgary 311 crews for the day, one disruption at noon, replan.
+    plan_311: guard(async (p) => {
+      const d = String(p.disruption ?? "");
+      return json(await plan311Facts({
+        roads: p.roads_crews !== undefined ? Number(p.roads_crews) : undefined,
+        waste: p.waste_crews !== undefined ? Number(p.waste_crews) : undefined,
+        jobsPerCrew: p.jobs_per_crew !== undefined ? Number(p.jobs_per_crew) : undefined,
+        disruption: d === "blizzard" || d === "sick" || d === "none" ? d : undefined,
+      }));
+    }),
+
+    open_dispatch: guard((p) => {
+      openDispatch(p.tab === "311" ? "311" : "crews");
+      return json({ ok: true, tab: p.tab === "311" ? "Calgary 311" : "Wildfire crews" });
     }),
 
     fly_to: guard(async (p) => {

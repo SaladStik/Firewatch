@@ -14,6 +14,8 @@ const PROMPTS = [
   "Where is the largest fire?",
   "How risky is Calgary?",
   "I have 3 crews. Where should they go?",
+  "Rank the 2023 to 2025 fires for 40 crews, then cut 20%",
+  "Plan Calgary 311 for a blizzard",
 ];
 
 const threatKey = (t: BriefThreat) => `${t.name}:${t.lat}:${t.lng}`;
