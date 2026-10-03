@@ -21,6 +21,8 @@ import { BootScreen, CompassRose, HoverTip, NavControls } from "./ui/Overlays";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { SectorPanel } from "./ui/SectorPanel";
 import { ValuesAtRisk } from "./ui/ValuesAtRisk";
+import { IncidentBoard } from "./ui/IncidentBoard";
+import { WatchoutsPanel } from "./ui/WatchoutsPanel";
 
 function MapMenu({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
@@ -97,7 +99,9 @@ export default function App() {
           <div className="flex min-h-0 flex-1 items-start justify-end gap-4 py-3">
             <div className="scroll-thin ml-auto max-h-full self-start overflow-y-auto">
               <ErrorBoundary name="SectorPanel"><SectorPanel engine={engine} /></ErrorBoundary>
+              <ErrorBoundary name="IncidentBoard"><IncidentBoard engine={engine} /></ErrorBoundary>
               <ErrorBoundary name="ValuesAtRisk"><ValuesAtRisk engine={engine} /></ErrorBoundary>
+              <ErrorBoundary name="WatchoutsPanel"><WatchoutsPanel engine={engine} /></ErrorBoundary>
             </div>
           </div>
           <div className="flex w-full min-w-0 flex-col items-end gap-1">
