@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Secrets. Commit .env.example only.
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -26,3 +31,12 @@ scripts/.cache
 server/.cache/
 __pycache__/
 *.pyc
+
+# Local secrets and ids (see .env.example)
+.env
+
+# Databricks CLI sync state
+.databricks/
+
+# Wrangler local state (wrangler pages dev)
+.wrangler/

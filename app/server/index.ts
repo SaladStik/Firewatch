@@ -28,6 +28,9 @@
  *   FIREWATCH_PREWARM    regions whose weather is kept fresh in the background, comma-separated
  *                        region ids (default "alberta"; others are fetched when first requested)
  *   FIREWATCH_DIST       built site to serve (default ../dist)
+ *   FIREWATCH_CACHE_DIR  where the disk cache lives (default server/.cache). Point this at a
+ *                        writable path when the app directory isn't one, e.g. on Databricks
+ *                        Apps or any read-only container (see DEPLOY-DATABRICKS.md)
  */
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
@@ -50,7 +53,8 @@ const gzipAsync = promisify(gzip);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
 const DIST = resolve(process.env.FIREWATCH_DIST ?? join(HERE, "..", "dist"));
-const CACHE_DIR = join(HERE, ".cache");
+/** Disk cache. Overridable because a container's app directory isn't a safe place to write. */
+const CACHE_DIR = resolve(process.env.FIREWATCH_CACHE_DIR ?? join(HERE, ".cache"));
 const PREWARM = (process.env.FIREWATCH_PREWARM ?? "alberta").split(",").map((s) => s.trim()).filter(Boolean);
 
 const REGION_LIST = Object.values(REGIONS);

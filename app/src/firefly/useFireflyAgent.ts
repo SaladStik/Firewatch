@@ -11,6 +11,8 @@ import type { Engine } from "../engine";
 import type { MoodName } from "../mascot/firefly";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
+import { answerLocally } from "../agent/tools";
+import { UNKNOWN_REPLY } from "../agent/reply";
 import { activeFires, nearestPlaceText, threatsFor } from "./facts";
 import { fireflyAway, fireflyController, flyFireflyHome, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
 import { diffAlerts, situationMood, type Alert, type Watch } from "./monitor";
@@ -34,6 +36,10 @@ function buildWatch(): Watch {
 
 /** Seconds of quiet after explaining before he flies back to the dock. */
 const HOME_AFTER_S = 1.5;
+/** Rough speaking rate of the voice (s per character), to pace the bubble through queued lines. */
+const SECS_PER_CHAR = 0.065;
+/** With no audio for a queued line (voice off, text only), show it after this long (ms). */
+const LINE_FALLBACK_MS = 1200;
 /** How long the mic stays open after the talk button is released (ms). */
 const MIC_TAIL_MS = 600;
 
@@ -44,16 +50,19 @@ export function useFireflyAgent(engine: Engine | null) {
   const [history, setHistory] = useState<ChatLine[]>([]);
   const [pendingAlert, setPendingAlert] = useState<Alert | null>(null);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [showThreats, setShowThreats] = useState(false);
   const [muted, setMuted] = useState(true);
   const toolsRef = useRef<ReturnType<typeof makeTools> | null>(null);
   /** Ambient mood from the last situation check; restored after each reply. */
-  const moodRef = useRef<MoodName>("happy");
+  const moodRef = useRef<MoodName>("idle");
   /** Messages typed before the session finished connecting; sent on connect. */
   const queue = useRef<string[]>([]);
   /** Last typed message, so its transcript echo isn't shown twice. */
   const lastTyped = useRef("");
   /** Pending mic mute after the talk button is released. */
   const muteTimer = useRef(0);
+  /** Agent lines waiting for their audio, so the bubble shows what he's saying, not what's coming. */
+  const lines = useRef<{ text: string; at: number }[]>([]);
   const push = (line: ChatLine) => setHistory((h) => [...h.slice(-40), line]);
 
   const convo = useConversation({
@@ -70,10 +79,9 @@ export function useFireflyAgent(engine: Engine | null) {
         return;
       }
       push({ from: "firefly", text });
-      const ctl = fireflyController();
-      ctl.say(text, Math.max(3, text.length * 0.07));
-      ctl.setMood(moodRef.current);
+      lines.current.push({ text, at: performance.now() });
     },
+    onInterruption: () => { lines.current = []; },
     onError: (message) => push({ from: "alert", text: `Firefly hit a problem (${String(message)}).` }),
   });
   // The hook returns a new object every render: callbacks and effects read the latest through this ref.
@@ -96,9 +104,27 @@ export function useFireflyAgent(engine: Engine | null) {
   useEffect(() => {
     let raf = 0;
     let quietSince = performance.now();
+    let wasSpeaking = false, audioStarted = false, lineEndsAt = 0;
     const tick = () => {
       const c = convoRef.current, ctl = fireflyController();
       const speaking = c.status === "connected" && c.isSpeaking;
+      // Bubble follows the voice: a queued line shows when its audio starts, when the line before it
+      // has had time to be said, or (no audio: voice off / text) shortly after it arrived.
+      if (speaking && !wasSpeaking) audioStarted = true;
+      else if (!speaking) audioStarted = false;
+      wasSpeaking = speaking;
+      const next = lines.current[0];
+      if (next) {
+        const t = performance.now();
+        if (audioStarted || (speaking && t > lineEndsAt) || (!speaking && t - next.at > LINE_FALLBACK_MS)) {
+          lines.current.shift();
+          audioStarted = false;
+          const secs = Math.max(2, next.text.length * SECS_PER_CHAR);
+          lineEndsAt = t + secs * 1000;
+          ctl.say(next.text, secs + 0.5);
+          ctl.setMood(moodRef.current);
+        }
+      }
       if (speaking) ctl.override.mouthOpen = Math.min(1, c.getOutputVolume() * 3.5);
       else if ("mouthOpen" in ctl.override) delete ctl.override.mouthOpen;
       const now = performance.now();
@@ -120,12 +146,28 @@ export function useFireflyAgent(engine: Engine | null) {
   }, []);
 
   const send = useCallback((text: string) => {
-    if (!text.trim()) return;
-    push({ from: "you", text });
-    lastTyped.current = clean(text);
+    const trimmed = text.trim();
+    if (!trimmed || !engine) return;
+    const local = answerLocally(engine, trimmed);
+    if (local) {
+      push({ from: "you", text: trimmed });
+      push({ from: "firefly", text: local.reply });
+      setShowThreats(local.threats);
+      const ctl = fireflyController();
+      ctl.say(local.reply, Math.max(3, Math.min(12, local.reply.length * 0.05)));
+      ctl.setMood(moodRef.current);
+      return;
+    }
+    setShowThreats(false);
+    push({ from: "you", text: trimmed });
+    if (!AGENT_ID) {
+      push({ from: "firefly", text: UNKNOWN_REPLY });
+      return;
+    }
+    lastTyped.current = clean(trimmed);
     fireflyController().setMood("thinking");
-    deliver(text);
-  }, [deliver]);
+    deliver(trimmed);
+  }, [deliver, engine]);
 
   /** Hold to talk. The mic stays open a moment after release so the last word isn't cut off. */
   const holdTalk = useCallback((down: boolean) => {
@@ -180,7 +222,7 @@ export function useFireflyAgent(engine: Engine | null) {
   }, [pendingAlert, deliver]);
 
   return {
-    available: Boolean(AGENT_ID), status: convo.status, connected, speaking: convo.isSpeaking, history,
+    available: Boolean(AGENT_ID), status: convo.status, connected, speaking: convo.isSpeaking, history, showThreats,
     send, holdTalk, inputLevel, voiceOn, toggleVoice, pendingAlert, askAboutAlert, end: () => convo.endSession(),
   };
 }

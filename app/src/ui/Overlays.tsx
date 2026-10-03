@@ -21,7 +21,7 @@ function facingName(heading: number) {
  * re-renders), eased along the shortest way round so it glides instead of stepping. Fixed size,
  * wide enough for the longest label ("Northwest"): the label changes text, never the panel's width.
  */
-export function CompassRose({ engine }: { engine: Engine | null }) {
+export function CompassRose({ engine, bare, fill }: { engine: Engine | null; bare?: boolean; fill?: boolean }) {
   const dial = useRef<SVGSVGElement>(null);
   const label = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -43,7 +43,7 @@ export function CompassRose({ engine }: { engine: Engine | null }) {
     return () => cancelAnimationFrame(raf);
   }, [engine]);
   return (
-    <div className="panel pointer-events-none flex w-[100px] flex-col items-center gap-1 px-2 py-2" title="Compass" data-tour="compass">
+    <div className={bare ? "pointer-events-none flex w-[88px] flex-col items-center gap-0.5 px-2 py-1" : `panel pointer-events-none flex w-[100px] flex-col items-center gap-1 px-2 py-2 ${fill ? "h-full justify-center" : ""}`} title="Compass" data-tour="compass">
       <div className="relative h-14 w-14">
         <svg ref={dial} viewBox="0 0 64 64" className="h-14 w-14" style={{ willChange: "transform" }} aria-hidden>
           <circle cx="32" cy="32" r="30" fill="var(--color-panel)" stroke="var(--color-line)" strokeWidth="1.5" />
@@ -61,18 +61,32 @@ export function CompassRose({ engine }: { engine: Engine | null }) {
   );
 }
 
-export function NavControls({ engine }: { engine: Engine | null }) {
+export function NavControls({ engine, bar }: { engine: Engine | null; bar?: boolean }) {
+  const zoom = (
+    <div
+      className="flex flex-col"
+      title="Keyboard: arrows drive, Ctrl (or Shift) + arrows orbit and tilt, + / − zoom"
+    >
+      {bar ? (
+        <>
+          <button type="button" title="Zoom in (+)" aria-label="Zoom in (+)" onClick={() => engine?.scene.zoomBy(0.5)} className="grid h-9 w-9 shrink-0 place-items-center border-t border-line text-ink-dim transition hover:text-phos"><Plus size={15} /></button>
+          <button type="button" title="Zoom out (−)" aria-label="Zoom out (−)" onClick={() => engine?.scene.zoomBy(2)} className="grid h-9 w-9 shrink-0 place-items-center border-t border-line text-ink-dim transition hover:text-phos"><Minus size={15} /></button>
+          <button type="button" title="Whole province" aria-label="Whole province" onClick={() => engine?.scene.resetView()} className="grid h-9 w-9 shrink-0 place-items-center border-t border-line text-ink-dim transition hover:text-phos"><Home size={14} /></button>
+        </>
+      ) : (
+        <>
+          <IconButton title="Zoom in (+)" onClick={() => engine?.scene.zoomBy(0.5)}><Plus size={15} /></IconButton>
+          <IconButton title="Zoom out (−)" onClick={() => engine?.scene.zoomBy(2)}><Minus size={15} /></IconButton>
+          <IconButton title="Whole province" onClick={() => engine?.scene.resetView()}><Home size={14} /></IconButton>
+        </>
+      )}
+    </div>
+  );
+  if (bar) return <div className="flex flex-col" data-tour="nav">{zoom}</div>;
   return (
     <div className="pointer-events-auto flex flex-col items-end gap-1" data-tour="nav">
       <CompassRose engine={engine} />
-      <div
-        className="flex flex-col gap-1"
-        title="Keyboard: arrows drive, Ctrl (or Shift) + arrows orbit and tilt, + / − zoom"
-      >
-        <IconButton title="Zoom in (+)" onClick={() => engine?.scene.zoomBy(0.5)}><Plus size={15} /></IconButton>
-        <IconButton title="Zoom out (−)" onClick={() => engine?.scene.zoomBy(2)}><Minus size={15} /></IconButton>
-        <IconButton title="Whole province" onClick={() => engine?.scene.resetView()}><Home size={14} /></IconButton>
-      </div>
+      {zoom}
     </div>
   );
 }

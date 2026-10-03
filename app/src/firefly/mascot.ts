@@ -1,21 +1,20 @@
 /** Firefly on the map page: the shared mascot stage, parked bottom-left above the dock. */
 import { getStage } from "../mascot/firefly/script";
 import type { Engine } from "../engine";
+import { FIREFLY_CONFIG } from "../firefly.config";
 import { project } from "../geo/projection";
 
-/**
- * Where he rests: perched above the right end of the dock (and the Ask panel when it's open),
- * clear of the Layers/Legend column. Follows the stack as its chips and drawers come and go.
- */
+/** Where he rests: beside the Ask chat when it is open, otherwise the lower left of the map. */
 export function homePoint() {
-  const dock = document.querySelector("[data-tour=firefly]")?.getBoundingClientRect();
-  if (!dock || !dock.width) return { x: 70, y: innerHeight - 230 };
-  const stack = document.querySelector("[data-firefly-stack]")?.getBoundingClientRect();
-  return { x: dock.right - 36, y: Math.min(dock.top, stack?.top ?? dock.top) - 40 };
+  const chat = document.querySelector("[data-ask-chat]")?.getBoundingClientRect();
+  if (chat && chat.width > 40) return { x: chat.right + 28, y: chat.top + 64 };
+  return { x: 72, y: innerHeight - 160 };
 }
 
 export function showFirefly() {
   const st = getStage();
+  // keepFireflyShown() calls this again whenever he is hidden, so only set the look once.
+  if (st.get().config !== FIREFLY_CONFIG) st.setConfig(FIREFLY_CONFIG);
   st.setSize(0.085);
   st.setVisible(true);
   const h = homePoint();

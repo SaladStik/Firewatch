@@ -153,6 +153,13 @@ body,
   scrollbar-width: thin;
   scrollbar-color: var(--color-line) transparent;
 }
+.scroll-none {
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.scroll-none::-webkit-scrollbar {
+  display: none;
+}
 
 .risk-blink {
   opacity: var(--risk-blink, 1);

@@ -1,0 +1,26 @@
+# Databricks Apps: how to start the FIRE//WATCH data server. See DEPLOY-DATABRICKS.md.
+#
+# DATABRICKS_APP_PORT is the only variable Databricks injects, and it is substituted into
+# `command` at run time; the server itself reads PORT.
+#
+# Do not set NODE_ENV=production here: `npm run server` runs through tsx, which is a
+# devDependency, and Databricks skips devDependencies when NODE_ENV is production.
+command: ["sh", "-c", "PORT=$DATABRICKS_APP_PORT npm run server"]
+
+env:
+  # Provinces whose weather is kept warm in the background; others load on first request.
+  - name: FIREWATCH_PREWARM
+    value: "alberta"
+  # The app directory is not a safe place to write, so the disk cache goes to /tmp. It is
+  # ephemeral: after a redeploy the server refetches each source once and is warm again.
+  - name: FIREWATCH_CACHE_DIR
+    value: "/tmp/firewatch-cache"
+  # Serve the API and nothing else.
+  #
+  # Databricks runs `npm run build` by itself when a build script exists, which leaves a dist/
+  # here, and the server serves a site whenever it finds one. That site cannot work: the 900 MB
+  # of baked map data is deliberately not uploaded, so every terrain request would fall through
+  # to index.html and the map would silently fail. Pointing this at a path that does not exist
+  # makes the server skip the site entirely. The real site is on Cloudflare Pages.
+  - name: FIREWATCH_DIST
+    value: "/tmp/firewatch-no-site"

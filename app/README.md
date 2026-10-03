@@ -46,11 +46,12 @@ What he can do:
 - **Drive the map:** fly to places and fires, set the forecast day, toggle layers, turn the demo scenario on or off.
 - **Proactive alerts:** a new fire, a town entering a projected path, or extreme danger tomorrow. He flies there and says so (`src/firefly/monitor.ts`).
 - **Crew allocation:** "I have 3 crews, where?" ranks fires by threat to communities and growth, with reasons.
-- **Mood:** alert (red lantern) when a town is in a projected path, worried before an extreme day, happy when it's calm.
+- **Mood:** alert (red lantern) when a town is in a projected path, worried before an extreme day, curious when a town is listed, and idle when it's calm — idle is also where he starts.
+- **Look:** `src/firefly.config.ts`, pasted out of the preview page's "copy config" (`/firefly.html`). The mascot module keeps its own default; this is the one the map applies.
 
 Setup:
 1. Create an agent in the ElevenLabs dashboard from [`src/firefly/AGENT.md`](src/firefly/AGENT.md): first message, system prompt, and the 11 client tools (names and parameters must match `tools.ts`).
-2. Put its ID in `app/.env.local`: `VITE_ELEVENLABS_AGENT_ID=agent_…`, then restart `npm run dev`. Without it, the dock shows "Firefly is offline".
+2. Copy `app/.env.example` to `app/.env` and put its ID in: `VITE_ELEVENLABS_AGENT_ID=agent_…`, then restart `npm run dev`. Without it, the dock shows "Firefly is offline". `.env` is the only file it reads (Vite loads `.env` in every mode) and is gitignored, so the ID stays out of the repo.
 
 Privacy: while a session is connected, typed text and voice go to ElevenLabs. The mic stays muted unless the talk button is held, though the browser asks for mic permission once when a session starts. The agent ID is public (no API key in the app); restrict it with the dashboard's host allowlist when deploying. Projected spread is a **scenario**, and Firefly says so.
 
@@ -107,6 +108,9 @@ By default every visitor's browser fetches the live data above itself. Running `
   - In a build, the page calls `<VITE_DATA_SERVER>/api`. Use `same-origin` when the data server also serves the built site from `dist/`, which it does whenever a build exists.
 
 Baked data — terrain, land cover, roads, places and **traffic volumes** — is not affected by any of this. It ships with the site and is served from the same address as the page in both modes, so there is no traffic endpoint on the data server; only the live sources below are routed through it.
+
+Hosting it on Databricks needs a few extra parts (an app can't be reached anonymously, so the
+site proxies to it): see **[DEPLOY-DATABRICKS.md](../DEPLOY-DATABRICKS.md)**.
 
 API endpoints:
 - `/api/health`
