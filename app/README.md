@@ -34,6 +34,26 @@ The baked files for every region ship in `public/data/<region>/`, so you only ne
 - The **Projected spread** layer (violet hexes) shows where each active fire could reach by the selected forecast day (simulated fires too, in the demo scenario). The strip above the forecast bar lists communities inside that area. It's a simplified **scenario** model, not an official forecast (see below).
 - `?focus=ab,bc` opens with specific provinces in focus.
 
+## Firefly agent
+
+Firefly, the mascot, is also a voice and text agent that flies over the map. Type in the bottom-left box or **hold the mic** to talk. He answers out loud, in his speech bubble, and in the history drawer. His brain and voice run on an **ElevenLabs Agent**. Everything he says comes from **client tools**, functions in the page that read the same app state the map shows (`src/firefly/tools.ts` → `src/firefly/facts.ts`).
+
+What he can do:
+- **Situation briefing:** what's burning, hotspots in the last 24 h, the biggest fires, threatened communities, the worst forecast day.
+- **Place check:** a community's risk today and over the next 7 days, plus the best and worst day.
+- **Fire dossier:** a fire's size, growth, and which communities its projected spread reaches, and when.
+- **Explain why:** why a town or the selected hex is rated the way it is (fuel × fire weather × nearby fire).
+- **Drive the map:** fly to places and fires, set the forecast day, toggle layers, turn the demo scenario on or off.
+- **Proactive alerts:** a new fire, a town entering a projected path, or extreme danger tomorrow. He flies there and says so (`src/firefly/monitor.ts`).
+- **Crew allocation:** "I have 3 crews, where?" ranks fires by threat to communities and growth, with reasons.
+- **Mood:** alert (red lantern) when a town is in a projected path, worried before an extreme day, happy when it's calm.
+
+Setup:
+1. Create an agent in the ElevenLabs dashboard from [`src/firefly/AGENT.md`](src/firefly/AGENT.md): first message, system prompt, and the 11 client tools (names and parameters must match `tools.ts`).
+2. Put its ID in `app/.env.local`: `VITE_ELEVENLABS_AGENT_ID=agent_…`, then restart `npm run dev`. Without it, the dock shows "Firefly is offline".
+
+Privacy: while a session is connected, typed text and voice go to ElevenLabs. The mic stays muted unless the talk button is held, though the browser asks for mic permission once when a session starts. The agent ID is public (no API key in the app); restrict it with the dashboard's host allowlist when deploying. Projected spread is a **scenario**, and Firefly says so.
+
 ## Data sources
 
 All data is openly licensed and free, with no API keys. **Baked** data is downloaded once by the build scripts (`npm run bake`, `npm run bake:pbf`) and ships as static files in `public/data/<region>/`. **Live** data is fetched by the browser and refreshed every 10 minutes (weather at most hourly, and only for provinces in focus).

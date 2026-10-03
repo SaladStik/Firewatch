@@ -64,11 +64,14 @@ export function findPlace(places: FactPlace[], query: string): { place: FactPlac
   return { place: null, suggestions };
 }
 
-/** Active fires (perimeters + hotspot clusters) with stable ids: perimeter id, or "cluster-<lat>,<lng>". */
+/**
+ * Active fires in the focus regions (perimeters + hotspot clusters), with stable ids: perimeter id,
+ * or "cluster-<lat>,<lng>". A fire belongs to the region of its nearest community.
+ */
 export function activeFires(s: FactsSnapshot): (FireSource & { fid: string })[] {
-  return fireSources(s.hotspots, s.perimeters, s.now, s.fireGrowth).map((f) => ({
-    ...f, fid: f.id ?? `cluster-${f.lat.toFixed(2)},${f.lng.toFixed(2)}`,
-  }));
+  return fireSources(s.hotspots, s.perimeters, s.now, s.fireGrowth)
+    .filter((f) => { const n = nearestPlace(s, f.lat, f.lng); return !n || s.focus.has(n.place.region); })
+    .map((f) => ({ ...f, fid: f.id ?? `cluster-${f.lat.toFixed(2)},${f.lng.toFixed(2)}` }));
 }
 
 function nearestPlace(s: FactsSnapshot, lat: number, lng: number) {
@@ -137,11 +140,14 @@ export function briefing(s: FactsSnapshot) {
     return !n || s.focus.has(n.place.region);
   };
   const hotspots24 = s.hotspots.filter((h) => s.now - Date.parse(h.time) < 86_400_000 && inFocus(h.lat, h.lng));
-  const active = s.perimeters.filter((p) => isPerimeterActive(p, s.now) && (p.region === undefined || s.focus.has(p.region)));
-  const biggest = [...active].sort((a, b) => b.areaHa - a.areaHa).slice(0, 3).map((p) => {
+  const centroid = (p: Perimeter) => {
     const ring = p.rings[0] ?? [];
-    const lng = ring.reduce((a, c) => a + c[0], 0) / Math.max(1, ring.length), lat = ring.reduce((a, c) => a + c[1], 0) / Math.max(1, ring.length);
-    return { fire_id: p.id, hectares: Math.round(p.areaHa), near: nearestPlaceText(s, lat, lng) };
+    return { lng: ring.reduce((a, c) => a + c[0], 0) / Math.max(1, ring.length), lat: ring.reduce((a, c) => a + c[1], 0) / Math.max(1, ring.length) };
+  };
+  const active = s.perimeters.filter((p) => { const c = centroid(p); return isPerimeterActive(p, s.now) && inFocus(c.lat, c.lng); });
+  const biggest = [...active].sort((a, b) => b.areaHa - a.areaHa).slice(0, 3).map((p) => {
+    const c = centroid(p);
+    return { fire_id: p.id, hectares: Math.round(p.areaHa), near: nearestPlaceText(s, c.lat, c.lng) };
   });
   // Worst forecast day across the loaded regions (max risk over weather cells).
   let worst = { day: 0, risk: -1 };
@@ -154,7 +160,7 @@ export function briefing(s: FactsSnapshot) {
   return {
     regions: s.regionNames.filter((_, i) => s.focus.has(i)),
     simulation: s.simulation,
-    activeFires: active.length, hotspotsLast24h: hotspots24.length, biggestFires: biggest,
+    activeFires: activeFires(s).length, activePerimeters: active.length, hotspotsLast24h: hotspots24.length, biggestFires: biggest,
     threatenedCommunities: threatsFor(s, s.forecastDay).slice(0, 5).map((t) => ({ place: t.place.name, reason: t.reason })),
     worstForecastDay: worst.risk >= 0 ? { date: dateOf(s, worst.day), peakRisk: r1(worst.risk * 100) } : null,
   };
