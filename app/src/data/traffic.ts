@@ -52,8 +52,10 @@ export interface TrafficNetwork {
   year: number;
   /** First year of the growth history. */
   historyFrom: number;
-  /** Spacing of the sample points along each route (km). */
-  spacingKm: number;
+  /** How far the stored routes may stray from the real centreline (km). */
+  toleranceKm: number;
+  /** Longest gap between consecutive points of a route (km). */
+  maxGapKm: number;
   highways: Highway[];
   /** Projected world position of each sample point (km). */
   x: Float32Array;
@@ -64,6 +66,40 @@ export interface TrafficNetwork {
   hwy: Uint16Array;
   /** Local annual average daily traffic at each sample point (vehicles/day). */
   aadt: Float32Array;
+  /**
+   * Where each route starts in the arrays above, and how many points it has. Points within a
+   * route are consecutive, but not evenly spaced: the bake spends them where the road curves
+   * (see TrafficField, which measures each route to let anything drive along it).
+   */
+  routeStart: Int32Array;
+  routeCount: Int32Array;
+}
+
+/**
+ * Vehicles a day this highway can carry before it backs up.
+ *
+ * There are no published lane counts, but there is something better: the busiest day the
+ * province has actually measured on the highway. A road that has carried 172,440 vehicles
+ * demonstrably has the capacity for them — and comfortably, because it was built with
+ * headroom over its ordinary day. So the measured peak is taken to be about half of what the
+ * road can pass before it fails, which is what leaves an ordinary day free-flowing and makes
+ * a doubling of demand — an evacuation — the thing that jams it.
+ */
+export const CAPACITY_HEADROOM = 2;
+
+export function capacity(h: Pick<Highway, "aadt" | "hi">): number {
+  return Math.max(h.hi, h.aadt) * CAPACITY_HEADROOM;
+}
+
+/**
+ * How jammed a stretch is (0 = free-flowing, 1 = gridlock) at a volume, against that
+ * highway's capacity. Squared, so congestion stays invisible until the road is genuinely
+ * near its limit and then comes on fast — which is how traffic actually fails.
+ */
+export function jamLevel(volume: number, cap: number): number {
+  if (!(cap > 0)) return 0;
+  const load = volume / cap;
+  return load <= 0.6 ? 0 : Math.min(1, ((load - 0.6) / 0.4) ** 2);
 }
 
 /** Shape of public/data/<region>/traffic.json. */
@@ -72,7 +108,8 @@ interface TrafficFile {
   attribution: string;
   year: number;
   historyFrom: number;
-  spacingKm: number;
+  toleranceKm: number;
+  maxGapKm: number;
   /** Coordinate quantisation: stored units per degree. */
   q: number;
   highways: { n: string; c: number; aadt: number; sadt: number; cm: number; lo: number; hi: number; km: number; g: number }[];
@@ -145,7 +182,8 @@ export function decodeTraffic(file: TrafficFile, region: number): TrafficNetwork
     attribution: file.attribution,
     year: file.year,
     historyFrom: file.historyFrom,
-    spacingKm: file.spacingKm,
+    toleranceKm: file.toleranceKm,
+    maxGapKm: file.maxGapKm,
     highways: file.highways.map((h) => ({
       n: h.n, cls: h.c, aadt: h.aadt, sadt: h.sadt, commercial: h.cm, lo: h.lo, hi: h.hi, km: h.km, growth: h.g,
     })),
@@ -155,9 +193,13 @@ export function decodeTraffic(file: TrafficFile, region: number): TrafficNetwork
     lng: new Float32Array(total),
     hwy: new Uint16Array(total),
     aadt: new Float32Array(total),
+    routeStart: new Int32Array(file.points.length),
+    routeCount: new Int32Array(file.points.length),
   };
   let n = 0;
+  let r = 0;
   for (const row of file.points) {
+    net.routeStart[r] = n;
     const hi = row[0];
     const base = net.highways[hi]?.aadt ?? 0;
     let qLat = 0, qLng = 0;
@@ -172,6 +214,8 @@ export function decodeTraffic(file: TrafficFile, region: number): TrafficNetwork
       net.aadt[n] = (base * row[i + 2]) / 100;
       n++;
     }
+    net.routeCount[r] = n - net.routeStart[r];
+    r++;
   }
   return net;
 }

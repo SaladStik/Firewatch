@@ -28,6 +28,12 @@ export interface CommunityThreat {
   score: number;
   /** Short reason, e.g. "fire 18 km W", "in projected path", "high fire weather". */
   reason: string;
+  /**
+   * Which of the three reasons it is. A town listed on fire weather alone is exposed where it
+   * stands; one listed on "fire" or "path" has something coming at it, which is a different
+   * thing and the only kind that would actually be told to leave (data/trafficSim.ts).
+   */
+  kind: "fire" | "path" | "weather";
 }
 
 interface Inputs {
@@ -87,15 +93,15 @@ export function communityThreats(inp: Inputs): CommunityThreat[] {
     const wx = Math.min(1, (weatherAt(inp.weather, place.lat, place.lng)?.days[inp.day]?.risk ?? 0) * inp.boost);
     const inPath = spreadDay(x, z) >= 0;
 
-    let score = 0, reason = "";
-    if (inPath) { score = 0.9 + 0.1 * wx; reason = "in projected path"; }
+    let score = 0, reason = "", kind: CommunityThreat["kind"] = "weather";
+    if (inPath) { score = 0.9 + 0.1 * wx; reason = "in projected path"; kind = "path"; }
     if (influence > 0) {
       // Closer / downwind fires matter more, and more so in bad fire weather.
       const s = influence * (0.65 + 0.35 * wx);
-      if (s > score) { score = s; reason = `fire ${Math.max(1, Math.round(near))} km ${dirOf(nearDx, nearDz)}`; }
+      if (s > score) { score = s; reason = `fire ${Math.max(1, Math.round(near))} km ${dirOf(nearDx, nearDz)}`; kind = "fire"; }
     }
-    if (wx >= HIGH_WEATHER && wx * 0.75 > score) { score = wx * 0.75; reason = wx >= 0.85 ? "extreme fire danger" : "very high fire danger"; }
-    if (score >= LIST_AT) out.push({ place, score, reason });
+    if (wx >= HIGH_WEATHER && wx * 0.75 > score) { score = wx * 0.75; reason = wx >= 0.85 ? "extreme fire danger" : "very high fire danger"; kind = "weather"; }
+    if (score >= LIST_AT) out.push({ place, score, reason, kind });
   }
   return out.sort((a, b) => b.score - a.score || b.place.pop - a.place.pop);
 }

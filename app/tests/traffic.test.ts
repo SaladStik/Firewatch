@@ -7,7 +7,7 @@ setProjection({ lat0: 54.5, lng0: -115, lat1: 49, lat2: 77 });
 
 /** A one-highway file: two sample points 0.02° apart, the second carrying twice the average. */
 const file = {
-  source: "Test", attribution: "Test", year: 2025, historyFrom: 2016, spacingKm: 2, q: 1000,
+  source: "Test", attribution: "Test", year: 2025, historyFrom: 2016, toleranceKm: 0.05, maxGapKm: 2, q: 1000,
   highways: [{ n: "63", c: 0, aadt: 10_000, sadt: 12_000, cm: 24, lo: 2_000, hi: 40_000, km: 400, g: 2 }],
   points: [[0, 54_500, -115_000, 100, 20, 0, 200]],
 };

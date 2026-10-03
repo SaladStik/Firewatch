@@ -28,12 +28,17 @@ ROOT = os.path.join(os.path.dirname(__file__), "..")
 CACHE = os.path.join(ROOT, "scripts", ".cache", "traffic")
 OUT = os.path.join(ROOT, "public", "data")
 
-# Route points are resampled to this spacing. Fire proximity is scored at a 30-51 km reach
-# (src/world/spread.ts), so 2 km along the road is far finer than the question being asked,
-# and it keeps each province's file to a few hundred KB.
-SPACING_KM = 2.0
-# Coordinate quantisation in the output file: 1e-3 deg (~100 m), well under SPACING_KM.
-Q = 1000
+# Routes are simplified to follow the real centreline within this distance. Uniform
+# resampling was cheaper but cut corners: a 2 km chord across a river bend put the map's
+# vehicles in the water. Simplifying adaptively instead spends points where the road actually
+# curves and almost none on a straight prairie highway, which costs about half as much again
+# in file size and bounds the error at a fraction of a street-zoom hex (75 m).
+SIMPLIFY_KM = 0.05
+# ...and no gap longer than this, so fire proximity is still sampled along straight runs.
+# Fires reach 30-51 km (src/world/spread.ts), so 2 km is far finer than that question needs.
+MAX_GAP_KM = 2.0
+# Coordinate quantisation in the output file: 1e-4 deg (~11 m), well under SIMPLIFY_KM.
+Q = 10000
 
 UA = {"User-Agent": "FIRE//WATCH traffic bake (open data)"}
 
@@ -77,25 +82,62 @@ def seg_km(a, b):
     return math.hypot((b[0] - a[0]) * kx, (b[1] - a[1]) * ky)
 
 
-def resample(pts, spacing):
-    """Points every `spacing` km along a polyline of (lng, lat), keeping both ends."""
+def simplify(pts, tol_km):
+    """Douglas-Peucker on (lng, lat) in local km: drop vertices the line doesn't need."""
+    n = len(pts)
+    if n < 3:
+        return list(pts)
+    kx = 111.32 * math.cos(math.radians(pts[0][1]))
+    ky = 110.574
+    keep = [False] * n
+    keep[0] = keep[-1] = True
+    stack = [(0, n - 1)]
+    while stack:
+        a, b = stack.pop()
+        ax, ay = pts[a][0] * kx, pts[a][1] * ky
+        dx, dy = pts[b][0] * kx - ax, pts[b][1] * ky - ay
+        ln = math.hypot(dx, dy) or 1e-9
+        best, best_d = -1, tol_km
+        for i in range(a + 1, b):
+            d = abs((pts[i][0] * kx - ax) * dy - (pts[i][1] * ky - ay) * dx) / ln
+            if d > best_d:
+                best_d, best = d, i
+        if best > 0:
+            keep[best] = True
+            stack.append((a, best))
+            stack.append((best, b))
+    return [p for p, k in zip(pts, keep) if k]
+
+
+def cap_gaps(pts, max_km):
+    """Split any segment longer than `max_km` so no two points are further apart than that."""
     if len(pts) < 2:
         return list(pts)
     out = [pts[0]]
-    carry = 0.0
     for i in range(1, len(pts)):
         a, b = pts[i - 1], pts[i]
-        d = seg_km(a, b)
-        if d <= 0:
-            continue
-        t = (spacing - carry) / d
-        while t <= 1.0:
+        n = int(seg_km(a, b) / max_km)
+        for k in range(1, n + 1):
+            t = k / (n + 1)
             out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
-            t += spacing / d
-        carry = (carry + d) % spacing
-    if seg_km(out[-1], pts[-1]) > spacing * 0.25:
-        out.append(pts[-1])
+        out.append(b)
     return out
+
+
+def point_weights(pts):
+    """
+    Length of road each point stands for (km): half the way to each neighbour.
+
+    The points are no longer evenly spaced, so anything averaging over them — the gravity
+    redistribution below — has to weight them by this or it would over-count the curves.
+    """
+    n = len(pts)
+    if n == 0:
+        return []
+    if n == 1:
+        return [1.0]
+    seg = [seg_km(pts[i - 1], pts[i]) for i in range(1, n)]
+    return [(seg[max(0, i - 1)] if i > 0 else 0) / 2 + (seg[i] / 2 if i < n - 1 else 0) for i in range(n)]
 
 
 def chain(features):
@@ -419,16 +461,19 @@ def bake(region):
             "km": v["km"],
             "g": trend.get(hwy, 0.0),
         })
-        # Resample first, then spread this highway's measured average over its own points:
-        # the samples are evenly spaced, so their plain mean is the length-weighted one.
-        shapes = [p for p in (resample(f, SPACING_KM) for f in chain(feats)) if len(p) >= 2]
+        # Simplify to the real centreline, then spread this highway's measured average over
+        # its own points, weighting each by the length of road it stands for.
+        shapes = [p for p in (cap_gaps(simplify(f, SIMPLIFY_KM), MAX_GAP_KM) for f in chain(feats)) if len(p) >= 2]
         access = [[accessibility(p, places) for p in shape] for shape in shapes]
+        weights = [point_weights(shape) for shape in shapes]
         flat = [a for row in access for a in row]
-        mean = (sum(flat) / len(flat)) if flat else 0.0
+        wflat = [w for row in weights for w in row]
+        total_w = sum(wflat)
+        mean = (sum(a * w for a, w in zip(flat, wflat)) / total_w) if total_w > 0 else 0.0
         # Compress the accessibility ratio, then renormalise so this highway's own points
         # still average to the volume the province measured on it.
         ratio = [(a / mean) ** ACCESS_EXPONENT if mean > 0 else 1.0 for a in flat]
-        rmean = (sum(ratio) / len(ratio)) if ratio else 1.0
+        rmean = (sum(r * w for r, w in zip(ratio, wflat)) / total_w) if total_w > 0 else 1.0
         for shape, row in zip(shapes, access):
             if mean > 0 and rmean > 0:
                 scaled = [v["aadt"] * (a / mean) ** ACCESS_EXPONENT / rmean for a in row]
@@ -443,7 +488,7 @@ def bake(region):
     if not highways:
         print("  nothing matched, no file written")
         return
-    out = {**meta, "spacingKm": SPACING_KM, "q": Q, "highways": highways, "points": points}
+    out = {**meta, "toleranceKm": SIMPLIFY_KM, "maxGapKm": MAX_GAP_KM, "q": Q, "highways": highways, "points": points}
     d = os.path.join(OUT, region)
     os.makedirs(d, exist_ok=True)
     path = os.path.join(d, "traffic.json")

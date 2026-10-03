@@ -1,15 +1,21 @@
 /**
- * Which highway corridors are threatened by the fires burning now ("Corridors at risk").
+ * Which highway corridors are threatened by the fires burning now ("Corridors at risk"),
+ * and the state of every stretch of road behind that list.
  *
- * A fire beside a busy highway is a different problem from a fire beside a town: the road
- * is both an exposure (people driving into smoke) and, usually, the way everyone upstream
- * of it leaves. So a corridor is listed only when a fire is actually near it — the same
- * wind-shaped reach the map uses for everything else (world/spread.ts: 30 km in calm air,
- * up to ~51 km downwind) — or when it crosses a projected spread ellipse. Dry weather on
- * its own never lists a road; nobody has to leave because it is warm.
+ * A fire beside a busy highway is a different problem from a fire beside a town: the road is
+ * both an exposure (people driving into smoke) and, usually, the way everyone upstream of it
+ * leaves. So a corridor is listed only when a fire is actually near it — the same wind-shaped
+ * reach the map uses for everything else (world/spread.ts: 30 km in calm air, up to ~51 km
+ * downwind) — or when it crosses a projected spread ellipse. Dry weather on its own never
+ * lists a road; nobody has to leave because it is warm.
  *
  * How busy the road is then decides how much that proximity matters, from the volume
- * predicted for the day in question (data/traffic.ts).
+ * predicted for the day in question (data/traffic.ts). In the demo scenario that volume also
+ * carries the evacuation leaving the threatened towns, and fire can close the road outright
+ * (data/trafficSim.ts).
+ *
+ * One pass produces both outputs — the ranked list for the forecast bar and the per-point
+ * field the map's vehicles drive on — so the two can never disagree.
  */
 import { project } from "../geo/projection";
 import { downwind, SPREAD_MAX_KM, spreadInfluence } from "../world/spread";
@@ -18,7 +24,9 @@ import { perimeterAt, reachScale, type FireGrowth } from "./fireHistory";
 import { growthLookup, type GrowthField } from "../world/fireGrowth";
 import { isPerimeterActive } from "./hazards";
 import { weatherAt, type WeatherGrid } from "./openMeteo";
-import { predictVolume, type Highway, type TrafficNetwork } from "./traffic";
+import { capacity, jamLevel, predictVolume, type Highway, type TrafficNetwork } from "./traffic";
+import { TrafficField } from "./trafficField";
+import { SIM_CLOSURE_KM, surgeTraffic, type TrafficScenario } from "./trafficSim";
 
 /** At or below this, a road carries too little traffic to add to the risk (vehicles/day). */
 export const QUIET_VOLUME = 500;
@@ -28,6 +36,8 @@ export const BUSY_VOLUME = 50_000;
 const LIST_AT = 0.3;
 /** Commercial share (%) above which the traffic is worth calling out as freight. */
 export const FREIGHT_SHARE = 20;
+/** A closed corridor is at least this serious: the road out is gone. */
+const CLOSED_SCORE = 0.95;
 
 /** How busy a road is on a 0..1 scale — logarithmic, because volumes span three decades. */
 export function exposure(volume: number): number {
@@ -42,13 +52,19 @@ export interface CorridorThreat {
   /** The threatened point on the corridor (its closest approach to a fire). */
   lat: number;
   lng: number;
-  /** Vehicles per day predicted there on the day being scored. */
+  /** Vehicles per day predicted there on the day being scored, scenario included. */
   volume: number;
+  /** Of that, how many are the scenario's evacuation (0 outside the demo scenario). */
+  surge: number;
+  /** 0 = free-flowing, 1 = gridlock, at that volume against the highway's capacity. */
+  jam: number;
+  /** The scenario has fire across the road here, so that traffic has nowhere to go. */
+  closed: boolean;
   /** 0..1 */
   score: number;
   /** Distance to the nearest fire from that point (km); Infinity when only a projected path reaches it. */
   nearKm: number;
-  /** Short reason, e.g. "fire 12 km NW" or "in projected path". */
+  /** Short reason, e.g. "fire 12 km NW", "in projected path", "closed by fire". */
   reason: string;
 }
 
@@ -65,6 +81,8 @@ interface Inputs {
   spread: GrowthField | null;
   /** Per-fire growth calibration by perimeter id. */
   growth?: Record<string, FireGrowth>;
+  /** Demo scenario: extra demand and the evacuation leaving town. Null = measured counts only. */
+  sim?: TrafficScenario | null;
   now?: number;
 }
 
@@ -72,9 +90,16 @@ const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
 /** Compass direction of (dx, dz) in world space (+X east, +Z south). */
 const dirOf = (dx: number, dz: number) => COMPASS[Math.round(((Math.atan2(dx, -dz) * 180) / Math.PI + 360) % 360 / 45) % 8];
 
-export function corridorThreats(inp: Inputs): CorridorThreat[] {
+/** The ranked corridors and the field behind them. */
+export interface TrafficScoring {
+  threats: CorridorThreat[];
+  field: TrafficField;
+}
+
+export function scoreTraffic(inp: Inputs): TrafficScoring {
   const now = inp.now ?? Date.now();
-  if (!inp.networks.length) return [];
+  const sim = inp.sim ?? null;
+  const field = new TrafficField(inp.networks, !!sim);
 
   // Fire points (projected, with that day's wind there): hotspots + active perimeter
   // vertices. Built exactly as data/communityRisk.ts does, so both lists agree on
@@ -99,7 +124,6 @@ export function corridorThreats(inp: Inputs): CorridorThreat[] {
     for (let i = 0; i < ring.length; i += step) fires.push({ ...project(ring[i][1], ring[i][0]), ...windAt(ring[i][1], ring[i][0]), scale });
   }
   const spreadDay = growthLookup(inp.spread);
-  if (!fires.length && !inp.spread?.cells.length) return [];
 
   // Fires bucketed on a SPREAD_MAX_KM grid. CWFIS covers the whole country, so a province's
   // road points would otherwise each be tested against every fire in Canada; this way a
@@ -116,11 +140,23 @@ export function corridorThreats(inp: Inputs): CorridorThreat[] {
 
   // Worst point per highway, so a 500 km route is one entry rather than 250.
   const worst = new Map<string, CorridorThreat>();
+  let at = 0; // running index into the field's flat arrays
   for (const net of inp.networks) {
-    for (let i = 0; i < net.hwy.length; i++) {
+    for (let i = 0; i < net.hwy.length; i++, at++) {
+      const highway = net.highways[net.hwy[i]];
+      if (!highway) continue;
       const x = net.x[i], z = net.z[i];
-      const inPath = spreadDay(x, z) >= 0;
 
+      // ---- the volume here today, which the map draws whether or not a fire is near.
+      const base = predictVolume(net, i, inp.date) * (sim?.boost ?? 1);
+      const surge = sim ? surgeTraffic(sim.surges, x, z) : 0;
+      const volume = base + surge;
+      const jam = jamLevel(volume, capacity(highway));
+      field.volume[at] = volume;
+      field.jam[at] = jam;
+
+      // ---- how close the fire is.
+      const inPath = spreadDay(x, z) >= 0;
       let near = Infinity, nearDx = 0, nearDz = 0, influence = 0;
       const bx = Math.floor(x / cell), bz = Math.floor(z / cell);
       for (let ox = -1; ox <= 1; ox++) {
@@ -134,11 +170,12 @@ export function corridorThreats(inp: Inputs): CorridorThreat[] {
           }
         }
       }
+      // In the scenario, fire on the road shuts it. Nothing drives through a closure, so the
+      // vehicles stop there and the traffic behind it is stranded.
+      const closed = !!sim && (near <= SIM_CLOSURE_KM || inPath);
+      if (closed) field.closed[at] = 1;
       if (influence <= 0 && !inPath) continue;
 
-      const highway = net.highways[net.hwy[i]];
-      if (!highway) continue;
-      const volume = predictVolume(net, i, inp.date);
       const ex = exposure(volume);
       const wx = Math.min(1, (weatherAt(inp.weather, net.lat[i], net.lng[i])?.days[inp.day]?.risk ?? 0) * inp.boost);
 
@@ -150,14 +187,26 @@ export function corridorThreats(inp: Inputs): CorridorThreat[] {
         const s = influence * (0.55 + 0.45 * ex) * (0.8 + 0.2 * wx);
         if (s > score) { score = s; reason = `fire ${Math.max(1, Math.round(near))} km ${dirOf(nearDx, nearDz)}`; }
       }
+      if (closed && CLOSED_SCORE > score) { score = CLOSED_SCORE; reason = "closed by fire"; }
       if (score < LIST_AT) continue;
 
       const key = `${net.region}-${highway.n}-${highway.cls}`;
       const prev = worst.get(key);
-      if (!prev || score > prev.score) {
-        worst.set(key, { highway, region: net.region, lat: net.lat[i], lng: net.lng[i], volume, score, nearKm: near, reason });
+      // Closures all score the same, so without the volume tie-break the point reported for a
+      // closed highway would be whichever one happened to come first along the route.
+      if (!prev || score > prev.score || (score === prev.score && volume > prev.volume)) {
+        worst.set(key, {
+          highway, region: net.region, lat: net.lat[i], lng: net.lng[i],
+          volume, surge, jam, closed, score, nearKm: near, reason,
+        });
       }
     }
   }
-  return [...worst.values()].sort((a, b) => b.score - a.score || b.volume - a.volume);
+  field.summarise();
+  return { threats: [...worst.values()].sort((a, b) => b.score - a.score || b.volume - a.volume), field };
+}
+
+/** Just the ranked corridors. */
+export function corridorThreats(inp: Inputs): CorridorThreat[] {
+  return scoreTraffic(inp).threats;
 }

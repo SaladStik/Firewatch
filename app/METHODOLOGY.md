@@ -229,8 +229,8 @@ Which part of a highway each measured section covers is **not** published. Taken
 value that would make Highway 2 a single number from Calgary to the Peace Country, when its
 sections actually run from 500 to 172,440 vehicles a day.
 
-So the measured average is spread along the route. For every point on the route (one every
-2 km) we compute a **population accessibility** term over the baked community list,
+So the measured average is spread along the route. For every point on the route we compute a
+**population accessibility** term over the baked community list,
 the sum of pop / (1 + d/10 km) squared within 150 km. That ratio spans several orders of
 magnitude, which on its own drives remote stretches of a trunk route to near zero even though
 they carry long-distance traffic, so it is raised to the power **0.6**, renormalised so the
@@ -253,6 +253,14 @@ Typical error is a factor of about 1.8, and the **order is right** at every refe
 which is what the ranking needs. This redistribution is **ours, not Alberta's** - the
 measured numbers are the per-highway figures and the range, and the per-point figure is a
 model over them.
+
+**Route geometry.** Routes are simplified to stay within 50 m of the real centreline, with no
+gap longer than 2 km so fire proximity is still sampled along straight runs. Points are spent
+where the road curves and almost none on a straight prairie highway: 23,000 points carry all
+28,696 km of measured Alberta highway in 0.28 MB, and 99% of the source road sits within 44 m
+of the stored line (median 5 m). Resampling at a uniform 2 km was half as large but cut
+corners by up to a kilometre, which at street zoom put the map's vehicles in the river the
+highway was following.
 
 ### 7.3 The volume on a given day
 
@@ -290,6 +298,45 @@ slower to clear and harder to turn around.
 
 ---
 
+### 7.5 The demo scenario on the roads
+
+The scenario's weather side multiplies fire danger and drifts a rainstorm across the map
+(§10). Its traffic side completes the chain the scenario already starts: simulated ignitions
+threaten towns, the people in those towns leave on the highways, and the fire closes those
+same highways. Code: `data/trafficSim.ts`, drawn by `render/TrafficParticles.ts`.
+
+Everything in this subsection is an assumption about the scenario, not a measurement, and it
+only applies while the demo scenario is on.
+
+- **Demand.** A long-weekend multiplier of 1.25 on every corridor, the counterpart to the
+  heatwave multiplier on fire danger.
+- **Evacuation.** A town on the communities-at-risk list (§6) with a fire actually coming at
+  it — "fire nearby" or "in projected path", never fire weather alone, because a town listed
+  on weather is exposed where it stands rather than being told to leave — puts 80% of its
+  people on the road at 2.6 people per vehicle, over about a day, scaled by its threat. That
+  is the shape of the real thing: Fort McMurray's 88,000 residents were out within a day in
+  May 2016, which put roughly 30,000 extra vehicles on Highway 63. The extra traffic is
+  centred on the town and fades out over 60 km, and surges from two towns leaving past the
+  same point add up.
+- **Closure.** A stretch within 3 km of a fire, or inside the projected spread, is shut. It
+  then outranks every other reason, because the busiest road near a fire being the one that
+  can't be used is the worst case rather than a detail. The corridor is reported at its
+  busiest closed point, and the list shows the traffic the closure strands.
+- **Congestion.** Volume against the highway's capacity, which is taken as twice the busiest
+  day the province has measured on it — roads are built with headroom over their ordinary
+  day. So measured traffic never reads as congested and an evacuation on top of it does.
+  Congestion rises as the square of the load past 60% of capacity, because traffic degrades
+  slowly and then fails quickly.
+
+**Traffic never changes fire behaviour.** It changes what a fire costs, not how it burns, so
+none of this reaches the hazard snapshot, the risk on a hex or the spread model.
+
+**What it does not model:** rerouting. There is no routing graph, so traffic turned back by a
+closure does not reappear on the alternative route; it simply stops. A real evacuation would
+load the detour.
+
+---
+
 ## 8. Wind and rain
 
 - **Wind streams** show Open-Meteo's live wind today and each day's peak wind on forecast days, interpolated between grid points. The fire models use the 12:00 wind (§2, §4).
@@ -308,9 +355,13 @@ The slider re-runs everything for the chosen day: FWI values, danger, map risk, 
 For presentations when nothing is burning, the demo adds:
 - simulated ignitions;
 - a heatwave (×1.35 on danger and spread rates);
-- a 75 km rainstorm that drifts about 55 km/day downwind with the real wind while weakening.
+- a 75 km rainstorm that drifts about 55 km/day downwind with the real wind while weakening;
+- the traffic those fires cause: a long-weekend demand multiplier, the threatened towns
+  evacuating onto the highways, closures where fire crosses a road, and the congestion that
+  follows (§7.5), drawn as vehicles on the road at street zoom.
 
-Everything simulated is labelled **SIMULATION**. Code: `data/hazards.ts`, `data/rain.ts`.
+Everything simulated is labelled **SIMULATION**. Code: `data/hazards.ts`, `data/rain.ts`,
+`data/trafficSim.ts`.
 
 ---
 
@@ -327,6 +378,7 @@ Everything simulated is labelled **SIMULATION**. Code: `data/hazards.ts`, `data/
 - **The proximity boost** (§3) is our own heuristic for flagging attention, not a standard.
 - **Traffic volumes are annual counts, not live.** No province publishes an open, keyless live traffic feed; Alberta's 511 road-event API requires a key, so closures and incidents are not in the app. What is live in a corridor warning is the fire and the weather, not the traffic.
 - **Traffic volumes are per highway, redistributed along it.** Alberta does not publish where each measured section sits, so the local figure is a model (§7.2) - typically within a factor of about 1.8 of the published section value, and lowest where traffic has a cause the population list can't see. Tourist corridors are the clearest case: Highway 1 at Banff models low because Banff is a small town carrying a national park's traffic.
+- **The scenario's traffic is a scenario.** The demand multiplier, the share of a town that leaves, how long it takes and what closes a road are assumptions, not measurements, and they are only applied with the demo scenario on. Traffic is not rerouted around closures (§7.5).
 - **Only numbered provincial highways.** Forest and resource roads carry the crews and are often the only way out of a remote site, but no traffic counts are published for them.
 - **Alberta only, so far.** Each province publishes its counts in its own format under its own licence, and only Alberta's adapter is written. Other provinces load with no corridor list rather than a guessed one.
 
@@ -371,6 +423,8 @@ Both were worse than the official codes, which already account for the day's wea
 - **Calibration:** daily growth reconstruction; fast fires get *k* > 1, stalled fires *k* < 1; little history keeps *k* near 1.
 - **Traffic volumes:** delta-decoding restores each point's position and its own volume; the seasonal curve reproduces the measured summer average over Alberta's June-August window and averages to 1 over the year; a highway with no summer uplift has no swing; growth compounds from the measured year and is capped rather than extrapolated.
 - **Corridors at risk:** no fires lists nothing however busy the road; a fire 10 km away lists the highway with that distance and direction and one 80 km away doesn't; the busier of two highways at the same distance scores higher; fire danger alone never lists a road; a long highway is one entry reported at its closest approach; and the same corridor reads busier in July than in January.
+- **Traffic scenario:** capacity leaves a measured peak free-flowing and fails when demand doubles; congestion stays at zero until the road is near capacity; only towns with a fire coming at them evacuate, scaled by threat, and fire weather alone never empties one; surges add up where two towns leave past the same point and fade out with distance; the demand multiplier lifts every corridor; fire on the road closes it and that outranks everything else; and nothing is closed without the scenario.
+- **The traffic field:** every point carries a volume whether or not a fire is near it, so the map always has traffic to draw; a route can be driven along by distance, its length is measured off the projected geometry rather than assumed, it clamps past the end, and a closure has an edge on it.
 - **Communities at risk, rain, wind field, Fosberg:** behaviour checks.
 
 ---

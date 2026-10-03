@@ -10,7 +10,7 @@ const LAYERS: { key: keyof Layers; label: string; color?: string; hint: string; 
   { key: "risk", label: "Fire risk", color: "var(--color-risk-high)", hint: "Canadian FWI System fire danger × fuel load, raised near fires (see METHODOLOGY.md)" },
   { key: "fires", label: "Fires + perimeters", color: "var(--color-fire)", hint: "CWFIS satellite hotspots + M3 perimeters" },
   { key: "spread", label: "Projected spread", color: "#6b3d8a", hint: "Scenario: FBP rates of spread grown over the real fuel map (wind, slope, rain), calibrated per fire from its own growth history. Not an official forecast." },
-  { key: "traffic", label: "Traffic corridors", color: "#b8791f", hint: "Highways with a fire near them, with the traffic each stretch is expected to carry that day. Measured provincial counts (see METHODOLOGY.md); provinces that publish none are skipped." },
+  { key: "traffic", label: "Traffic corridors", color: "#b8791f", hint: "Highways with a fire near them, with the traffic each stretch is expected to carry that day, from measured provincial counts. Zoom to street level to see the vehicles themselves; in the demo scenario they also carry the evacuation and stop at closures (see METHODOLOGY.md). Provinces that publish no counts are skipped." },
   { key: "beacons", label: "Hotspot beacons", color: "var(--color-fire)", hint: "Vertical markers visible from any zoom" },
   { key: "wind", label: "Wind", color: "var(--color-water)", hint: "Animated streamlines: live wind today, forecast peak wind on later days (Open-Meteo)" },
   { key: "rain", label: "Rain & snow", color: "#8ec8ff", hint: "Animated rain and snow: live precipitation today, forecast daily totals on later days (snow where it is at or below freezing). Both lower fire risk and slow spread." },

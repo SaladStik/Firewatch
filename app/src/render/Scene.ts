@@ -24,7 +24,9 @@ import { HexWorld, type WorldStats } from "./HexWorld";
 import { sharedUniforms } from "./materials";
 import type { RainField } from "../data/rain";
 import type { WindField } from "../data/wind";
+import type { TrafficField } from "../data/trafficField";
 import { RainParticles } from "./RainParticles";
+import { TrafficParticles } from "./TrafficParticles";
 import { WindParticles } from "./WindParticles";
 
 export interface SceneEvents {
@@ -61,7 +63,8 @@ export class Scene {
   private beaconMat: ShaderMaterial;
   private wind = new WindParticles();
   private rain = new RainParticles();
-  /** Drawn after bloom, so nothing in it glows (wind streamlines, rain). */
+  private traffic = new TrafficParticles();
+  /** Drawn after bloom, so nothing in it glows (wind streamlines, rain, vehicles). */
   private overlayScene = new ThreeScene();
   private labels: { place: Place; region: number; el: HTMLDivElement; pos: Vector3; elevM: number; width: number; shown: boolean }[] = [];
   private labelMinPop = 0;
@@ -126,6 +129,7 @@ export class Scene {
     this.beaconMat = this.makeBeaconMaterial();
     this.overlayScene.add(this.rain.object);
     this.overlayScene.add(this.wind.lines);
+    this.overlayScene.add(this.traffic.lines);
 
     // 4× MSAA on the composer's target — without it the post-processed image has no
     // antialiasing at all and hex edges / thin roads shimmer.
@@ -364,6 +368,7 @@ export class Scene {
     const groundElev = (x: number, z: number) => this.world.nodeAt(x, z)?.elevation ?? null;
     this.wind.update(dt, t, dist, groundElev);
     this.rain.update(dt, t, dist, groundElev);
+    this.traffic.update(dt, t, dist, groundElev);
 
     if (this.pointerDirty) {
       this.pointerDirty = false;
@@ -521,6 +526,11 @@ export class Scene {
     this.rain.setWind(wind);
   }
 
+  /** Vehicles driving the corridors (null hides them). A street-zoom layer: see TrafficParticles. */
+  setTraffic(field: TrafficField | null) {
+    this.traffic.setField(field);
+  }
+
   setBloom(on: boolean) {
     this.bloomWanted = on;
     this.bloom.enabled = on && !this.light;
@@ -543,6 +553,7 @@ export class Scene {
     this.beaconMat.needsUpdate = true;
     this.wind.setTheme(this.light);
     this.rain.setTheme(this.light);
+    this.traffic.setTheme(this.light);
     this.bloom.enabled = this.bloomWanted && !this.light;
   }
 
@@ -555,6 +566,7 @@ export class Scene {
     for (const l of this.labels) l.el.remove();
     this.wind.dispose();
     this.rain.dispose();
+    this.traffic.dispose();
     this.composer.dispose();
     this.renderer.dispose();
   }

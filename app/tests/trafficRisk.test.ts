@@ -22,7 +22,7 @@ const grid = (risk: number): WeatherGrid => ({
 /** One highway whose single sample point sits at 54.5 N, 115 W, carrying `volume` a day. */
 const network = (n: string, volume: number) =>
   decodeTraffic({
-    source: "Test", attribution: "Test", year: 2025, historyFrom: 2016, spacingKm: 2, q: 1000,
+    source: "Test", attribution: "Test", year: 2025, historyFrom: 2016, toleranceKm: 0.05, maxGapKm: 2, q: 1000,
     highways: [{ n, c: 0, aadt: volume, sadt: volume, cm: 24, lo: volume, hi: volume, km: 100, g: 0 }],
     points: [[0, 54_500, -115_000, 100, 10, 0, 100]],
   }, 0);
@@ -72,7 +72,7 @@ test("dry weather alone never lists a road", () => {
 test("a long highway is one entry, reported at its closest approach to the fire", () => {
   // Two points on one highway: the fire sits beside the second.
   const net = decodeTraffic({
-    source: "Test", attribution: "Test", year: 2025, historyFrom: 2016, spacingKm: 2, q: 1000,
+    source: "Test", attribution: "Test", year: 2025, historyFrom: 2016, toleranceKm: 0.05, maxGapKm: 2, q: 1000,
     highways: [{ n: "40", c: 0, aadt: 5_000, sadt: 5_000, cm: 10, lo: 5_000, hi: 5_000, km: 200, g: 0 }],
     points: [[0, 54_500, -115_000, 100, 500, 0, 100]], // second point 0.5° north
   }, 0);
@@ -84,7 +84,7 @@ test("a long highway is one entry, reported at its closest approach to the fire"
 
 test("volumes are predicted for the day being scored, not just the measured average", () => {
   const net = decodeTraffic({
-    source: "Test", attribution: "Test", year: 2025, historyFrom: 2016, spacingKm: 2, q: 1000,
+    source: "Test", attribution: "Test", year: 2025, historyFrom: 2016, toleranceKm: 0.05, maxGapKm: 2, q: 1000,
     highways: [{ n: "63", c: 0, aadt: 10_000, sadt: 14_000, cm: 24, lo: 10_000, hi: 10_000, km: 100, g: 0 }],
     points: [[0, 54_500, -115_000, 100, 10, 0, 100]],
   }, 0);

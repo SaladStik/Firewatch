@@ -16,6 +16,9 @@ import { demoStorms, RainField, type RainBlob } from "./data/rain";
 import { WindField } from "./data/wind";
 import type { Place } from "./data/places";
 import { loadTraffic } from "./data/traffic";
+import { scoreTraffic } from "./data/trafficRisk";
+import { trafficScenario } from "./data/trafficSim";
+import { communityThreats } from "./data/communityRisk";
 import { project, setProjection } from "./geo/projection";
 import { NodeStatus } from "./hex/nodeTypes";
 import type { Landmark } from "./hex/overlayStyles";
@@ -50,7 +53,7 @@ export class Engine {
     const stage = (s: string, progress: number) => app.set({ boot: { stage: s, done: false, progress } });
     try {
       // Fresh boot (also after a dev hot-reload): nothing is loaded yet.
-      app.set({ loaded: [], places: [], traffic: [], hotspots: [], perimeters: [], weather: [], selected: null, hover: null });
+      app.set({ loaded: [], places: [], traffic: [], trafficThreats: [], hotspots: [], perimeters: [], weather: [], selected: null, hover: null });
       setProjection(PROJECTION);
       await this.client.init(PROJECTION);
       this.scene = new Scene(canvas, overlay, this.client, { onHover: (n) => app.set({ hover: n }), onSelect: (n) => this.onSelect(n), onStats: (s) => app.set({ stats: s }) });
@@ -127,6 +130,7 @@ export class Engine {
     const added = ids.some((id) => !this.weatherCache.has(id));
     app.set({ focus: ids });
     this.scene.setFocus(focusIndices());
+    this.pushTraffic(); // corridors are listed per focused region
     if (added) void this.refreshData(); // newly focused region → fetch its weather
   }
 
@@ -301,6 +305,40 @@ export class Engine {
     this.scene.setBeacons(app.get().layers.beacons ? beacons : []);
     this.pushWind();
     this.pushRain();
+    this.pushTraffic();
+  }
+
+  /**
+   * Rank the threatened highway corridors for the selected day and hand the map the field its
+   * vehicles drive on (data/trafficRisk.ts). In the demo scenario the towns on the
+   * communities-at-risk list also put their people on those roads (data/trafficSim.ts).
+   */
+  private pushTraffic() {
+    const s = app.get();
+    const focus = new Set(focusIndices());
+    const networks = s.traffic.filter((n) => focus.has(n.region));
+    if (!s.layers.traffic || !networks.length) {
+      if (s.trafficThreats.length) app.set({ trafficThreats: [] });
+      this.scene.setTraffic(null);
+      return;
+    }
+    const hotspots = this.allHotspots();
+    const boost = s.simulation ? SIM_WEATHER_BOOST : 1;
+    const iso = s.weather[0]?.dates?.[s.forecastDay];
+    const sim = s.simulation
+      ? trafficScenario(communityThreats({
+        places: s.places.filter((p) => !p.landmark && focus.has(p.region)),
+        hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay,
+        boost, spread: s.spread, growth: s.fireGrowth,
+      }))
+      : null;
+    const { threats, field } = scoreTraffic({
+      networks, hotspots, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay,
+      date: iso ? new Date(`${iso}T12:00:00`) : new Date(),
+      boost, spread: s.spread, growth: s.fireGrowth, sim,
+    });
+    app.set({ trafficThreats: threats });
+    this.scene.setTraffic(field);
   }
 
   private rainBlobs: RainBlob[] = [];
@@ -352,6 +390,7 @@ export class Engine {
     app.set((s) => ({ layers: { ...s.layers, [key]: on } }));
     this.applyLayers(app.get().layers);
     if (key === "beacons" || key === "spread") void this.pushHazards();
+    if (key === "traffic") this.pushTraffic();
     if (key === "wind") this.pushWind();
     if (key === "rain") this.pushRain();
   }

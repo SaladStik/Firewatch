@@ -6,6 +6,7 @@ import type { GrowthField } from "../world/fireGrowth";
 import type { WeatherGrid } from "../data/openMeteo";
 import type { Place } from "../data/places";
 import type { TrafficNetwork } from "../data/traffic";
+import type { CorridorThreat } from "../data/trafficRisk";
 import type { WorldStats } from "../render/HexWorld";
 import type { HexNodeInfo } from "../world/types";
 import type { PointSample } from "../world/WorldClient";
@@ -74,6 +75,8 @@ export interface AppState {
   fireGrowth: Record<string, FireGrowth>;
   /** Baked highway traffic volumes, one entry per loaded region that publishes them. */
   traffic: TrafficNetwork[];
+  /** Highway corridors threatened on the selected day, worst first (scored by the engine). */
+  trafficThreats: CorridorThreat[];
 }
 
 export const app = createStore<AppState>({
@@ -99,6 +102,7 @@ export const app = createStore<AppState>({
   spread: null,
   fireGrowth: {},
   traffic: [],
+  trafficThreats: [],
 });
 
 export const regionIndex = (id: string) => app.get().regions.findIndex((r) => r.id === id);
