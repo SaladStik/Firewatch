@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 scripts/.cache
 server/.cache/
+__pycache__/
+*.pyc

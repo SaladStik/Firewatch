@@ -12,6 +12,7 @@ import { BootScreen, HoverTip, NavControls } from "./ui/Overlays";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { SectorPanel } from "./ui/SectorPanel";
 import { SpreadAlert } from "./ui/SpreadAlert";
+import { TrafficAlert } from "./ui/TrafficAlert";
 import { AgentPanel } from "./ui/AgentPanel";
 
 export default function App() {
@@ -72,6 +73,7 @@ export default function App() {
             <div className="w-9" />
             <div className="flex min-w-0 flex-col items-center gap-2">
               <ErrorBoundary name="SpreadAlert"><SpreadAlert engine={engine} /></ErrorBoundary>
+              <ErrorBoundary name="TrafficAlert"><TrafficAlert engine={engine} /></ErrorBoundary>
               <ErrorBoundary name="ForecastBar"><ForecastBar engine={engine} /></ErrorBoundary>
               <ErrorBoundary name="FireFeed"><FireFeed engine={engine} /></ErrorBoundary>
             </div>

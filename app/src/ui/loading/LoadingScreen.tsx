@@ -45,6 +45,7 @@ const FINALE_S = 1.4;
 export const LOAD_STEPS: { label: string; source: string; doneAt: number }[] = [
   { label: "Elevation & land cover", source: "AWS Terrain · ESA WorldCover", doneAt: 0.4 },
   { label: "Rivers, roads, rail & towns", source: "OpenStreetMap", doneAt: 0.8 },
+  { label: "Highway traffic volumes", source: "Alberta TEC", doneAt: 0.85 },
   { label: "Live fire hotspots & perimeters", source: "CWFIS · NRCan", doneAt: 0.9 },
   { label: "Weather & 7-day forecast", source: "Open-Meteo", doneAt: 0.9 },
   { label: "Fire danger (FWI System)", source: "CFFDRS", doneAt: 0.96 },

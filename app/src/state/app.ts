@@ -5,6 +5,8 @@ import type { FireGrowth } from "../data/fireHistory";
 import type { GrowthField } from "../world/fireGrowth";
 import type { WeatherGrid } from "../data/openMeteo";
 import type { Place } from "../data/places";
+import type { TrafficNetwork } from "../data/traffic";
+import type { CorridorThreat } from "../data/trafficRisk";
 import type { WorldStats } from "../render/HexWorld";
 import type { HexNodeInfo } from "../world/types";
 import type { PointSample } from "../world/WorldClient";
@@ -14,6 +16,7 @@ export interface Layers {
   risk: boolean;
   fires: boolean;
   spread: boolean;
+  traffic: boolean;
   beacons: boolean;
   wind: boolean;
   rain: boolean;
@@ -70,6 +73,10 @@ export interface AppState {
   spread: GrowthField | null;
   /** Per-fire growth calibration from each fire's own hotspot history, by perimeter id. */
   fireGrowth: Record<string, FireGrowth>;
+  /** Baked highway traffic volumes, one entry per loaded region that publishes them. */
+  traffic: TrafficNetwork[];
+  /** Highway corridors threatened on the selected day, worst first (scored by the engine). */
+  trafficThreats: CorridorThreat[];
 }
 
 export const app = createStore<AppState>({
@@ -84,7 +91,7 @@ export const app = createStore<AppState>({
   hover: null,
   selected: null,
   selectedSample: null,
-  layers: { risk: true, fires: true, spread: true, beacons: true, wind: true, rain: true, bloom: false },
+  layers: { risk: true, fires: true, spread: true, traffic: true, beacons: true, wind: true, rain: true, bloom: false },
   hotspots: [],
   perimeters: [],
   weather: [],
@@ -94,6 +101,8 @@ export const app = createStore<AppState>({
   flagged: [],
   spread: null,
   fireGrowth: {},
+  traffic: [],
+  trafficThreats: [],
 });
 
 export const regionIndex = (id: string) => app.get().regions.findIndex((r) => r.id === id);

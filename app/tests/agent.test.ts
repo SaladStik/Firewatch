@@ -6,7 +6,7 @@ import type { Brief, BriefPlace, ExplainFacts, Plan } from "../src/agent/types.t
 import type { Layers } from "../src/state/app.ts";
 
 const layers = (over: Partial<Layers> = {}): Layers => ({
-  risk: true, fires: true, spread: true, beacons: true, wind: false, rain: true, bloom: false, ...over,
+  risk: true, fires: true, spread: true, traffic: true, beacons: true, wind: false, rain: true, bloom: false, ...over,
 });
 
 function place(over: Partial<BriefPlace> & Pick<BriefPlace, "name">): BriefPlace {
@@ -108,6 +108,11 @@ test("layers turn on and off", () => {
   assert.deepEqual(on.calls[0], { tool: "setLayer", args: { key: "wind", on: true } });
   const off = planRequest("hide the rain", brief());
   assert.deepEqual(off.calls[0], { tool: "setLayer", args: { key: "rain", on: false } });
+  // Every layer is reachable by name, including the traffic corridors. Turning one on when
+  // it already is asks for nothing, so the corridors start off here.
+  assert.deepEqual(planRequest("turn off traffic", brief()).calls[0], { tool: "setLayer", args: { key: "traffic", on: false } });
+  const corridors = planRequest("show the corridors", brief({ layers: layers({ traffic: false }) }));
+  assert.deepEqual(corridors.calls[0], { tool: "setLayer", args: { key: "traffic", on: true } });
 });
 
 test("a place outside focus, a forecast day, a layer, and a risk question stay in that order", () => {

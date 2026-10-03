@@ -44,6 +44,8 @@ All data is openly licensed and free, with no API keys. **Baked** data is downlo
 | Province & territory boundaries | [click_that_hood `canada.geojson`](https://github.com/codeforgermany/click_that_hood) | Open-source repository (MIT) | Region masks and border lines (all 13) |
 | Roads (motorway → residential, plus forest / resource tracks), rivers, streams and canals, rail | [OpenStreetMap](https://www.openstreetmap.org/copyright), per-province extracts from [OpenStreetMap France](https://download.openstreetmap.fr/extracts/north-america/canada/) (fallback [Geofabrik](https://download.geofabrik.de/north-america/canada.html)), processed locally with [pyosmium](https://osmcode.org/pyosmium/) | [ODbL](https://opendatacommons.org/licenses/odbl/) | Become River / Road / Rail hex nodes. All lines ship as 1° tiles fetched on demand at street zoom (the realism rule means they can't show further out); only rivers ≥ 50 m wide ship with each region |
 | Buildings ≥ ~4 storeys | Same OSM extracts (`height` / `building:levels` tags) | [ODbL](https://opendatacommons.org/licenses/odbl/) | Towers standing on their hexes |
+| Highway traffic volumes (measured) | [Alberta Transportation and Economic Corridors](https://open.alberta.ca/) — [traffic volumes on links in the highway network](https://open.alberta.ca/dataset/traffic-volumes-on-links-in-the-highway-network) (annual and summer average daily traffic, vehicle classification, per traffic control section) and [traffic volumes at points on the highway](https://open.alberta.ca/dataset/traffic-volumes-at-points-on-the-highway) (the 2016–2025 AADT history) | [Open Government Licence – Alberta](https://open.alberta.ca/licence) | How busy each highway is, how much of that is commercial, and how fast it is growing — the volume side of "Corridors at risk" |
+| Highway geometry | [Government of Alberta GeoSpatial](https://geospatial.alberta.ca/titan/rest/services/transportation/access_facility_roads/MapServer) (`transportation/access_facility_roads`, primary + secondary highways with their highway numbers) | [Open Government Licence – Alberta](https://open.alberta.ca/licence) | Where those highways run: joined to the volumes above on the highway number, then resampled to a point every 2 km |
 | Community names and populations | Same OSM extracts (`place=city/town/village/hamlet`, `population`), clipped to each province's boundary | [ODbL](https://opendatacommons.org/licenses/odbl/) | Map labels, Places list and quick-jump |
 | Landmark positions | [OpenStreetMap](https://www.openstreetmap.org/copyright), looked up by name | [ODbL](https://opendatacommons.org/licenses/odbl/) | Positions of hand-drawn wireframe landmark models (the shapes are our own) |
 
@@ -81,6 +83,8 @@ By default every visitor's browser fetches the live data above itself. Running `
   - In dev, the page calls its own `/api`, and Vite forwards that to `VITE_DATA_SERVER`. Phones and other computers on the network only need to reach the dev server (`npm run dev -- --host`).
   - In a build, the page calls `<VITE_DATA_SERVER>/api`. Use `same-origin` when the data server also serves the built site from `dist/`, which it does whenever a build exists.
 
+Baked data — terrain, land cover, roads, places and **traffic volumes** — is not affected by any of this. It ships with the site and is served from the same address as the page in both modes, so there is no traffic endpoint on the data server; only the live sources below are routed through it.
+
 API endpoints:
 - `/api/health`
 - `/api/cwfis/hotspots`
@@ -97,12 +101,14 @@ How every risk, projection and warning is worked out (Canadian FWI and FBP Syste
 - **Projected spread:** FBP System rates of spread by fuel type (ST-X-3 / GLC-X-10), grown hex by hex over the real land cover with minimum travel time (Finney 2002): spreads in every direction through fuel, faster downwind and upslope, stops at water and rock.
 - **Per-fire calibration:** each fire's observed growth from the CWFIS hotspot archive vs. the model on the same days' weather scales its projection.
 - **Communities at risk:** only towns with a fire nearby, in a projected path, or under Very High fire danger.
+- **Corridors at risk:** highways with a fire inside the same wind-shaped reach used everywhere else, ranked by how much traffic that stretch is expected to carry on the chosen day. Volumes are Alberta's own measurements; the seasonal swing comes from its annual-vs-summer averages and the year-on-year change from its published history. Where along a highway each measured section sits is not published, so the measured average is spread along the route by population accessibility and held inside the highway's own measured range.
+- **Traffic in the demo scenario:** a long-weekend demand multiplier, the threatened towns' people leaving on the highways, fire closing those highways, and the congestion that follows — drawn as vehicles on the road at street zoom. All assumptions, all scenario-only, and none of it touches fire behaviour.
 - **Demo scenario:** simulated ignitions, a heatwave multiplier, and a **rainstorm** (75 km radius) that starts over a demo fire site and drifts downwind ~55 km/day with the real wind while weakening. The storm damps risk under it (up to ×0.15) and slows any fire it covers. Everything simulated is labelled SIMULATION. Code: `data/hazards.ts`, `data/rain.ts`.
 - **Wireframe models:** tree, house and landmark shapes are drawn in code (`render/geometry.ts`).
 
 ### Attribution shown in the app
 
-> Elevation: Tilezen/AWS Terrain Tiles · Land cover: ESA WorldCover 2021 (CC BY 4.0) · Map data © OpenStreetMap contributors (ODbL) · Fire data: CWFIS, Natural Resources Canada (OGL–Canada) · Weather: Open-Meteo (CC BY 4.0)
+> Elevation: Tilezen/AWS Terrain Tiles · Land cover: ESA WorldCover 2021 (CC BY 4.0) · Map data © OpenStreetMap contributors (ODbL) · Fire data: CWFIS, Natural Resources Canada (OGL–Canada) · Weather: Open-Meteo (CC BY 4.0) · Traffic volumes and highway geometry: Government of Alberta (OGL–Alberta)
 
 ### Open-source software
 
@@ -113,6 +119,7 @@ How every risk, projection and warning is worked out (Canadian FWI and FBP Syste
 ```
 scripts/bake-terrain.ts   elevation + land cover → public/data/<region>/terrain.{png,json}
 scripts/bake-osm.ts       OSM → public/data/<region>/{osm,places}.json
+scripts/bake_traffic.py   provincial traffic counts + highway geometry → public/data/<region>/traffic.json
 src/
   config/
     grid.ts               LOD levels (hex size, zoom thresholds, terraces, props/buildings on/off)
@@ -239,6 +246,8 @@ A live readout shows the camera distance, active level, cell size, exaggeration,
 3. Add the id to `WORKSPACE.regions`, in the position you want it to load.
 
 Fires, weather, labels, borders, focus and the Explore menu all pick the new province up automatically.
+
+**Traffic volumes are per province and optional.** Every province publishes its traffic counts in its own format, under its own licence, so `scripts/bake_traffic.py` has one adapter per province; Alberta's is written. To add another, write a `fetch_<region>()` that returns the measured volumes per highway number, the year-on-year trend and that highway's geometry, and register it in `ADAPTERS`. Then run `npm run bake:traffic -- <id>` (it needs `pip install openpyxl`, and `npm run bake:pbf` first, because the volumes are spread along each route using the baked community list). A province with no adapter ships no `traffic.json`, and the app simply lists no corridors for it — nothing else changes.
 
 ## Loading screen (test page)
 
