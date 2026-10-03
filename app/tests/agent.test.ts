@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planRequest } from "../src/agent/rules.ts";
+import { needsModel, planRequest } from "../src/agent/rules.ts";
 import { explainReply, renderReply, UNKNOWN_REPLY } from "../src/agent/reply.ts";
 import type { Brief, BriefPlace, ExplainFacts, Plan } from "../src/agent/types.ts";
 import type { Layers } from "../src/state/app.ts";
@@ -213,4 +213,22 @@ test("a hotspot question lists the heat instead of only setting the forecast", (
   assert.equal(plan.reply, "fires");
   assert.ok(plan.calls.some((c) => c.tool === "listFires" && c.args.heatFirst));
   assert.deepEqual(tools("turn hotspots off"), ["setLayer"]);
+});
+
+test("a risk question about a place is answered, not just flown to", () => {
+  for (const q of ["is calgary risky today?", "is calgary safe?", "risk in calgary", "is fort mcmurray at risk"]) {
+    const plan = planRequest(q, brief());
+    assert.equal(plan.reply, "explain", q);
+    assert.ok(plan.calls.some((c) => c.tool === "explain"), q);
+  }
+});
+
+test("questions the rule brain can only act on go to the model; commands stay local", () => {
+  const goesToModel = (q: string) => needsModel(q, planRequest(q, brief()));
+  for (const q of ["will it rain in calgary", "how is alberta today", "calgary?", "what about calgary", "any fires near calgary", "is alberta risky"]) {
+    assert.ok(goesToModel(q), q);
+  }
+  for (const q of ["show me calgary", "focus alberta", "turn wind on", "is calgary risky today?", "active fires in alberta"]) {
+    assert.ok(!goesToModel(q), q);
+  }
 });

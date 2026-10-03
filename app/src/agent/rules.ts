@@ -195,6 +195,11 @@ function wantsExplain(text: string): boolean {
   return /\b(how risky|how dangerous|fire danger|fwi|explain|weather)\b/.test(text) || /\bwhat(?:s| is) the risk\b/.test(text);
 }
 
+/** Asking about a place's risk in other words: "is calgary risky / safe", "risk in calgary". */
+function asksRisk(text: string): boolean {
+  return /\b(risky|dangerous|danger|safe|unsafe|risk|at risk|dry|windy)\b/.test(text);
+}
+
 function leftoverQuery(text: string): string {
   const kept = text.split(" ").filter((w) => w.length >= 3 && !STOP.has(w));
   return kept.join(" ");
@@ -241,10 +246,12 @@ export function planRequest(raw: string, brief: Brief): Plan {
   const day = forecastDay(text, brief.today);
   const layers = layerChanges(text);
   const sim = simulationChange(text);
-  const threats = wantsThreats(text);
+  // "is kelowna at risk" is about Kelowna, not the list of every community at risk.
+  const aboutPlace = !!place && !/\b(communities|towns|places)\b/.test(text);
+  const threats = wantsThreats(text) && !aboutPlace;
   const fires = wantsFireList(text) && !wantsLargestFire(text);
   const toFire = wantsLargestFire(text);
-  const explain = wantsExplain(text);
+  const explain = wantsExplain(text) || (aboutPlace && !layers.length && !fires && asksRisk(text));
 
   const calls: ToolCall[] = [];
   const namedRegions = findRegions(text, brief.regions);
@@ -299,6 +306,21 @@ export function planRequest(raw: string, brief: Brief): Plan {
         ? "fires"
         : "done";
   return { calls: kept, reply };
+}
+
+/** Starts like a map command ("show me calgary", "focus bc", "turn wind on"). */
+const COMMAND = /^(show|fly|go|take|zoom|focus|turn|switch|set|enable|disable|hide|open|just|only|move|center|centre|start|stop|end)\b/;
+
+/**
+ * When a model (Firefly) is available, should it answer instead of this plan? Yes when the plan
+ * only moves the map for something that isn't a command ("is calgary risky?" must not become
+ * "Flew to Calgary"), and for fires near a place (the rule brain lists a whole province).
+ */
+export function needsModel(raw: string, plan: Plan): boolean {
+  const text = norm(raw);
+  if (plan.reply === "unknown" || plan.reply === "ambiguous") return true;
+  if (plan.reply === "done") return !COMMAND.test(text);
+  return plan.reply === "fires" && /\b(near|around|close to|by)\b/.test(text);
 }
 
 export const ruleBrain: AgentBrain = { plan: planRequest };

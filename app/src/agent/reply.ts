@@ -19,7 +19,7 @@ export function explainReply(f: ExplainFacts): string {
     : "";
   const threat = f.threatReason ? ` ${f.name} is at risk: ${f.threatReason}.` : "";
   const near = f.nearestHotspotKm != null
-    ? ` Nearest hotspot is ${f.nearestHotspotKm >= 10 ? Math.round(f.nearestHotspotKm) : +f.nearestHotspotKm.toFixed(1)} km.`
+    ? ` Nearest satellite hotspot (unconfirmed heat) is ${f.nearestHotspotKm >= 10 ? Math.round(f.nearestHotspotKm) : +f.nearestHotspotKm.toFixed(1)} km.`
     : "";
   return `${f.dayLabel}${windLayer}: ${f.name} is FWI ${f.fwi.toFixed(1)}, ${f.danger}.${wind}${precip}${threat}${near}${sim}`;
 }

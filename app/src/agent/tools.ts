@@ -9,7 +9,7 @@ import { activeFires, agencyName, fireView, heatDetections, rankedFires } from "
 import { snapshot } from "../firefly/tools";
 import { buildBrief, fireList as briefFires, threatList, threatReasonAt } from "./brief";
 import { renderReply } from "./reply";
-import { ruleBrain } from "./rules";
+import { needsModel, ruleBrain } from "./rules";
 import type { Plan, ToolCall, ToolResult } from "./types";
 
 const LAYER_LABEL: Record<keyof Layers, string> = {
@@ -160,11 +160,12 @@ export function runPlan(engine: Engine, plan: Plan): { results: ToolResult[]; re
 
 /**
  * A map answer from data already loaded, or null when the question needs the model.
- * `handOffAmbiguous`: return null instead of "Several places match…" (the model can ask better).
+ * `handOffAmbiguous` (a model is available): also return null for ambiguous places and for
+ * questions this can only act on, not answer (rules.ts needsModel).
  */
 export function answerLocally(engine: Engine, text: string, handOffAmbiguous = false): { reply: string; threats: boolean } | null {
   const plan = ruleBrain.plan(text, buildBrief(engine));
-  if (plan.reply === "unknown" || (handOffAmbiguous && plan.reply === "ambiguous")) return null;
+  if (plan.reply === "unknown" || (handOffAmbiguous && needsModel(text, plan))) return null;
   try {
     if (plan.calls.length && plan.reply !== "ambiguous") {
       return { reply: runPlan(engine, plan).reply, threats: plan.reply === "threats" };
