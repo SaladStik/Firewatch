@@ -1,5 +1,7 @@
+import { ConversationProvider } from "@elevenlabs/react";
 import { useEffect, useRef, useState } from "react";
 import { Engine } from "./engine";
+import { FireflyDock } from "./firefly/FireflyDock";
 import { mountLodTuner } from "./dev/LodTuner";
 import { app } from "./state/app";
 import { FireFeed } from "./ui/FireFeed";
@@ -31,6 +33,7 @@ export default function App() {
   }, []);
 
   return (
+    <ConversationProvider>
     <main className="relative h-full w-full overflow-hidden">
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none outline-none" />
       <div className="screen-fx" />
@@ -71,6 +74,9 @@ export default function App() {
           </div>
           <div className="flex items-end justify-between gap-4">
             <div className="w-9" />
+            <div className="absolute bottom-4 left-4 z-20 hidden md:block">
+              <ErrorBoundary name="FireflyDock"><FireflyDock engine={engine} /></ErrorBoundary>
+            </div>
             <div className="flex min-w-0 flex-col items-center gap-2">
               <ErrorBoundary name="SpreadAlert"><SpreadAlert engine={engine} /></ErrorBoundary>
               <ErrorBoundary name="TrafficAlert"><TrafficAlert engine={engine} /></ErrorBoundary>
@@ -90,5 +96,6 @@ export default function App() {
       <BootScreen />
       {screen === "instruments" && <InstrumentData engine={engine} onBack={() => setScreen("map")} />}
     </main>
+    </ConversationProvider>
   );
 }
