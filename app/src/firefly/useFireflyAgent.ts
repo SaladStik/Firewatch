@@ -11,7 +11,7 @@ import type { Engine } from "../engine";
 import type { MoodName } from "../mascot/firefly";
 import { app } from "../state/app";
 import { activeFires, nearestPlaceText, threatsFor } from "./facts";
-import { fireflyController, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
+import { fireflyAway, fireflyController, flyFireflyHome, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
 import { diffAlerts, situationMood, type Alert, type Watch } from "./monitor";
 import { makeTools, snapshot } from "./tools";
 
@@ -30,6 +30,9 @@ function buildWatch(): Watch {
       .map((t) => ({ place: t.place.name, lat: t.place.lat, lng: t.place.lng })),
   };
 }
+
+/** Seconds of quiet after explaining before he flies back to the dock. */
+const HOME_AFTER_S = 1.5;
 
 /** Expressive voices may tag delivery ("[laughs]"); keep those out of the bubble. */
 const clean = (t: string) => t.replace(/\[[a-z ]{2,24}\]\s*/gi, "").trim();
@@ -75,13 +78,19 @@ export function useFireflyAgent(engine: Engine | null) {
     return () => { unsubscribe(); };
   }, [engine]);
 
-  // Mouth follows the voice; released when silent.
+  // Mouth follows the voice; released when silent. Once he's done explaining (not speaking,
+  // thinking, flying or showing a bubble) for HOME_AFTER_S, he flies back to the dock.
   useEffect(() => {
     let raf = 0;
+    let quietSince = performance.now();
     const tick = () => {
       const c = convoRef.current, ctl = fireflyController();
-      if (c.status === "connected" && c.isSpeaking) ctl.override.mouthOpen = Math.min(1, c.getOutputVolume() * 3.5);
+      const speaking = c.status === "connected" && c.isSpeaking;
+      if (speaking) ctl.override.mouthOpen = Math.min(1, c.getOutputVolume() * 3.5);
       else if ("mouthOpen" in ctl.override) delete ctl.override.mouthOpen;
+      const now = performance.now();
+      if (speaking || ctl.flying || ctl.speech || ctl.mood === "thinking" || !fireflyAway()) quietSince = now;
+      else if (now - quietSince > HOME_AFTER_S * 1000) { quietSince = now; void flyFireflyHome(); }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

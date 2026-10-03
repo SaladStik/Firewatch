@@ -110,7 +110,7 @@ export function makeTools(engine: Engine) {
     fly_to: guard(async (p) => {
       const at = locate(snapshot(), p);
       if (typeof at === "string") return fail(at);
-      await show(at.lat, at.lng, at.fire ? 60 : 30);
+      void show(at.lat, at.lng, at.fire ? 60 : 30); // answer now; the camera and Firefly keep flying
       return json({ ok: true, showing: at.label });
     }),
 
