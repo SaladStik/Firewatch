@@ -309,9 +309,12 @@ export function heatView(s: FactsSnapshot, h: HeatDetection) {
 
 const STAGE_ORDER: Record<StageOfControl, number> = { out_of_control: 0, being_held: 1, under_control: 2 };
 
+/** Active fires, worst stage then biggest first. */
+export const rankedFires = (s: FactsSnapshot) => activeFires(s).sort((a, b) => STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] || b.sizeHa - a.sizeHa);
+
 /** Official fires (worst stage, then biggest first) and, separately, unconfirmed heat detections. */
 export function fireList(s: FactsSnapshot) {
-  const fires = activeFires(s).sort((a, b) => STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] || b.sizeHa - a.sizeHa);
+  const fires = rankedFires(s);
   // Heat not already at an official fire, likely wildfire-looking ones first.
   const heat = heatDetections(s).filter((h) => !h.officialFire).sort((a, b) => Number(a.likelyFarmOrControlledBurn) - Number(b.likelyFarmOrControlledBurn) || b.hotspots - a.hotspots);
   return {

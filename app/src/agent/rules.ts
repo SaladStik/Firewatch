@@ -269,7 +269,7 @@ export function planRequest(raw: string, brief: Brief): Plan {
     calls.push({ tool: "flyToRegion", args: { index: region.index, name: region.name, regionId: region.id } });
   }
   if (threats) calls.push({ tool: "listThreats", args: {} });
-  if (fires) calls.push({ tool: "listFires", args: {} });
+  if (fires) calls.push({ tool: "listFires", args: region ? { regionIndex: region.index } : {} });
   if (explain) {
     const aboutHere = /\b(here|this hex|this spot|selection|selected)\b/.test(text);
     const point = place

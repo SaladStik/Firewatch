@@ -5,7 +5,9 @@ import { snowShare } from "../data/rain";
 import { project } from "../geo/projection";
 import { app, type Layers } from "../state/app";
 import { dayLabel, compassName } from "../ui/weatherFormat";
-import { buildBrief, fireList, threatList, threatReasonAt } from "./brief";
+import { activeFires, fireView, heatDetections, rankedFires } from "../firefly/facts";
+import { snapshot } from "../firefly/tools";
+import { buildBrief, fireList as briefFires, threatList, threatReasonAt } from "./brief";
 import { renderReply } from "./reply";
 import { ruleBrain } from "./rules";
 import type { Plan, ToolCall, ToolResult } from "./types";
@@ -81,27 +83,27 @@ function runCall(engine: Engine, call: ToolCall): ToolResult {
       };
     }
     case "listFires": {
-      const fires = fireList().map((f) => ({ label: f.kind === "perimeter" ? `Perimeter ${f.label}` : f.label }));
-      return { tool: call.tool, summary: "Listed active fires", fires, simulation: app.get().simulation };
+      // Agency-reported fires (Firefly's facts), in the province asked about or the ones in focus.
+      const s = snapshot();
+      const idx = call.args.regionIndex;
+      if (idx != null && idx >= 0) s.focus = new Set([idx]);
+      const scope = [...s.focus].map((i) => s.regionNames[i]).filter(Boolean).join(", ") || "the regions in focus";
+      const heat = heatDetections(s).filter((h) => h.kind === "hotspots" && !h.officialFire);
+      return {
+        tool: call.tool, summary: "Listed active fires", simulation: s.simulation, fireScope: scope,
+        fires: rankedFires(s).map((x) => fireView(s, x)).map((f) => ({
+          stage: f.stage,
+          // A national park's fires come from Parks Canada, not the province.
+          label: `${f.agencyFireNumber}${f.reportedBy.startsWith("Parks Canada") ? " (Parks Canada)" : ""}, ${f.stage}, ${f.hectares.toLocaleString("en-CA")} ha${f.near ? `, ${f.near}` : ""}`,
+        })),
+        heat: { clusters: heat.length, farm: heat.filter((h) => h.likelyFarmOrControlledBurn).length },
+      };
     }
     case "flyToFire": {
-      const fires = fireList();
-      const perimeter = fires.find((f) => f.kind === "perimeter");
-      if (perimeter) {
-        engine.flyToLatLng(perimeter.lat, perimeter.lng, 25);
-        return { tool: call.tool, summary: `Flew to the largest fire, ${perimeter.label}` };
-      }
-      const spots = fires.filter((f) => f.kind === "hotspot");
-      const here = engine.scene?.targetLatLng();
-      const nearest = here
-        ? spots.reduce<{ lat: number; lng: number; d: number } | null>((best, h) => {
-          const d = kmBetween(here, h);
-          return !best || d < best.d ? { lat: h.lat, lng: h.lng, d } : best;
-        }, null)
-        : spots[0] ? { lat: spots[0].lat, lng: spots[0].lng, d: 0 } : null;
-      if (!nearest) return { tool: call.tool, summary: "No active fire to fly to" };
-      engine.flyToLatLng(nearest.lat, nearest.lng, 18);
-      return { tool: call.tool, summary: "Flew to the nearest hotspot" };
+      const biggest = activeFires(snapshot()).sort((a, b) => b.sizeHa - a.sizeHa)[0];
+      if (!biggest) return { tool: call.tool, summary: "No active wildfire reported by the fire agencies to fly to" };
+      engine.flyToLatLng(biggest.lat, biggest.lng, 25);
+      return { tool: call.tool, summary: `Flew to the largest reported fire, ${biggest.name} (${Math.round(biggest.sizeHa).toLocaleString("en-CA")} ha)` };
     }
     case "explain": {
       const s = app.get();
@@ -115,7 +117,7 @@ function runCall(engine: Engine, call: ToolCall): ToolResult {
         if (node) engine.scene.select(node);
       }
       let nearest: number | null = null;
-      for (const fire of fireList()) {
+      for (const fire of briefFires()) {
         if (fire.kind !== "hotspot") continue;
         const d = kmBetween({ lat, lng }, fire);
         if (nearest == null || d < nearest) nearest = d;

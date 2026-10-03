@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { firesReply } from "../src/agent/reply.ts";
 import type { Hotspot } from "../src/data/cwfis.ts";
 import { toReportedFire, type ReportedFire } from "../src/data/reportedFires.ts";
 import { activeFires, briefing, crewRanking, fireList, type FactsSnapshot } from "../src/firefly/facts.ts";
@@ -62,4 +63,13 @@ test("demo fires count as simulated out-of-control fires", () => {
   assert.equal(fires.length, 1);
   assert.ok(fires[0].simulated);
   assert.equal(briefing(s).officialWildfires.total, 0);
+});
+
+test("the rule brain's fire reply counts official fires and calls hotspots unconfirmed heat", () => {
+  const none = firesReply([], false, "Alberta", { clusters: 8, farm: 4 });
+  assert.match(none, /No active wildfires reported by the fire agencies in Alberta/);
+  assert.match(none, /8 hotspot clusters: unconfirmed heat/);
+  assert.match(none, /4 look like farm or controlled burns/);
+  const some = firesReply([{ label: "WB16", stage: "out of control" }, { label: "WB8", stage: "under control" }], false, "Alberta");
+  assert.match(some, /^2 active wildfires reported in Alberta \(1 out of control, 1 under control\): WB16; WB8\.$/);
 });

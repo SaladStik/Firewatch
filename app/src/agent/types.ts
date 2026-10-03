@@ -77,7 +77,7 @@ export type ToolCall =
   | { tool: "setForecastDay"; args: { day: number } }
   | { tool: "setSimulation"; args: { on: boolean } }
   | { tool: "listThreats"; args: Record<string, never> }
-  | { tool: "listFires"; args: Record<string, never> }
+  | { tool: "listFires"; args: { regionIndex?: number } }
   | { tool: "flyToFire"; args: Record<string, never> }
   | { tool: "explain"; args: { name: string; lat: number; lng: number; pop: number; regionIndex: number } };
 
@@ -116,7 +116,10 @@ export interface ToolResult {
   summary: string;
   facts?: ExplainFacts;
   threats?: { name: string; reason: string }[];
-  fires?: { label: string }[];
+  /** Agency-reported fires (worst stage first), where they were counted, and unconfirmed satellite heat. */
+  fires?: { label: string; stage: string }[];
+  fireScope?: string;
+  heat?: { clusters: number; farm: number };
   dayLabel?: string;
   simulation?: boolean;
 }

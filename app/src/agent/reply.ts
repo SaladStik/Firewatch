@@ -33,13 +33,22 @@ export function threatsReply(threats: { name: string; reason: string }[], dayLab
   return `${dayLabel}, from live fires and weather: ${list}${more ? `; and ${more} more` : ""}.${sim}`;
 }
 
-export function firesReply(fires: { label: string }[], simulation: boolean): string {
+/** Official fires first; satellite hotspots only as unconfirmed heat. */
+export function firesReply(fires: { label: string; stage: string }[], simulation: boolean, scope = "the regions in focus", heat?: { clusters: number; farm: number }): string {
   const sim = simulation ? " This is a simulation." : "";
-  if (!fires.length) return `No active fires in the loaded data.${sim}`;
-  const shown = fires.slice(0, 6);
+  const heatLine = heat?.clusters
+    ? ` Satellites also see ${heat.clusters} hotspot cluster${heat.clusters === 1 ? "" : "s"}: unconfirmed heat, not confirmed wildfires${heat.farm ? `, and ${heat.farm} look like farm or controlled burns` : ""}.`
+    : "";
+  if (!fires.length) return `No active wildfires reported by the fire agencies in ${scope}.${heatLine}${sim}`;
+  const stages = ["out of control", "being held", "under control"]
+    .map((st) => [st, fires.filter((f) => f.stage === st).length] as const)
+    .filter(([, n]) => n)
+    .map(([st, n]) => `${n} ${st}`)
+    .join(", ");
+  const shown = fires.slice(0, 4);
   const more = fires.length - shown.length;
   const list = shown.map((f) => f.label).join("; ");
-  return `Active fires: ${list}${more ? `; and ${more} more` : ""}.${sim}`;
+  return `${fires.length} active wildfire${fires.length === 1 ? "" : "s"} reported in ${scope} (${stages}): ${list}${more ? `; and ${more} more` : ""}.${heatLine}${sim}`;
 }
 
 export function renderReply(plan: Plan, results: ToolResult[]): string {
@@ -53,7 +62,7 @@ export function renderReply(plan: Plan, results: ToolResult[]): string {
   const threats = results.find((r) => r.tool === "listThreats");
   if (plan.reply === "threats" && threats?.threats) return threatsReply(threats.threats, threats.dayLabel ?? "Today", !!threats.simulation);
   const fires = results.find((r) => r.tool === "listFires");
-  if (plan.reply === "fires" && fires?.fires) return firesReply(fires.fires, !!fires.simulation);
+  if (plan.reply === "fires" && fires?.fires) return firesReply(fires.fires, !!fires.simulation, fires.fireScope, fires.heat);
   const lines = results.map((r) => r.summary).filter(Boolean);
   return lines.length ? lines.join(" ") : UNKNOWN_REPLY;
 }
