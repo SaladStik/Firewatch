@@ -103,3 +103,28 @@ test("311: the blizzard adds ice calls that go to the front of Roads' queue", ()
   assert.ok(p.added.length > 0 && p.added.every((t) => t.simulated));
   assert.ok(p.noon!.routes.get("R1")!.every((t) => typeOf(t.service).safety === 5));
 });
+
+test("311: weather raises the right types, and each plan keeps its own weather", async () => {
+  const { weatherFactor, priorityParts } = await import("../src/dispatch/ops311.ts");
+  assert.equal(weatherFactor("ice / snow on the road", { tempC: -5, precipMm: 8, windKmh: 10 }).k, 1.6);
+  assert.equal(weatherFactor("pothole", { tempC: 12, precipMm: 0, windKmh: 10 }).k, 1);
+  assert.ok(weatherFactor("debris on the road", { tempC: 12, precipMm: 20, windKmh: 10 }).k > 1);
+  assert.ok(weatherFactor("missing or damaged sign", { tempC: 12, precipMm: 0, windKmh: 70 }).k > 1);
+  const l = load311(TICKETS);
+  const dry = { tempC: 17, precipMm: 0, windKmh: 15 };
+  const p = plan311(l, { roads: 1, waste: 1, perCrew: 2, disruption: "blizzard", weather: dry });
+  const pothole = l.open.find((t) => t.id === "3")!;
+  // The 8 a.m. plan scored with the dry forecast; only the blizzard replan has winter weather.
+  assert.deepEqual(priorityParts(pothole, p.today, p.ctx).why.filter((w) => /freeze|snow/.test(w)), []);
+  assert.ok(priorityParts(pothole, p.today, p.noonCtx).why.includes("freeze-thaw"));
+});
+
+test("311: similar reports close together raise each other's priority", async () => {
+  const { similarNearby } = await import("../src/dispatch/ops311.ts");
+  const l = load311(TICKETS);
+  const near = similarNearby(l.open);
+  // Ticket 3 (pothole) has no other pothole within 400 m; adding one next to it counts.
+  assert.equal(near.get("3"), 0);
+  const twin = { ...l.open.find((t) => t.id === "3")!, id: "3b", lat: 51.0412 };
+  assert.equal(similarNearby([...l.open, twin]).get("3"), 1);
+});

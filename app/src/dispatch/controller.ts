@@ -14,7 +14,7 @@ import { project } from "../geo/projection";
 import { app } from "../state/app";
 import { FUEL_FOR_LAND } from "../world/fireGrowth";
 import { exposures, HAND_WEIGHTS, learnWeights, loadHistory, planCrews, type CrewFire, type PlaceLite, type RankInput } from "./crews";
-import { load311, plan311, type Override } from "./ops311";
+import { load311, plan311, type Override, type Weather311 } from "./ops311";
 import { dispatch, type DispatchState } from "./store";
 
 let engine: Engine | null = null;
@@ -136,7 +136,7 @@ export function setCrewOptions(patch: Partial<Pick<DispatchState, "source" | "cr
 export function recompute311() {
   const d = dispatch.get();
   if (!d.load311) return;
-  dispatch.set({ plan311: plan311(d.load311, { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption, overrides: d.overrides }) });
+  dispatch.set({ plan311: plan311(d.load311, { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption, overrides: d.overrides, weather: calgaryWeather() }) });
 }
 
 /** Dispatcher override on one ticket (null clears it); the day is replanned at once. */
@@ -155,6 +155,13 @@ export function openTickets(open = true) {
 export function set311Options(patch: Partial<Pick<DispatchState, "roads" | "waste" | "perCrew" | "disruption" | "at">>) {
   dispatch.set(patch);
   void loadCases().then(recompute311);
+}
+
+/** Calgary's weather today from the map's forecast (null until it loads). */
+export function calgaryWeather(): Weather311 | null {
+  const wx = weatherAt(app.get().weather, 51.045, -114.06)?.days[0];
+  if (!wx || !Number.isFinite(wx.temp)) return null;
+  return { tempC: wx.temp, precipMm: Number.isFinite(wx.rainMm) ? wx.rainMm : 0, windKmh: Number.isFinite(wx.wind) ? wx.wind : 0 };
 }
 
 /**

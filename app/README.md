@@ -59,7 +59,7 @@ Privacy: while a session is connected, typed text and voice go to ElevenLabs. Th
 
 ## Dispatch: who gets the next crew
 
-The **Dispatch** button (top bar) opens the IEEE YP Industry Hackathon 2026 cases inside the map. Firefly drives the same plans from Ask or voice (`plan_crews`, `plan_311`, `open_dispatch`). Method and evaluation: [METHODOLOGY.md §13](METHODOLOGY.md#13-dispatch-who-gets-the-next-crew).
+The **Dispatch** button (top bar) opens the IEEE YP Industry Hackathon 2026 cases inside the map. Firefly drives the same plans from Ask or voice (`plan_crews`, `plan_311`, `open_dispatch`). Method in plain terms: [src/dispatch/README.md](src/dispatch/README.md); full method and evaluation: [METHODOLOGY.md §13](METHODOLOGY.md#13-dispatch-who-gets-the-next-crew).
 
 **Wildfire crews (Case 3).** Ranks fires for N crews, either today's live fires or Alberta's real 2023–2025 fire table. **Demo scenario** replays that table on the map.
 - One-line score: `priority = size × spread × people × crown`. Spread is the faster of the observed rate and the FBP rate for that fuel and weather; people are towns and critical sites within 30 km.
@@ -77,7 +77,7 @@ With 40 crews, cut to 32 (`npm run case:crews`):
 | FIRE//WATCH, after the cut | 32 | **21** |
 
 **Calgary 311 (Case 1).** Plans Roads and Waste & Recycling crews for one day from Open Calgary tickets.
-- Priority: `priority = 10 × safety + 2 × days waiting`. Crews work a neighbourhood instead of crossing the city.
+- Priority: `priority = 10 × safety × weather + 2 × days waiting + 3 × similar reports nearby`. Crews work a neighbourhood and batch similar jobs.
 - Baseline: oldest first.
 - Noon disruption: a **blizzard** (ice and snow calls jump; suggested automatically when our forecast shows snow in Calgary) or a **sick crew**, then a replan that counts jobs moved.
 - **All tickets:** every ticket with its priority, crew and stop. Mark one **urgent** or **hold** it and the day replans.

@@ -5,9 +5,15 @@
  * apply one disruption (a blizzard: ice/snow tickets jump, or a crew calls in sick), replan and
  * report how many jobs moved. Shared by the Dispatch panel, Firefly and `npm run case:311`.
  *
- * One-line priority:   priority = 10 × safety + 2 × days waiting
- * Assignment: each crew picks its next job by priority − 1.5 × km from its last job (+ 6 for the
- * same community), so a crew works a neighbourhood instead of crossing the city for every ticket.
+ * One-line priority:   priority = 10 × safety × weather + 2 × days waiting + 3 × similar reports nearby
+ *   - severity first: a new traffic-sign ticket (40) goes before a week-old parking sign (24);
+ *     waiting adds 2 a day so nothing waits forever;
+ *   - weather (our Calgary forecast): freezing and snow raise ice and potholes, heavy rain raises
+ *     debris and potholes, high wind raises signs and debris;
+ *   - similar open tickets within 400 m (up to 4) mean a bigger problem, so the cluster rises.
+ * Assignment: each crew picks its next job by priority − 1.5 × km from its last job, + 6 for the
+ * same community and + 5 for the same kind of job close by (the right equipment is on the truck),
+ * so a crew works a neighbourhood instead of crossing the city for every ticket.
  * Roads crews take Roads work, Waste & Recycling crews take WRS work; anything else goes to either.
  */
 import { haversineKm, num, parseCsv } from "./csv";
@@ -87,10 +93,68 @@ export const daysWaiting = (t: Ticket, today: string) => daysBetween(t.date, tod
 export type Override = "urgent" | "hold";
 /** Priority boost for a ticket the dispatcher marked urgent (above any safety level). */
 export const URGENT_BOOST = 100;
-let overrides: Record<string, Override> = {};
 
-export function priority(t: Ticket, today: string): number {
-  return 10 * typeOf(t.service).safety + 2 * daysBetween(t.date, today) + (overrides[t.id] === "urgent" ? URGENT_BOOST : 0);
+/** Calgary's weather for the plan (from the map's Open-Meteo forecast). */
+export interface Weather311 { tempC: number; precipMm: number; windKmh: number }
+/** The weather a blizzard brings (the noon disruption). */
+export const BLIZZARD_WEATHER: Weather311 = { tempC: -8, precipMm: 15, windKmh: 45 };
+
+/** How the weather scales one service type's severity, and why. */
+export function weatherFactor(label: string, w: Weather311 | null): { k: number; why: string[] } {
+  if (!w) return { k: 1, why: [] };
+  const freezing = w.tempC <= 1, snow = freezing && w.precipMm >= 1, rain = !freezing && w.precipMm >= 5, wind = w.windKmh >= 50;
+  let k = 1;
+  const why: string[] = [];
+  const bump = (m: number, reason: string) => { k *= m; why.push(reason); };
+  if (/ice/.test(label)) { if (snow) bump(1.6, "snowing"); else if (freezing) bump(1.3, "below freezing"); }
+  if (/pothole/.test(label) && (freezing || rain)) bump(rain ? 1.25 : 1.2, rain ? "potholes fill with rain" : "freeze-thaw");
+  if (/traffic sign/.test(label) && snow) bump(1.3, "low visibility in snow");
+  if (/debris/.test(label) && rain) bump(1.3, "heavy rain");
+  if (/sign/.test(label) && wind) bump(1.3, "high wind");
+  if (/debris/.test(label) && wind) bump(1.25, "high wind");
+  if (/pickup/.test(label) && wind) bump(1.15, "waste blowing around");
+  return { k, why };
+}
+
+/** Similar reports nearby: same service type within this distance raise a ticket's priority. */
+export const CLUSTER_KM = 0.4;
+/** What a plan scores tickets with: the weather, similar reports nearby, the dispatcher's overrides. */
+export interface Ctx311 {
+  weather: Weather311 | null;
+  clusters: Map<string, number>;
+  overrides: Record<string, Override>;
+}
+const NO_CTX: Ctx311 = { weather: null, clusters: new Map(), overrides: {} };
+
+/** Count, for every ticket, the other open tickets of the same type within CLUSTER_KM. */
+export function similarNearby(tickets: Ticket[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const a of tickets) {
+    let n = 0;
+    for (const b of tickets) if (b !== a && b.service === a.service && haversineKm(a.lat, a.lng, b.lat, b.lng) < CLUSTER_KM) n++;
+    out.set(a.id, n);
+  }
+  return out;
+}
+
+export interface PriorityParts { safety: number; weather: number; waiting: number; nearby: number; urgent: number; total: number; why: string[] }
+
+/** The priority and what it's made of (for the ticket list's "why"). */
+export function priorityParts(t: Ticket, today: string, ctx: Ctx311 = NO_CTX): PriorityParts {
+  const type = typeOf(t.service), wf = weatherFactor(type.label, ctx.weather);
+  const near = Math.min(4, ctx.clusters.get(t.id) ?? 0), days = daysBetween(t.date, today);
+  const safety = 10 * type.safety, weatherPts = Math.round(safety * (wf.k - 1)), waiting = 2 * days, nearby = 3 * near;
+  const urgent = ctx.overrides[t.id] === "urgent" ? URGENT_BOOST : 0;
+  const why = [`${type.label} (safety ${type.safety})`];
+  if (wf.why.length) why.push(...wf.why);
+  if (days) why.push(`waiting ${days} day${days === 1 ? "" : "s"}`);
+  if (near) why.push(`${near} similar report${near === 1 ? "" : "s"} within ${CLUSTER_KM * 1000} m`);
+  if (urgent) why.push("marked urgent");
+  return { safety, weather: weatherPts, waiting, nearby, urgent, total: safety + weatherPts + waiting + nearby + urgent, why };
+}
+
+export function priority(t: Ticket, today: string, ctx: Ctx311 = NO_CTX): number {
+  return priorityParts(t, today, ctx).total;
 }
 
 // ------------------------------------------------------------ crews and assignment
@@ -113,7 +177,7 @@ export interface Assignment {
 const canDo = (c: Crew, t: Ticket) => { const u = typeOf(t.service).unit; return u === "Other" || u === c.unit; };
 /** Depot the day starts from (Calgary Roads / WRS operations, approximate). */
 const DEPOT = { lat: 51.0447, lng: -114.0719 };
-const KM_COST = 1.5, SAME_COMMUNITY = 6, KEEP_CREW = 8;
+const KM_COST = 1.5, SAME_COMMUNITY = 6, SAME_TYPE_NEAR = 5, KEEP_CREW = 8;
 
 export type Strategy = "fifo" | "priority";
 
@@ -122,13 +186,13 @@ export type Strategy = "fifo" | "priority";
  * Priority: highest priority first, then the next job by priority − travel (+ same community).
  * `previous`: on a replan, a job keeps its morning crew when it can (fewer phone calls).
  */
-export function assign(tickets: Ticket[], crews: Crew[], perCrew: number, today: string, strategy: Strategy, previous?: Assignment): Assignment {
+export function assign(tickets: Ticket[], crews: Crew[], perCrew: number, today: string, strategy: Strategy, ctx: Ctx311 = NO_CTX, previous?: Assignment): Assignment {
   const prevCrew = new Map<string, string>();
   previous?.routes.forEach((list, crew) => list.forEach((t) => prevCrew.set(t.id, crew)));
   const left = new Map(tickets.map((t) => [t.id, t]));
   const routes = new Map(crews.map((c) => [c.id, [] as Ticket[]]));
   const pos = new Map(crews.map((c) => [c.id, DEPOT]));
-  const pr = new Map(tickets.map((t) => [t.id, priority(t, today)]));
+  const pr = new Map(tickets.map((t) => [t.id, priority(t, today, ctx)]));
   // Round-robin so every crew gets its best next job in turn.
   for (let round = 0; round < perCrew; round++) {
     for (const c of crews) {
@@ -141,6 +205,7 @@ export function assign(tickets: Ticket[], crews: Crew[], perCrew: number, today:
         else {
           v = pr.get(t.id)! - KM_COST * haversineKm(here.lat, here.lng, t.lat, t.lng);
           if (last && last.community && last.community === t.community) v += SAME_COMMUNITY;
+          if (last && last.service === t.service && haversineKm(last.lat, last.lng, t.lat, t.lng) < 1) v += SAME_TYPE_NEAR;
           if (prevCrew.get(t.id) === c.id) v += KEEP_CREW;
         }
         if (v > bestV) { bestV = v; best = t; }
@@ -219,15 +284,19 @@ export interface Plan311 {
   dropped: { ticket: Ticket; from: string }[];
   newJobs: { ticket: Ticket; to: string }[];
   scores: { fifo: Score311; morning: Score311; noon: Score311 | null };
+  /** What the 8 a.m. plan and the noon replan scored tickets with (weather, clusters, overrides). */
+  ctx: Ctx311;
+  noonCtx: Ctx311;
 }
 
-export function plan311(load: Load311, opts: { roads?: number; waste?: number; perCrew?: number; disruption?: Disruption; overrides?: Record<string, Override> } = {}): Plan311 {
-  overrides = opts.overrides ?? {};
+export function plan311(load: Load311, opts: { roads?: number; waste?: number; perCrew?: number; disruption?: Disruption; overrides?: Record<string, Override>; weather?: Weather311 | null } = {}): Plan311 {
+  const overrides = opts.overrides ?? {};
+  const ctx: Ctx311 = { weather: opts.weather ?? null, clusters: similarNearby(load.open), overrides };
   const crews = makeCrews(opts.roads ?? 5, opts.waste ?? 3), perCrew = opts.perCrew ?? 5, today = load.today;
   // Held tickets stay out of today's plans (both ours and the baseline's).
   const open = load.open.filter((t) => overrides[t.id] !== "hold");
-  const fifo = assign(open, crews, perCrew, today, "fifo");
-  const morning = assign(open, crews, perCrew, today, "priority");
+  const fifo = assign(open, crews, perCrew, today, "fifo", ctx);
+  const morning = assign(open, crews, perCrew, today, "priority", ctx);
   const disruption = opts.disruption ?? "none";
   let noonCrews = crews, tickets = open, added: Ticket[] = [];
   if (disruption === "blizzard") { added = blizzardTickets(load.open, today); tickets = [...open, ...added.filter((t) => overrides[t.id] !== "hold")]; }
@@ -236,7 +305,9 @@ export function plan311(load: Load311, opts: { roads?: number; waste?: number; p
     const busiest = crews.filter((c) => c.unit === "Roads").sort((a, b) => morning.routes.get(b.id)!.length - morning.routes.get(a.id)!.length)[0];
     noonCrews = crews.filter((c) => c !== busiest);
   }
-  const noon = disruption === "none" ? null : assign(tickets, noonCrews, perCrew, today, "priority", morning);
+  // A blizzard brings its weather with it; the noon replan scores with that.
+  const noonCtx: Ctx311 = disruption === "none" ? ctx : { weather: disruption === "blizzard" ? BLIZZARD_WEATHER : ctx.weather, clusters: similarNearby(tickets), overrides };
+  const noon = disruption === "none" ? null : assign(tickets, noonCrews, perCrew, today, "priority", noonCtx, morning);
   const crewOf = (a: Assignment) => { const m = new Map<string, string>(); a.routes.forEach((l, c) => l.forEach((t) => m.set(t.id, c))); return m; };
   const before = crewOf(morning), after = noon ? crewOf(noon) : before;
   const moved: Plan311["moved"] = [], dropped: Plan311["dropped"] = [], newJobs: Plan311["newJobs"] = [];
@@ -252,6 +323,7 @@ export function plan311(load: Load311, opts: { roads?: number; waste?: number; p
   return {
     today, crews, perCrew, fifo, morning, disruption, noonCrews, noon, added, moved, dropped, newJobs,
     scores: { fifo: score311(fifo), morning: score311(morning), noon: noon ? score311(noon) : null },
+    ctx, noonCtx,
   };
 }
 

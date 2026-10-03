@@ -26,7 +26,9 @@ h("1. Load");
 console.log(`${load.rows} tickets. Closed ${load.closed}, duplicates ${load.duplicates}, missing location/date ${load.dropped} → ${load.open.length} open. Planning day: ${load.today}.`);
 
 h("2. Priority (one line)");
-console.log("priority = 10 × safety (1–5 by service type) + 2 × days waiting;  next job = priority − 1.5 × km + 6 if same community");
+console.log("priority = 10 × safety (1–5 by type) × weather + 2 × days waiting + 3 × similar reports within 400 m");
+console.log("next job = priority − 1.5 × km + 6 if same community + 5 if the same kind of job is within 1 km");
+console.log("(no forecast in this report: weather counts in the app, and the noon blizzard brings its own)");
 
 h(`3. ${p.crews.length} crews × ${p.perCrew} jobs: baseline vs priority`);
 row("Baseline: oldest first", p.scores.fifo);
@@ -37,7 +39,7 @@ if (p.scores.noon) {
   row("Noon replan", p.scores.noon);
   console.log(`Jobs that changed crew: ${p.moved.length} · dropped to tomorrow: ${p.dropped.length} · new: ${p.newJobs.length}`);
   for (const m of p.moved.slice(0, 8)) console.log(`  moved   ${m.ticket.id.padEnd(12)} ${m.from} → ${m.to}  ${typeOf(m.ticket.service).label}, ${m.ticket.community}`);
-  for (const d of p.dropped.slice(0, 8)) console.log(`  dropped ${d.ticket.id.padEnd(12)} (was ${d.from})  ${typeOf(d.ticket.service).label}, ${d.ticket.community}, priority ${priority(d.ticket, p.today)}`);
+  for (const d of p.dropped.slice(0, 8)) console.log(`  dropped ${d.ticket.id.padEnd(12)} (was ${d.from})  ${typeOf(d.ticket.service).label}, ${d.ticket.community}, priority ${priority(d.ticket, p.today, p.noonCtx)}`);
 }
 
 h("Crew sheets (morning)");

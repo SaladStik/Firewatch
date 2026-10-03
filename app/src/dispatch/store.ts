@@ -45,6 +45,14 @@ export interface DispatchState {
   ticketsOpen: boolean;
   /** Dispatcher overrides by ticket id. */
   overrides: Record<string, Override>;
+
+  // The work queue: what the dispatcher has decided, and where they are.
+  /** Fire key ("year:id") → sent a crew / skipped. */
+  decided: Record<string, "sent" | "skipped">;
+  cursor: number;
+  /** 311 crews the dispatcher has sent out. */
+  dispatched: Record<string, true>;
+  cursor311: number;
 }
 
 export const dispatch = createStore<DispatchState>({
@@ -71,4 +79,8 @@ export const dispatch = createStore<DispatchState>({
   at: "morning",
   ticketsOpen: false,
   overrides: {},
+  decided: {},
+  cursor: 0,
+  dispatched: {},
+  cursor311: 0,
 });

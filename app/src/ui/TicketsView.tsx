@@ -51,7 +51,7 @@ export function TicketsView() {
       return {
         t, open,
         type: typeOf(t.service),
-        pr: open ? priority(t, p.today) : 0,
+        pr: open ? priority(t, p.today, noon ? p.noonCtx : p.ctx) : 0,
         age: daysWaiting(t, p.today),
         at: where.get(t.id) ?? null,
         tomorrow: noon ? dropped.has(t.id) : false,

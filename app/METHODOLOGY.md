@@ -478,7 +478,24 @@ All seasons together, 40 crews: biggest first reaches 15 escapes, FIRE//WATCH 28
 
 **Data.** 200 Open Calgary tickets: 78 closed and 3 duplicates leave 119 open. The plan is for the day after the newest ticket.
 
-**Priority.** `priority = 10 × safety + 2 × days waiting`. Safety levels by service type:
+**Priority.** `priority = 10 × safety × weather + 2 × days waiting + 3 × similar reports nearby`.
+- **Severity first.** A brand-new traffic-sign ticket (40) goes before a week-old parking sign (24). Waiting adds 2 a day so nothing waits forever: a level-1 ticket needs more than 10 days before it outranks a fresh pothole.
+- **Weather.** Calgary's forecast from the same Open-Meteo grid as the fire map scales severity by type:
+
+  | Weather | Raised (×) |
+  |---|---|
+  | Snow (≤ 1 °C with precipitation) | ice ×1.6, traffic signs ×1.3 (visibility), potholes ×1.2 (freeze-thaw) |
+  | Freezing, dry | ice ×1.3, potholes ×1.2 |
+  | Heavy rain (≥ 5 mm) | debris ×1.3, potholes ×1.25 |
+  | High wind (≥ 50 km/h) | signs ×1.3, debris ×1.25, missed pickups ×1.15 |
+
+  The noon blizzard brings its own weather (−8 °C, 15 mm of snow), so the replan scores with it.
+- **Similar reports nearby.** Each open ticket of the same type within 400 m adds 3, up to 4 tickets: several reports mean a bigger problem.
+- **Dispatcher overrides.** A ticket marked urgent gets +100; a held ticket stays out of today's plan.
+
+Every ticket's priority is broken down in the ticket list and the crew queue (safety, weather, waiting, similar reports, urgent), so the dispatcher can see why it's where it is.
+
+Safety levels by service type:
 
 | Safety | Service types |
 |---|---|
@@ -490,7 +507,7 @@ All seasons together, 40 crews: biggest first reaches 15 escapes, FIRE//WATCH 28
 
 **Assignment.**
 - Roads crews take Roads work and Waste & Recycling crews take WRS work. Either takes the rest.
-- Crews pick in turn. Each takes the job with the best `priority − 1.5 × km from its last stop (+ 6 for the same community)`.
+- Crews pick in turn. Each takes the job with the best `priority − 1.5 × km from its last stop`, + 6 for the same community, and + 5 for the same kind of job within 1 km (batching similar work: the right equipment is already on the truck).
 - Baseline: oldest ticket first, ignoring type, with the same crews.
 
 **Disruption and replan.**
@@ -499,14 +516,16 @@ All seasons together, 40 crews: biggest first reaches 15 escapes, FIRE//WATCH 28
 - **Replan:** the same assignment, plus a bonus for keeping a job on its morning crew, so fewer crews' afternoons change. We count jobs that changed crew, moved to tomorrow, or are new.
 - **Overrides:** the dispatcher can mark a ticket urgent (+100 priority) or hold it (out of today's plan) in the ticket list, and the day replans.
 
-**Result** (5 Roads + 3 Waste crews × 5 jobs):
+**The dispatcher's workflow.** The Dispatch panel is a queue. For wildfire crews, the dispatcher steps through the crewed fires in priority order: the map flies to each one, the card says why it's ranked there, and Send crew / Skip records the decision (Enter / S; J / K move). For 311 the queue is the crews: review a crew's run (its stops and why each is there), then dispatch it. Progress and decisions show in the lists.
+
+**Result** (5 Roads + 3 Waste crews × 5 jobs, no weather adjustments):
 
 | Plan | Safety jobs | Driving |
 |---|---|---|
 | Oldest first | 19 | 440 km |
 | FIRE//WATCH | 25 | 112 km |
 
-The blizzard bumps the 14 lowest-priority jobs to tomorrow for the 14 new ice calls; a sick crew bumps 5. Driving is straight-line between stops from a central depot; street routing is Case 2.
+With the blizzard's weather the 18 ice calls jump the queue and the replan bumps 20 lower-priority jobs (signs, debris, potholes) to tomorrow; a sick crew bumps 5. Driving is straight-line between stops from a central depot; street routing is Case 2.
 
 ---
 
