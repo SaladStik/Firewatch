@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { label } from "../dispatch/crews";
 import { flyTo } from "../dispatch/controller";
-import { typeOf } from "../dispatch/ops311";
+import { typeOf, type Ticket } from "../dispatch/ops311";
 import { dispatch } from "../dispatch/store";
 import type { Engine } from "../engine";
 import { project } from "../geo/projection";
@@ -50,9 +50,17 @@ export function DispatchPins({ engine }: { engine: Engine | null }) {
         });
       });
       // Waiting tickets: only the most urgent (the live queue holds ~25,000; the list shows them all).
+      // One dot per spot (tickets share their community's centre point), titled with what's waiting there.
+      const spots = new Map<string, Ticket[]>();
       for (const t of view.waiting.slice(0, WAITING_PINS)) {
         if (assigned.has(t.id)) continue;
-        out.push({ key: t.id, lat: t.lat, lng: t.lng, text: "", title: `Waiting: ${typeOf(t.service).label}, ${t.community}`, color: t.simulated ? "#9fd8ff" : "#8a948e", small: true, zoom: 2.5 });
+        const k = `${t.lat.toFixed(4)},${t.lng.toFixed(4)}`;
+        const list = spots.get(k);
+        if (list) list.push(t); else spots.set(k, [t]);
+      }
+      for (const [k, list] of spots) {
+        const t = list[0];
+        out.push({ key: `w:${k}`, lat: t.lat, lng: t.lng, text: "", title: list.length === 1 ? `Waiting: ${typeOf(t.service).label}, ${t.community}` : `${list.length} waiting in ${t.community}, top: ${typeOf(t.service).label}`, color: list.some((x) => x.simulated) ? "#9fd8ff" : "#8a948e", small: true, zoom: 2.5 });
       }
       return out;
     }
@@ -80,10 +88,13 @@ export function DispatchPins({ engine }: { engine: Engine | null }) {
       g.push(i);
     });
     const offset = pins.map(() => ({ x: 0, y: 0 }));
-    groups.forEach((g) => {
+    groups.forEach((group) => {
+      let g = group;
       if (g.length < 2) return;
-      g.sort((a, b) => Number(!!pins[a].small) - Number(!!pins[b].small));
-      const r = 11 + g.length * 2.2;
+      // Planned stops fan out (a tight ring); the waiting dot stays on the spot itself.
+      g = g.filter((i) => !pins[i].small);
+      if (g.length < 2) return;
+      const r = Math.min(26, 10 + g.length * 2);
       g.forEach((i, k) => {
         const a = -Math.PI / 2 + (k / g.length) * Math.PI * 2;
         offset[i] = { x: Math.cos(a) * r, y: Math.sin(a) * r };

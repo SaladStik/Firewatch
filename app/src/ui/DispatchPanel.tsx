@@ -304,13 +304,16 @@ function weatherLine(p: Plan311 | null, noon: boolean): string {
   if (!w) return "Calgary weather isn't loaded yet, so priorities don't include it.";
   const cond = `${Math.round(w.tempC)} °C${w.precipMm >= 1 ? `, ${w.precipMm.toFixed(0)} mm ${w.tempC <= 1 ? "snow" : "rain"}` : ", dry"}, wind ${Math.round(w.windKmh)} km/h`;
   const adj = p && routes ? [...new Set([...routes.values()].flat().flatMap((t) => weatherFactor(typeOf(t.service).label, w).why))] : [];
-  return `Calgary today: ${cond}. ${adj.length ? `Raised for the weather: ${adj.join(", ")}.` : "No weather adjustments today."}`;
+  const when = p && app.get().forecastDay > 0 ? new Date(`${p.today}T12:00:00`).toLocaleDateString("en-CA", { weekday: "long" }) : "today";
+  return `Calgary ${when}: ${cond}. ${adj.length ? `Raised for the weather: ${adj.join(", ")}.` : `No weather adjustments ${when === "today" ? "today" : "that day"}.`}`;
 }
 
 function Ops311Tab() {
   const d = useStore(dispatch, (s) => s);
   useStore(app, (s) => s.weather); // re-check the snow hint when the forecast arrives
+  const day = useStore(app, (s) => s.forecastDay);
   const p = d.plan311;
+  const today = day === 0;
   const snow = calgarySnowForecast();
   const noon = d.at === "noon" && p?.noon ? p : null;
   const view = noon ? p!.noon! : p?.morning;
@@ -366,8 +369,13 @@ function Ops311Tab() {
         <Num label="Waste crews" value={d.waste} min={0} max={8} onChange={(waste) => set311Options({ waste })} />
         <Num label="Jobs each" value={d.perCrew} min={1} max={12} onChange={(perCrew) => set311Options({ perCrew })} />
       </div>
+      {!today && p && (
+        <p className="text-[11.5px] leading-snug text-ink">
+          <b>{new Date(`${p.today}T12:00:00`).toLocaleDateString("en-CA", { weekday: "long", month: "short", day: "numeric" })}</b>: what's still open after {day === 1 ? "today's" : `${day} days of`} work, with that day's forecast and every ticket {day} day{day === 1 ? "" : "s"} older.
+        </p>
+      )}
       <div>
-        <div className="mb-1 text-[10px] uppercase tracking-[0.06em] text-ink-mute">At noon</div>
+        <div className="mb-1 text-[10px] uppercase tracking-[0.06em] text-ink-mute">{today ? "At noon" : "At noon (today only)"}</div>
         <Seg<Disruption> value={d.disruption} options={[["none", "Normal day"], ["blizzard", "Blizzard"], ["sick", "Crew sick"]]} onChange={(disruption) => set311Options({ disruption, at: disruption === "none" ? "morning" : d.at })} />
         {snow && <p className="mt-1 flex items-center gap-1.5 text-[11px] text-ink"><Snowflake size={12} /> Forecast: snow in Calgary {snow.day === 0 ? "today" : snow.day === 1 ? "tomorrow" : "in 2 days"}. Plan for the blizzard.</p>}
         <p className="mt-1 text-[11px] leading-snug text-ink-mute">{weatherLine(p ?? null, !!noon)}</p>
@@ -377,7 +385,7 @@ function Ops311Tab() {
         <Versus
           ours={p.scores.morning.safetyJobs} base={p.scores.fifo.safetyJobs}
           oursLabel="FIRE//WATCH" baseLabel="Oldest first"
-          caption={<>Safety jobs done today (ice, traffic control, potholes, debris, damaged signs), with <b className="text-ink">{Math.round(p.scores.morning.km)} km</b> of driving instead of {Math.round(p.scores.fifo.km)} km.</>}
+          caption={<>Safety jobs done {today ? "today" : "that day"} (ice, traffic control, potholes, debris, damaged signs), with <b className="text-ink">{Math.round(p.scores.morning.km)} km</b> of driving instead of {Math.round(p.scores.fifo.km)} km.</>}
         />
       )}
 

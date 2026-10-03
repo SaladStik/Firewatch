@@ -85,6 +85,7 @@ With 40 crews, cut to 32 (`npm run case:crews`):
   - other open reports and duplicates;
   - the community's 311 history.
 - **What gets done** is decided strictly by priority; driving only decides which crew takes it.
+- **The week:** the bottom bar's days are the crews' schedule too. Day *n* plans what's still open after the days before it were worked, with that day's forecast and every ticket a day older. Each day button shows its safety jobs while the 311 tab is open. The noon disruption is today's.
 - Open Calgary publishes 311 locations only to the community's centre point; addresses stay on the city's work orders. So the app scores and routes by community, and says so.
 - **Fast at that size:** planning and routing run in a background worker. In website + data server mode, the server fetches and scores the queue once (in a worker thread) for everyone. The ticket list renders only the rows on screen.
 - Baseline: oldest first.

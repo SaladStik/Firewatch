@@ -552,6 +552,13 @@ Every part is listed in the ticket's "why", in the crew card and the ticket list
 
 **The dispatcher's workflow.** The Dispatch panel is a queue. For wildfire crews, the dispatcher steps through the crewed fires in priority order: the map flies to each one, the card says why it's ranked there, and Send crew / Skip records the decision (Enter / S; J / K move). For 311 the queue is the crews: review a crew's run (its stops and why each is there), then dispatch it. Progress and decisions show in the lists.
 
+**The week's schedule.** The map's forecast days double as the crews' schedule. Day *d*:
+- works the tickets still open after days 0 to *d* − 1 were done (each crew finishes its plan; blizzard calls not reached carry over);
+- scores them with day *d*'s forecast and its next day;
+- treats every ticket as *d* days older.
+
+The noon disruption applies to today only. The worker plans the day asked for first, then fills in the rest of the week in the background, so switching days doesn't wait on planning.
+
 **Speed.** The live queue is large, so:
 - planning runs in a background worker, and the browser never freezes;
 - scores are cached between replans that only change crews;

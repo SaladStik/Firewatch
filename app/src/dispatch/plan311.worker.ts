@@ -11,22 +11,25 @@ import { PROJECTION } from "../config/regions";
 import { loadCalgary311 } from "../data/liveData";
 import { setProjection } from "../geo/projection";
 import { CityContext, type CityContextFile, type Site } from "./cityContext";
-import { DEPOT, load311, loadLive311, plan311, type Disruption, type Load311, type Override, type Plan311, type Row311, type Weather311 } from "./ops311";
+import { DEPOT, load311, loadLive311, nextDay, plan311, SCHEDULE_DAYS, summarize, type DaySummary, type Disruption, type Load311, type Override, type Plan311, type Row311, type Weather311 } from "./ops311";
 import { RoadGraph, routeStops, shortestOrder, type CrewRoute } from "./router";
 
 setProjection(PROJECTION);
 
 export type Source311 = "live" | "sample";
-export interface PlanOpts { roads: number; waste: number; perCrew: number; disruption: Disruption; overrides: Record<string, Override>; weather: Weather311 | null }
+/** `weatherDays[d]`: Calgary's forecast for day d of the week (today = 0), each with its next day attached. */
+export interface PlanOpts { roads: number; waste: number; perCrew: number; disruption: Disruption; overrides: Record<string, Override>; weatherDays: (Weather311 | null)[] }
+
 export type ToWorker =
   | { type: "init"; base: string }
-  | { type: "plan"; id: number; source: Source311; opts: PlanOpts; at: "morning" | "noon"; routeOrder: Record<string, number[]>; needLoad: boolean }
+  | { type: "plan"; id: number; source: Source311; opts: PlanOpts; day: number; at: "morning" | "noon"; routeOrder: Record<string, number[]>; needLoad: boolean }
   | { type: "shortest"; id: number; crew: string }
   | { type: "refresh" };
 export interface LoadInfo { source: Source311; version: number; load: Load311 }
 export type FromWorker =
   | { type: "status"; live: "idle" | "loading" | "ready" | "error"; liveError: string; city: boolean; roads: "idle" | "loading" | "ready" | "error"; scoring: boolean }
-  | { type: "plan"; id: number; plan: Plan311; routes: Record<string, CrewRoute>; load: LoadInfo | null; ms: number }
+  | { type: "plan"; id: number; day: number; plan: Plan311; routes: Record<string, CrewRoute>; load: LoadInfo | null; schedule: DaySummary[]; ms: number }
+  | { type: "schedule"; schedule: DaySummary[] }
   | { type: "shortest"; id: number; order: number[] };
 
 let base = "/";
@@ -113,7 +116,36 @@ function portable(p: Plan311): Plan311 {
   return { ...p, ctx: strip(p.ctx), noonCtx: strip(p.noonCtx) };
 }
 
+/**
+ * The week, worked day by day: day d plans what's still open after days 0..d-1 were done, with
+ * day d's forecast and every ticket d days older. The noon disruption is today's. Cached per
+ * settings, so switching days is instant; days are filled in the background after the one asked for.
+ */
+let week: { key: string; loads: Load311[]; plans: Plan311[]; summary: DaySummary[] } | null = null;
 let latest = 0;
+
+function weekKey(m: Extract<ToWorker, { type: "plan" }>, version: number) {
+  const o = m.opts;
+  return JSON.stringify([m.source, version, o.roads, o.waste, o.perCrew, o.disruption, o.overrides, o.weatherDays, !!city, !!roads]);
+}
+
+function planDay(m: Extract<ToWorker, { type: "plan" }>, base0: Load311, d: number): Plan311 {
+  const w = week!;
+  if (w.plans[d]) return w.plans[d];
+  for (let i = w.plans.length; i <= d; i++) {
+    const load = i === 0 ? base0 : nextDay(w.loads[i - 1], w.plans[i - 1]);
+    const weather = m.opts.weatherDays[i] ?? null;
+    const plan = plan311(load, {
+      roads: m.opts.roads, waste: m.opts.waste, perCrew: m.opts.perCrew, overrides: m.opts.overrides,
+      disruption: i === 0 ? m.opts.disruption : "none", weather, city, roadAt: roads ? (la, ln) => roads!.roadAt(la, ln) : null,
+    });
+    w.loads[i] = load;
+    w.plans[i] = plan;
+    w.summary[i] = summarize(plan, i, weather);
+  }
+  return w.plans[d];
+}
+
 async function plan(m: Extract<ToWorker, { type: "plan" }>) {
   latest = m.id;
   await Promise.all([loadCity(), m.source === "live" ? loadLive() : loadSample()]);
@@ -121,15 +153,28 @@ async function plan(m: Extract<ToWorker, { type: "plan" }>) {
   const load = m.source === "live" ? live : sample;
   if (!load) return;
   const t0 = performance.now();
-  say({ scoring: true });
-  const p = plan311(load, { ...m.opts, city, roadAt: roads ? (la, ln) => roads!.roadAt(la, ln) : null });
-  lastPlan = { plan: p, at: m.at };
   const version = m.source === "live" ? liveVersion : sampleVersion;
+  const key = weekKey(m, version);
+  if (week?.key !== key) week = { key, loads: [], plans: [], summary: [] };
+  const day = Math.min(SCHEDULE_DAYS - 1, Math.max(0, m.day));
+  say({ scoring: !week.plans[day] });
+  const p = planDay(m, load, day);
+  lastPlan = { plan: p, at: m.at };
   // The ticket set travels once per version, or whenever the panel says it doesn't have it.
   const loadInfo = !m.needLoad && sent.get(m.source) === version ? null : { source: m.source, version, load };
   sent.set(m.source, version);
-  post({ type: "plan", id: m.id, plan: portable(p), routes: routesFor(p, m.at, m.routeOrder), load: loadInfo, ms: Math.round(performance.now() - t0) });
+  post({ type: "plan", id: m.id, day, plan: portable(p), routes: routesFor(p, m.at, m.routeOrder), load: loadInfo, schedule: [...week.summary], ms: Math.round(performance.now() - t0) });
   say({ scoring: false });
+  // Fill in the rest of the week, a day at a time, unless something newer comes in.
+  const fill = () => {
+    if (m.id !== latest || week?.key !== key) return;
+    const next = week.plans.length;
+    if (next >= SCHEDULE_DAYS) return;
+    planDay(m, load, next);
+    post({ type: "schedule", schedule: [...week.summary] });
+    setTimeout(fill, 0);
+  };
+  setTimeout(fill, 0);
 }
 
 self.onmessage = (e: MessageEvent<ToWorker>) => {

@@ -595,6 +595,31 @@ export interface Plan311 {
   noonCtx: Ctx311;
 }
 
+// ------------------------------------------------------------ the week's schedule
+/** One day of the schedule, for the panel's week strip. */
+export interface DaySummary { day: number; date: string; jobs: number; safetyJobs: number; open: number; weather: Weather311 | null }
+
+/** Days in the schedule (today + the 7-day forecast, like the map). */
+export const SCHEDULE_DAYS = 8;
+
+export const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+
+/**
+ * The ticket set for the next day of a schedule: what's still open after the day's plan was worked
+ * (blizzard calls carry over if they weren't reached), a day later.
+ */
+export function nextDay(load: Load311, plan: Plan311): Load311 {
+  const final = plan.noon ?? plan.morning;
+  const done = new Set<string>();
+  final.routes.forEach((list) => list.forEach((t) => done.add(t.id)));
+  return { ...load, open: [...load.open, ...plan.added].filter((t) => !done.has(t.id)), today: addDays(plan.today, 1) };
+}
+
+export function summarize(plan: Plan311, day: number, weather: Weather311 | null): DaySummary {
+  const final = plan.noon ?? plan.morning, s = plan.noon ? plan.scores.noon! : plan.scores.morning;
+  return { day, date: plan.today, jobs: s.jobs, safetyJobs: s.safetyJobs, open: final.waiting.length + s.jobs, weather };
+}
+
 /** Scoring contexts per ticket set (see plan311). */
 const CTX_CACHE = new WeakMap<Load311, { key: string; ctx: Ctx311; noon: Map<Disruption, Ctx311> }>();
 

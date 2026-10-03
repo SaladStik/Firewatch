@@ -16,6 +16,7 @@ import { app } from "../state/app";
 import { useStore } from "../state/store";
 import { useFocusIndices } from "./region";
 import { dayLabel } from "./weatherFormat";
+import { dispatch } from "../dispatch/store";
 
 const HAZE = "#6b5a4a";
 const AMBER = "#b8791f";
@@ -49,6 +50,8 @@ export function StatusDock({ engine, embedded }: { engine: Engine | null; embedd
   const weather = useStore(app, (s) => s.weather);
   const sim = useStore(app, (s) => s.simulation);
   const day = useStore(app, (s) => s.forecastDay);
+  // While Dispatch's 311 tab is open, the days are the crews' schedule too: each shows its safety jobs.
+  const schedule = useStore(dispatch, (s) => (s.open && s.tab === "311" ? s.schedule311 : null));
   const regions = useStore(app, (s) => s.regions);
   const places = useStore(app, (s) => s.places);
   const spread = useStore(app, (s) => s.spread);
@@ -153,9 +156,11 @@ export function StatusDock({ engine, embedded }: { engine: Engine | null; embedd
                 type="button"
                 onClick={() => engine?.setForecastDay(d)}
                 aria-pressed={d === day}
+                title={schedule?.[d] ? `311 schedule: ${schedule[d].jobs} jobs, ${schedule[d].safetyJobs} safety, ${schedule[d].open.toLocaleString("en-CA")} open that morning` : undefined}
                 className={`hud-chip shrink-0 ${d === day ? "!border-phos !text-phos" : ""}`}
               >
                 {dayLabel(d, dates)}
+                {schedule && <span className="ml-1 tabular-nums opacity-70">{schedule[d] ? schedule[d].safetyJobs : "·"}</span>}
               </button>
             ))
           )}

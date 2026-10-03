@@ -14,7 +14,7 @@ import { project } from "../geo/projection";
 import { app } from "../state/app";
 import { FUEL_FOR_LAND } from "../world/fireGrowth";
 import { exposures, HAND_WEIGHTS, learnWeights, loadHistory, planCrews, type CrewFire, type PlaceLite, type RankInput } from "./crews";
-import type { Override, Weather311 } from "./ops311";
+import { SCHEDULE_DAYS, type Override, type Weather311 } from "./ops311";
 import type { FromWorker, ToWorker } from "./plan311.worker";
 import { dispatch, type DispatchState } from "./store";
 
@@ -25,6 +25,15 @@ const assets = CRITICAL_ASSETS.map((a) => ({ name: a.name, kind: a.kind, lat: a.
 /** Hook the dispatch cases up to the engine (once, after boot). */
 export function initDispatch(e: Engine) {
   engine = e;
+  // The forecast day drives the 311 schedule: switching days shows that day's plan.
+  let lastDay = app.get().forecastDay;
+  app.subscribe(() => {
+    const day = app.get().forecastDay;
+    if (day === lastDay) return;
+    lastDay = day;
+    dispatch.set({ cursor311: 0, dispatched: {}, routeOrder: {} });
+    if (dispatch.get().open && dispatch.get().tab === "311") void recompute311();
+  });
   // Live fires change with every data refresh: keep the live plan current.
   let lastKey = "";
   app.subscribe(() => {
@@ -152,7 +161,10 @@ function planner(): Worker {
       // Newly loaded street network / context: re-score (road classes, sites), then route.
       if ((m.roads === "ready" && roadsWere !== "ready") || (m.city && !cityWas)) { roadsWere = m.roads; cityWas = m.city; void recompute311(); }
       roadsWere = m.roads; cityWas = m.city;
+    } else if (m.type === "schedule") {
+      dispatch.set({ schedule311: m.schedule });
     } else if (m.type === "plan") {
+      dispatch.set({ schedule311: m.schedule });
       // The ticket set travels once per version: keep it even if a newer plan request superseded this one.
       if (m.load && m.load.source === dispatch.get().source311) dispatch.set({ load311: m.load.load });
       if (m.id === reqId) dispatch.set({ plan311: m.plan, routes: m.routes, planMs: m.ms });
@@ -173,15 +185,20 @@ export function recompute311(keepOrder = false): Promise<void> {
   const id = ++reqId;
   if (!keepOrder && Object.keys(d.routeOrder).length) dispatch.set({ routeOrder: {} });
   const msg: ToWorker = {
-    type: "plan", id, source: d.source311, at: d.at, routeOrder: keepOrder ? d.routeOrder : {},
+    type: "plan", id, source: d.source311, at: d.at, routeOrder: keepOrder ? d.routeOrder : {}, day: app.get().forecastDay,
     needLoad: !d.load311 || d.load311.source !== d.source311,
-    opts: { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption, overrides: d.overrides, weather: calgaryWeather() },
+    opts: { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption, overrides: d.overrides, weatherDays: Array.from({ length: SCHEDULE_DAYS }, (_, i) => calgaryWeather(i)) },
   };
   return new Promise((resolve) => { waiting.set(id, resolve); planner().postMessage(msg); });
 }
 
 /** Re-route the plan on screen (stop order changed, or 8 a.m. / noon switched). */
 export const recomputeRoutes = () => recompute311(true);
+
+/** Show day `d` of the schedule: moves the map's forecast day too, so the two stay in step. */
+export function setDay311(d: number) {
+  void engine?.setForecastDay(d);
+}
 
 /** Plan the live queue or the case sample. */
 export function setSource311(source: "live" | "sample") {
@@ -230,15 +247,15 @@ export function set311Options(patch: Partial<Pick<DispatchState, "roads" | "wast
 }
 
 /** Calgary's weather today from the map's forecast (null until it loads). */
-export function calgaryWeather(): Weather311 | null {
+export function calgaryWeather(dayIndex = 0): Weather311 | null {
   const days = weatherAt(app.get().weather, 51.045, -114.06)?.days;
   const day = (i: number): Weather311 | null => {
     const wx = days?.[i];
     if (!wx || !Number.isFinite(wx.temp)) return null;
     return { tempC: wx.temp, precipMm: Number.isFinite(wx.rainMm) ? wx.rainMm : 0, windKmh: Number.isFinite(wx.wind) ? wx.wind : 0 };
   };
-  const today = day(0);
-  return today ? { ...today, tomorrow: day(1) } : null;
+  const today = day(dayIndex);
+  return today ? { ...today, tomorrow: day(dayIndex + 1) } : null;
 }
 
 /**

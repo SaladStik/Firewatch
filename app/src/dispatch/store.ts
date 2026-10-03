@@ -6,7 +6,7 @@
  */
 import { createStore } from "../state/store";
 import type { CrewPlan, HistoryLoad, Learned, RankInput } from "./crews";
-import type { Disruption, Load311, Override, Plan311 } from "./ops311";
+import type { DaySummary, Disruption, Load311, Override, Plan311 } from "./ops311";
 import type { CrewRoute } from "./router";
 
 export type DispatchTab = "crews" | "311";
@@ -47,6 +47,8 @@ export interface DispatchState {
   /** The 311 worker is scoring and planning; and how long the last plan took (ms). */
   scoring311: boolean;
   planMs: number;
+  /** The week's schedule so far (today + forecast days), filled in by the worker. */
+  schedule311: DaySummary[];
   load311: Load311 | null;
   plan311: Plan311 | null;
   /** 311 view: the 8 a.m. plan or the noon replan. */
@@ -100,6 +102,7 @@ export const dispatch = createStore<DispatchState>({
   cityReady: false,
   scoring311: false,
   planMs: 0,
+  schedule311: [],
   load311: null,
   plan311: null,
   at: "morning",
