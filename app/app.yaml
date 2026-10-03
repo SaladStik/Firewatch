@@ -15,3 +15,12 @@ env:
   # ephemeral: after a redeploy the server refetches each source once and is warm again.
   - name: FIREWATCH_CACHE_DIR
     value: "/tmp/firewatch-cache"
+  # Serve the API and nothing else.
+  #
+  # Databricks runs `npm run build` by itself when a build script exists, which leaves a dist/
+  # here, and the server serves a site whenever it finds one. That site cannot work: the 900 MB
+  # of baked map data is deliberately not uploaded, so every terrain request would fall through
+  # to index.html and the map would silently fail. Pointing this at a path that does not exist
+  # makes the server skip the site entirely. The real site is on Cloudflare Pages.
+  - name: FIREWATCH_DIST
+    value: "/tmp/firewatch-no-site"

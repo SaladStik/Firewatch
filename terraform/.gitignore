@@ -1,0 +1,7 @@
+# Terraform state holds the service principal's OAuth secret in plaintext. It must never be
+# committed. Re-running `terraform apply` on a fresh checkout would issue a new secret.
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfvars

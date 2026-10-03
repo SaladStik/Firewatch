@@ -106,6 +106,34 @@ all, so every source would fail.
 
 ## 4. A service principal for the proxy
 
+`terraform/` does this — service principal, OAuth secret, and the `CAN_USE` grant on the app —
+so the account console is not needed:
+
+```bash
+cd terraform
+terraform init
+terraform apply
+terraform output -raw databricks_client_id
+terraform output -raw databricks_client_secret
+```
+
+Everything in it is workspace-level, so the `databricks auth login` from the top of this file is
+enough: no account id, no second login. That works because
+`databricks_service_principal_secret` accepts `api = "workspace"`.
+
+Two things that are easy to get wrong, both of which produce a bare `401` that looks like a
+broken token:
+
+- **The principal needs `workspace_access`.** A freshly created service principal has no
+  entitlements at all and cannot reach the workspace, so the app rejects it even with `CAN_USE`
+  granted and a perfectly valid token. The Terraform sets it.
+- **It needs `CAN_USE` on the app itself**, which is separate from the entitlement.
+
+Terraform state holds the secret in plaintext, so `terraform/.gitignore` excludes the state
+files. Re-running `apply` on a fresh checkout issues a new secret.
+
+### Doing it by hand instead
+
 Create one, give it `CAN_USE` on the app, and keep its client id and secret. Tokens last about
 an hour:
 
