@@ -1,48 +1,72 @@
-/** Live collectors: each instrument is one data source, listed with its location. */
+/** Station list with the same Open-Meteo weather and Canadian FWI the map uses. */
 import { Search } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import stations from "../../../wildfire/instruments.json";
 import type { Engine } from "../engine";
+import { FORECAST_DAYS, weatherAt, type DayWeather, type WeatherCell } from "../data/openMeteo";
 import { app } from "../state/app";
 import { useStore } from "../state/store";
 import { AppBar, BarButton } from "./Hud";
 import { KV } from "./primitives";
+import { compass, dayLabel } from "./weatherFormat";
 
-const INSTRUMENTS_URL = "http://127.0.0.1:8000/api/instruments";
+type Station = {
+  id: string;
+  name: string;
+  location: string;
+  latitude: number | null;
+  longitude: number | null;
+};
 
 type Reading = {
   ok: boolean;
   label: string;
   temperature_c: number | null;
   humidity_pct: number | null;
-  wind_mph: number | null;
-  risk_score: number | null;
+  wind_kmh: number | null;
+  /** Canadian FWI for the selected forecast day. */
+  fwi: number | null;
+  /** Fosberg, kept beside FWI the same way the map does. */
+  ffwi: number | null;
   category: string | null;
-  detail: string | null;
-  endpoint: string | null;
+  day: DayWeather | null;
+  cell: WeatherCell | null;
 };
 
-type Instrument = {
-  id: string;
-  name: string;
-  location: string;
-  latitude: number | null;
-  longitude: number | null;
-  kind: string;
-  dashboard: string | null;
-  reading: Reading;
-};
+type Instrument = Station & { reading: Reading };
+
+const STATIONS = (stations as Station[]).filter((s) => s.latitude != null && s.longitude != null);
+
+function finite(n: number | undefined | null): number | null {
+  return n != null && Number.isFinite(n) ? n : null;
+}
+
+function readingAt(station: Station, weather: ReturnType<typeof app.get>["weather"], day: number): Reading {
+  const cell = station.latitude != null && station.longitude != null ? weatherAt(weather, station.latitude, station.longitude) : null;
+  const wx = cell?.days[day];
+  if (!cell || !wx) {
+    return { ok: false, label: "No grid", temperature_c: null, humidity_pct: null, wind_kmh: null, fwi: null, ffwi: null, category: null, day: null, cell: null };
+  }
+  const live = day === 0 ? cell.now : null;
+  return {
+    ok: true,
+    label: live ? "Live" : "Forecast",
+    temperature_c: finite(live?.temp) ?? finite(wx.temp),
+    humidity_pct: finite(live?.rh) ?? finite(wx.rh),
+    wind_kmh: finite(live?.wind) ?? finite(wx.wind),
+    fwi: finite(wx.fwi),
+    ffwi: finite(wx.ffwi),
+    category: wx.danger,
+    day: wx,
+    cell,
+  };
+}
 
 function coords(latitude: number | null, longitude: number | null) {
   if (latitude == null || longitude == null) return null;
   const ns = latitude >= 0 ? "N" : "S";
   const ew = longitude >= 0 ? "E" : "W";
   return `${Math.abs(latitude).toFixed(4)}° ${ns}, ${Math.abs(longitude).toFixed(4)}° ${ew}`;
-}
-
-function dashboardUrl(base: string, theme: "dark" | "light") {
-  const url = new URL(base);
-  url.searchParams.set("theme", theme);
-  return url.toString();
 }
 
 const PROVINCES = [
