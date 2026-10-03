@@ -16,7 +16,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { BASE_ELEVATION_M, GRID, RELIEF_EXPONENT, verticalScale } from "../config/grid";
 import { reliefKm } from "./heights";
-import { project } from "../geo/projection";
+import { project, unproject } from "../geo/projection";
 import type { Place } from "../data/places";
 import type { WorldClient } from "../world/WorldClient";
 import type { HexNodeInfo, TerrainMeta } from "../world/types";
@@ -475,6 +475,12 @@ export class Scene {
 
   resetView() {
     this.flyTo(this.home.x, this.home.z, this.home.dist, 1.8);
+  }
+
+  /** Where the camera is looking, in degrees. */
+  targetLatLng(): { lat: number; lng: number } {
+    const t = this.controls.target;
+    return unproject(t.x, t.z);
   }
 
   /** Fly to fit one region. */

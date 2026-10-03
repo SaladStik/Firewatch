@@ -12,12 +12,14 @@ import { BootScreen, HoverTip, NavControls } from "./ui/Overlays";
 import { ErrorBoundary } from "./ui/ErrorBoundary";
 import { SectorPanel } from "./ui/SectorPanel";
 import { SpreadAlert } from "./ui/SpreadAlert";
+import { AgentPanel } from "./ui/AgentPanel";
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
   const [engine, setEngine] = useState<Engine | null>(null);
   const [screen, setScreen] = useState<"map" | "instruments">("map");
+  const [askOpen, setAskOpen] = useState(false);
 
   useEffect(() => {
     const e = new Engine();
@@ -36,7 +38,21 @@ export default function App() {
 
       {/* HUD layout — every panel is pointer-events-auto; the frame itself is click-through. */}
       <div className="pointer-events-none absolute inset-0 z-10 flex flex-col">
-        <AppBar engine={engine} screen={screen} onScreen={setScreen} center={<LodReadout engine={engine} />} />
+        <AppBar
+          engine={engine}
+          screen={screen}
+          onScreen={setScreen}
+          center={<LodReadout engine={engine} />}
+          askOpen={askOpen && screen === "map"}
+          onAsk={() => {
+            if (screen !== "map") {
+              setScreen("map");
+              setAskOpen(true);
+              return;
+            }
+            setAskOpen((open) => !open);
+          }}
+        />
         <div className="flex min-h-0 flex-1 flex-col justify-between p-4">
           <div className="flex min-h-0 flex-1 items-start justify-between gap-4 py-3">
             <div className="hidden max-h-full min-h-0 gap-2 md:flex">
@@ -63,6 +79,11 @@ export default function App() {
           </div>
         </div>
       </div>
+      {askOpen && screen === "map" && (
+        <div className="pointer-events-none absolute bottom-40 left-4 z-30 w-[min(22rem,calc(100%-2rem))]">
+          <ErrorBoundary name="AgentPanel"><AgentPanel engine={engine} /></ErrorBoundary>
+        </div>
+      )}
       <HoverTip />
       <BootScreen />
       {screen === "instruments" && <InstrumentData engine={engine} onBack={() => setScreen("map")} />}

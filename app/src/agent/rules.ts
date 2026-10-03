@@ -1,0 +1,281 @@
+/**
+ * Rule brain. One message becomes at most five tool calls (the Calgary example is
+ * focus, forecast, one layer, fly, explain). A later model implements the same plan().
+ */
+import type { AgentBrain, Brief, BriefPlace, BriefRegion, Plan, ToolCall } from "./types";
+import type { Layers } from "../state/app";
+
+const MAX_CALLS = 5;
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+const STOP = new Set([
+  "show", "me", "the", "a", "an", "to", "fly", "go", "take", "please", "can", "you", "with", "and",
+  "how", "risky", "dangerous", "is", "it", "its", "risk", "what", "whats", "where", "tell", "about",
+  "focus", "on", "off", "turn", "toggle", "layer", "today", "tomorrow", "forecast", "day", "days",
+  "after", "in", "largest", "biggest", "fire", "fires", "community", "communities", "towns", "places",
+  "at", "threat", "threats", "threatened", "simulation", "sim", "demo", "scenario", "here", "this",
+  "selected", "selection", "province", "map", "explain", "why", "weather", "wind", "rain", "snow",
+  "spread", "beacons", "beacon", "bloom", "glow", "only", "just", "for", "of", "next", "week",
+  "hotspot", "hotspots", "perimeter", "perimeters", "fwi", "danger", "list", "active", "which",
+  "there", "are", "any", "burning", "into", "from", "set", "switch", "hide", "enable", "disable",
+  "stop", "end", "open", "zoom", ...WEEKDAYS,
+]);
+
+const EXTRA_ALIASES: Record<string, string[]> = {
+  "prince-edward-island": ["pei"],
+  "newfoundland-and-labrador": ["newfoundland", "labrador"],
+  "northwest-territories": ["nwt"],
+};
+
+const LAYER_WORDS: { key: keyof Layers; word: string }[] = [
+  { key: "wind", word: "wind" },
+  { key: "rain", word: "rain" },
+  { key: "rain", word: "snow" },
+  { key: "spread", word: "spread" },
+  { key: "beacons", word: "beacon" },
+  { key: "beacons", word: "beacons" },
+  { key: "bloom", word: "bloom" },
+  { key: "bloom", word: "glow" },
+  { key: "risk", word: "risk layer" },
+  { key: "risk", word: "fire risk" },
+  { key: "fires", word: "fire layer" },
+  { key: "fires", word: "hotspots" },
+  { key: "fires", word: "hotspot" },
+];
+
+function norm(text: string): string {
+  return text.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function hasPhrase(text: string, phrase: string): boolean {
+  return ` ${text} `.includes(` ${phrase} `);
+}
+
+function placeDistance(p: BriefPlace): number {
+  return p.landmark ? 6 : p.pop > 200_000 ? 45 : 18;
+}
+
+function pickPlace(places: BriefPlace[]): BriefPlace {
+  return [...places].sort((a, b) => Number(b.focused) - Number(a.focused) || b.pop - a.pop)[0];
+}
+
+function findNamedPlace(text: string, places: BriefPlace[]): BriefPlace | null {
+  let bestLen = 0;
+  let best: BriefPlace[] = [];
+  for (const p of places) {
+    const name = norm(p.name);
+    if (name.length < 3 || !hasPhrase(text, name)) continue;
+    if (name.length > bestLen) {
+      bestLen = name.length;
+      best = [p];
+    } else if (name.length === bestLen) best.push(p);
+  }
+  if (!best.length) return null;
+  best.sort((a, b) => text.indexOf(norm(a.name)) - text.indexOf(norm(b.name)));
+  const first = norm(best[0].name);
+  return pickPlace(best.filter((p) => norm(p.name) === first));
+}
+
+function matchQuery(query: string, places: BriefPlace[]): { place: BriefPlace } | { names: string[] } | null {
+  const q = norm(query);
+  if (q.length < 3) return null;
+  const hits = places.filter((p) => norm(p.name).includes(q));
+  if (!hits.length) return null;
+  const exact = hits.filter((p) => norm(p.name) === q);
+  const pool = exact.length ? exact : hits;
+  const chosen = pickPlace(pool);
+  if (exact.length || hits.length === 1) return { place: chosen };
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const p of [...pool].sort((a, b) => Number(b.focused) - Number(a.focused) || b.pop - a.pop)) {
+    if (seen.has(p.name)) continue;
+    seen.add(p.name);
+    names.push(p.name);
+    if (names.length === 4) break;
+  }
+  return { names };
+}
+
+function regionAliases(r: BriefRegion): string[] {
+  const aliases = [norm(r.name), r.id.replace(/-/g, " ")];
+  if (r.code.toLowerCase() !== "on") aliases.push(r.code.toLowerCase());
+  for (const extra of EXTRA_ALIASES[r.id] ?? []) aliases.push(extra);
+  return [...new Set(aliases.filter((a) => a.length >= 2))];
+}
+
+function findRegion(text: string, regions: BriefRegion[]): { region: BriefRegion; aliasLength: number } | null {
+  let best: { region: BriefRegion; aliasLength: number } | null = null;
+  for (const region of regions) {
+    for (const alias of regionAliases(region)) {
+      if (!hasPhrase(text, alias)) continue;
+      if (!best || alias.length > best.aliasLength) best = { region, aliasLength: alias.length };
+    }
+  }
+  return best;
+}
+
+function forecastDay(text: string, todayIso: string): number | null {
+  if (/\bday after tomorrow\b/.test(text)) return 2;
+  if (/\btomorrow\b/.test(text)) return 1;
+  const inN = text.match(/\bin (\d+) days?\b/);
+  if (inN) return Math.min(7, Math.max(0, Number(inN[1])));
+  const plus = text.match(/\b(?:forecast|day) (\d+)\b/);
+  if (plus) return Math.min(7, Math.max(0, Number(plus[1])));
+  for (let i = 0; i < WEEKDAYS.length; i++) {
+    if (!hasPhrase(text, WEEKDAYS[i])) continue;
+    const today = new Date(`${todayIso}T12:00:00`);
+    if (Number.isNaN(today.getTime())) return null;
+    return Math.min(7, (i - today.getDay() + 7) % 7);
+  }
+  if (/\btoday\b/.test(text)) return 0;
+  return null;
+}
+
+function layerOn(text: string, word: string): boolean | null {
+  const w = word.replace(/\s+/g, "\\s+");
+  if (new RegExp(`(?:^|\\s)(?:show|enable|turn on)\\s+(?:the\\s+)?${w}(?:\\s|$)`).test(text)) return true;
+  if (new RegExp(`(?:^|\\s)(?:hide|disable|turn off)\\s+(?:the\\s+)?${w}(?:\\s|$)`).test(text)) return false;
+  if (new RegExp(`(?:^|\\s)(?:turn|switch|set)\\s+(?:the\\s+)?${w}\\s+on(?:\\s|$)`).test(text)) return true;
+  if (new RegExp(`(?:^|\\s)(?:turn|switch|set)\\s+(?:the\\s+)?${w}\\s+off(?:\\s|$)`).test(text)) return false;
+  if (new RegExp(`(?:^|\\s)${w}\\s+on(?:\\s|$)`).test(text)) return true;
+  if (new RegExp(`(?:^|\\s)${w}\\s+off(?:\\s|$)`).test(text)) return false;
+  return null;
+}
+
+function layerChanges(text: string): { key: keyof Layers; on: boolean }[] {
+  const out: { key: keyof Layers; on: boolean }[] = [];
+  const seen = new Set<keyof Layers>();
+  for (const { key, word } of LAYER_WORDS) {
+    if (seen.has(key)) continue;
+    const on = layerOn(text, word);
+    if (on == null) continue;
+    seen.add(key);
+    out.push({ key, on });
+  }
+  return out;
+}
+
+function simulationChange(text: string): boolean | null {
+  if (!/\b(simulation|demo scenario)\b/.test(text)) return null;
+  if (/\b(off|stop|end|disable)\b/.test(text)) return false;
+  return true;
+}
+
+function wantsThreats(text: string): boolean {
+  return /\bat risk\b/.test(text) || (/\b(communities|towns)\b/.test(text) && /\b(risk|threatened|danger)\b/.test(text));
+}
+
+function wantsFireList(text: string): boolean {
+  return /\b(active fires|list fires|what fires|which fires)\b/.test(text);
+}
+
+function wantsLargestFire(text: string): boolean {
+  return /\b(largest|biggest) fire\b/.test(text) || /\bfly to (?:the )?fire\b/.test(text);
+}
+
+function wantsExplain(text: string): boolean {
+  return /\b(how risky|how dangerous|fire danger|fwi|explain|weather)\b/.test(text) || /\bwhat(?:s| is) the risk\b/.test(text);
+}
+
+function leftoverQuery(text: string): string {
+  const kept = text.split(" ").filter((w) => w.length >= 3 && !STOP.has(w));
+  return kept.join(" ");
+}
+
+function limit(calls: ToolCall[]): ToolCall[] {
+  const out = [...calls];
+  while (out.length > MAX_CALLS) {
+    const layers = out.map((c, i) => (c.tool === "setLayer" ? i : -1)).filter((i) => i >= 0);
+    if (layers.length > 1) {
+      out.splice(layers[layers.length - 1], 1);
+      continue;
+    }
+    const sim = out.findIndex((c) => c.tool === "setSimulation");
+    if (sim >= 0) {
+      out.splice(sim, 1);
+      continue;
+    }
+    break;
+  }
+  return out.slice(0, MAX_CALLS);
+}
+
+function unknown(): Plan {
+  return { calls: [], reply: "unknown" };
+}
+
+export function planRequest(raw: string, brief: Brief): Plan {
+  const text = norm(raw);
+  if (!text) return unknown();
+
+  const named = findNamedPlace(text, brief.places);
+  const regionHit = findRegion(text, brief.regions);
+  // A province name is the province. Partial place search runs only when neither matched,
+  // so "alberta" does not become every town whose name contains those letters.
+  const queried = !named && !regionHit ? matchQuery(leftoverQuery(text), brief.places) : null;
+  if (queried && "names" in queried) return { calls: [], reply: "ambiguous", candidates: queried.names };
+
+  const mentioned = named ?? (queried && "place" in queried ? queried.place : null);
+  const placeWins = !!mentioned && (!regionHit || norm(mentioned.name).length >= regionHit.aliasLength);
+  const place = placeWins ? mentioned : null;
+  const region = place ? null : regionHit?.region ?? null;
+
+  const day = forecastDay(text, brief.today);
+  const layers = layerChanges(text);
+  const sim = simulationChange(text);
+  const threats = wantsThreats(text);
+  const fires = wantsFireList(text) && !wantsLargestFire(text);
+  const toFire = wantsLargestFire(text);
+  const explain = wantsExplain(text);
+
+  const calls: ToolCall[] = [];
+  const replaceFocus = /\bfocus\b/.test(text) || /\bonly\b/.test(text);
+  const focusRegion = place?.regionId || region?.id;
+  if (focusRegion && (replaceFocus || !(place ? place.focused : brief.focusIds.includes(focusRegion)))) {
+    const ids = replaceFocus ? [focusRegion] : [...new Set([...brief.focusIds, focusRegion])];
+    if (ids.length && (replaceFocus || ids.length !== brief.focusIds.length)) calls.push({ tool: "focus", args: { ids } });
+  }
+  if (day != null && day !== brief.forecastDay) calls.push({ tool: "setForecastDay", args: { day } });
+  for (const layer of layers) {
+    if (brief.layers[layer.key] !== layer.on) calls.push({ tool: "setLayer", args: layer });
+  }
+  if (sim != null && sim !== brief.simulation) calls.push({ tool: "setSimulation", args: { on: sim } });
+  if (toFire) {
+    calls.push({ tool: "flyToFire", args: {} });
+  } else if (place) {
+    calls.push({
+      tool: "flyToPlace",
+      args: { name: place.name, lat: place.lat, lng: place.lng, dist: placeDistance(place), regionId: place.regionId },
+    });
+  } else if (region) {
+    calls.push({ tool: "flyToRegion", args: { index: region.index, name: region.name, regionId: region.id } });
+  }
+  if (threats) calls.push({ tool: "listThreats", args: {} });
+  if (fires) calls.push({ tool: "listFires", args: {} });
+  if (explain) {
+    const aboutHere = /\b(here|this hex|this spot|selection|selected)\b/.test(text);
+    const point = place
+      ? { name: place.name, lat: place.lat, lng: place.lng, pop: place.pop, regionIndex: place.regionIndex }
+      : aboutHere || (!region && !toFire)
+        ? brief.selected
+          ? { name: brief.selected.name ?? "This hex", lat: brief.selected.lat, lng: brief.selected.lng, pop: 0, regionIndex: -1 }
+          : brief.here
+            ? { name: brief.here.name ?? "Here", lat: brief.here.lat, lng: brief.here.lng, pop: 0, regionIndex: -1 }
+            : null
+        : null;
+    if (point) calls.push({ tool: "explain", args: point });
+  }
+
+  const kept = limit(calls);
+  if (!kept.length) return unknown();
+  const reply = kept.some((c) => c.tool === "explain")
+    ? "explain"
+    : kept.some((c) => c.tool === "listThreats")
+      ? "threats"
+      : kept.some((c) => c.tool === "listFires")
+        ? "fires"
+        : "done";
+  return { calls: kept, reply };
+}
+
+export const ruleBrain: AgentBrain = { plan: planRequest };
