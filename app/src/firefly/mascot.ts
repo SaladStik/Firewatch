@@ -15,6 +15,18 @@ export function showFirefly() {
   return st;
 }
 
+/**
+ * Keep him on the map: the recorder panel (FF) and tours hide the shared stage when they end,
+ * so bring him back to the dock whenever he's hidden and no script is playing.
+ */
+export function keepFireflyShown() {
+  const st = getStage();
+  return st.subscribe(() => {
+    if (st.get().visible || st.playing) return;
+    queueMicrotask(() => { if (!st.get().visible && !st.playing) showFirefly(); });
+  });
+}
+
 export const fireflyController = () => getStage().controller;
 
 /** After the camera has flown to (lat, lng), fly the mascot beside that spot on screen. */

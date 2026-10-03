@@ -11,7 +11,7 @@ import type { Engine } from "../engine";
 import type { MoodName } from "../mascot/firefly";
 import { app } from "../state/app";
 import { activeFires, nearestPlaceText, threatsFor } from "./facts";
-import { fireflyController, flyFireflyTo, showFirefly } from "./mascot";
+import { fireflyController, flyFireflyTo, keepFireflyShown, showFirefly } from "./mascot";
 import { diffAlerts, situationMood, type Alert, type Watch } from "./monitor";
 import { makeTools, snapshot } from "./tools";
 
@@ -71,6 +71,8 @@ export function useFireflyAgent(engine: Engine | null) {
     if (!engine) return;
     showFirefly();
     toolsRef.current = makeTools(engine);
+    const unsubscribe = keepFireflyShown();
+    return () => { unsubscribe(); };
   }, [engine]);
 
   // Mouth follows the voice; released when silent.
