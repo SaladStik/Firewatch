@@ -30,7 +30,8 @@ export type FromWorker =
   | { type: "status"; live: "idle" | "loading" | "ready" | "error"; liveError: string; city: boolean; roads: "idle" | "loading" | "ready" | "error"; scoring: boolean }
   | { type: "plan"; id: number; day: number; plan: Plan311; routes: Record<string, CrewRoute>; load: LoadInfo | null; schedule: DaySummary[]; ms: number }
   | { type: "schedule"; schedule: DaySummary[] }
-  | { type: "shortest"; id: number; order: number[] };
+  | { type: "shortest"; id: number; order: number[] }
+  | { type: "failed"; id: number; error: string };
 
 let base = "/";
 let sample: Load311 | null = null;
@@ -74,8 +75,10 @@ function loadRoads() {
 
 function loadSample() {
   return (sampleP ??= (async () => {
-    sample = load311(await (await fetch(`${base}data/cases/calgary_311_sample.csv`)).text());
-    sampleVersion++;
+    try {
+      sample = load311(await (await fetch(`${base}data/cases/calgary_311_sample.csv`)).text());
+      sampleVersion++;
+    } catch { sampleP = null; }
   })());
 }
 
@@ -146,12 +149,18 @@ function planDay(m: Extract<ToWorker, { type: "plan" }>, base0: Load311, d: numb
   return w.plans[d];
 }
 
+/** Every request gets an answer (a plan, or why not), so nothing waits on the worker forever. */
 async function plan(m: Extract<ToWorker, { type: "plan" }>) {
+  try { await planOrFail(m); }
+  catch (e) { post({ type: "failed", id: m.id, error: e instanceof Error ? e.message : String(e) }); }
+}
+
+async function planOrFail(m: Extract<ToWorker, { type: "plan" }>) {
   latest = m.id;
   await Promise.all([loadCity(), m.source === "live" ? loadLive() : loadSample()]);
-  if (m.id !== latest) return; // a newer request came in while loading
+  if (m.id !== latest) return; // a newer request came in while loading (its answer covers this one)
   const load = m.source === "live" ? live : sample;
-  if (!load) return;
+  if (!load) throw new Error(m.source === "live" ? `The live 311 queue didn't load${status.liveError ? ` (${status.liveError})` : ""}.` : "The 311 sample didn't load.");
   const t0 = performance.now();
   const version = m.source === "live" ? liveVersion : sampleVersion;
   const key = weekKey(m, version);

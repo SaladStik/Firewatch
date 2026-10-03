@@ -66,6 +66,8 @@ export interface DispatchState {
   schedule311: DaySummary[];
   load311: Load311 | null;
   plan311: Plan311 | null;
+  /** Why the last 311 plan couldn't be made ("" when it was). */
+  plan311Error: string;
   /** 311 view: the 8 a.m. plan or the noon replan. */
   at: "morning" | "noon";
   /** The full ticket list is open. */
@@ -128,6 +130,7 @@ export const dispatch = createStore<DispatchState>({
   schedule311: [],
   load311: null,
   plan311: null,
+  plan311Error: "",
   at: "morning",
   ticketsOpen: false,
   overrides: {},

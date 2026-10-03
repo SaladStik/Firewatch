@@ -167,9 +167,14 @@ export async function recomputeFleet() {
     }));
   }
   if (run !== fleetRun) return;
-  const ground = plan.cutCrews, helitack = Math.round(ground * 0.6);
-  const fleet = makeFleet({ helitack, unit: ground - helitack, airtanker: d.airtankers, skimmer: d.skimmers });
+  const fleet = fleetNow();
   dispatch.set({ fleetDispatch: dispatchFleet(fires, fleet, (s) => lakes.get(fireKey(s)) ?? null) });
+}
+
+/** Every resource at its base: ground crews follow the crews after the cut, aircraft the panel. */
+export function fleetNow() {
+  const d = dispatch.get(), ground = d.plan?.cutCrews ?? 0, helitack = Math.round(ground * 0.6);
+  return makeFleet({ helitack, unit: ground - helitack, airtanker: d.airtankers, skimmer: d.skimmers });
 }
 
 export function setFleetOptions(patch: Partial<Pick<DispatchState, "airtankers" | "skimmers" | "showLiveAircraft" | "simulate">>) {
@@ -231,10 +236,17 @@ function planner(): Worker {
       dispatch.set({ schedule311: m.schedule });
       // The ticket set travels once per version: keep it even if a newer plan request superseded this one.
       if (m.load && m.load.source === dispatch.get().source311) dispatch.set({ load311: m.load.load });
-      if (m.id === reqId) dispatch.set({ plan311: m.plan, routes: m.routes, planMs: m.ms });
-      // This answers its own request and every older one still waiting (the worker drops
-      // requests a newer one superseded, so their callers would otherwise wait forever).
-      for (const [id, resolve] of waiting) if (id <= m.id) { resolve(); waiting.delete(id); }
+      if (m.id !== reqId) return; // superseded: the newest request's answer resolves everyone
+      dispatch.set({ plan311: m.plan, routes: m.routes, planMs: m.ms, plan311Error: "" });
+      // Resolve every caller once the plan on screen is the newest one (the worker drops
+      // requests a newer one superseded, so their callers wait for that one's answer).
+      for (const resolve of waiting.values()) resolve();
+      waiting.clear();
+    } else if (m.type === "failed") {
+      if (m.id !== reqId) return;
+      dispatch.set({ plan311Error: m.error });
+      for (const resolve of waiting.values()) resolve();
+      waiting.clear();
     } else if (m.type === "shortest") {
       shortestWaiting.get(m.id)?.(m.order);
       shortestWaiting.delete(m.id);
@@ -255,6 +267,17 @@ export function recompute311(keepOrder = false): Promise<void> {
     opts: { roads: d.roads, waste: d.waste, perCrew: d.perCrew, disruption: d.disruption, overrides: d.overrides, weatherDays: Array.from({ length: SCHEDULE_DAYS }, (_, i) => calgaryWeather(i)) },
   };
   return new Promise((resolve) => { waiting.set(id, resolve); planner().postMessage(msg); });
+}
+
+/**
+ * Replan 311 and wait for it (at most `timeoutMs`); throws with the reason when there's no plan,
+ * so Firefly says why instead of waiting forever.
+ */
+export async function plan311Now(timeoutMs = 30_000) {
+  await Promise.race([recompute311(), new Promise((r) => setTimeout(r, timeoutMs))]);
+  const d = dispatch.get();
+  if (!d.plan311 || !d.load311) throw new Error(d.plan311Error || "The 311 plan is still loading. Try again in a moment.");
+  return d.plan311;
 }
 
 /** Re-route the plan on screen (stop order changed, or 8 a.m. / noon switched). */

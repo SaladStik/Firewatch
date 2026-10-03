@@ -178,15 +178,14 @@ export function useFireflyAgent(engine: Engine | null) {
       ctl.setMood(moodRef.current);
     };
     ctl.setMood("thinking");
-    void answerKnowledge(engine, trimmed)
-      .catch((e) => `I couldn't get that: ${e instanceof Error ? e.message : String(e)}`)
-      .then(async (text) => {
-        if (text) return reply(text);
-        if (isDispatchQuestion(trimmed)) return reply((await answerDispatch(trimmed)) ?? "I couldn't plan that one.");
-        const local = answerLocally(engine, trimmed);
-        if (local) return reply(local.reply, local.threats);
-        reply(UNKNOWN_REPLY);
-      });
+    void (async () => {
+      const text = await answerKnowledge(engine, trimmed);
+      if (text) return reply(text);
+      if (isDispatchQuestion(trimmed)) return reply((await answerDispatch(trimmed)) ?? "I couldn't plan that one.");
+      const local = answerLocally(engine, trimmed);
+      if (local) return reply(local.reply, local.threats);
+      reply(UNKNOWN_REPLY);
+    })().catch((e) => reply(`I couldn't get that: ${e instanceof Error ? e.message : String(e)}`));
   }, [engine]);
 
   /**

@@ -8,9 +8,9 @@ import { assetsForRegions } from "../data/criticalAssets";
 import { simulatedHotspots } from "../data/hazards";
 import { valuesAtRisk } from "../data/valuesAtRisk";
 import { BASES, KIND } from "../dispatch/fleet";
-import { label, type Scored } from "../dispatch/crews";
+import { dutyBriefing, label, type Scored } from "../dispatch/crews";
 import {
-  flyTo, loadCases, openDispatch, openTickets, recompute311, recomputeCrews, recomputeFleet, set311Options, setCrewOptions,
+  fleetNow, flyTo, loadCases, openDispatch, openTickets, plan311Now, recompute311, recomputeCrews, recomputeFleet, set311Options, setCrewOptions,
   setFleetOptions, setOverride, setShortestOrder, setSource311, pollAircraft,
 } from "../dispatch/controller";
 import { daysWaiting, priorityParts, typeOf, type Ticket } from "../dispatch/ops311";
@@ -84,9 +84,9 @@ function ticketView(t: Ticket) {
   };
 }
 
-/** A 311 plan on hand (the first one can be superseded by a replan while it loads: wait for one that lands). */
+/** A 311 plan on hand (throws with the reason when there can't be one). */
 async function ensure311() {
-  for (let i = 0; i < 4 && (!dispatch.get().plan311 || !dispatch.get().load311); i++) await recompute311();
+  if (!dispatch.get().plan311 || !dispatch.get().load311) await plan311Now();
 }
 async function ensureCrews() {
   await loadCases();
@@ -144,6 +144,7 @@ export async function askData(engine: Engine, p: P): Promise<unknown> {
         kinds: Object.fromEntries(Object.entries(KIND).map(([k, v]) => [k, `${v.label}: ${v.note}, ${v.speedKmh} km/h, ${v.getawayMin} min getaway`])),
         groundCrewsAfterCut: plan?.cutCrews, airtankers: d.airtankers, skimmers: d.skimmers,
         assigned: [...used].slice(0, 40).map(([r, f]) => `${r} → ${f}`),
+        resources: fleetNow().map((r) => ({ id: r.id, kind: KIND[r.kind].label, base: r.base.name, assignedTo: used.get(r.id) ?? null })),
         note: "Bases are Alberta Wildfire's airtanker bases; how many of each resource is at each base is illustrative.",
       };
     }
@@ -159,7 +160,9 @@ export async function askData(engine: Engine, p: P): Promise<unknown> {
         nextUp: cur ? fireFacts(cur, plan.ranked.indexOf(cur) + 1) : null,
         list: list.slice(0, 12).map((x, i) => ({ rank: i + 1, fire: label(x), decision: d.decided[fireKey(x)] ?? "not yet" })),
         lostCrewInCut: plan.lostCrew.map(label),
-        ...(plan.grades ? { vsBiggestFirst: { ours: plan.grades.ours.escapesCaught, biggestFirst: plan.grades.baseline.escapesCaught, oursAfterCut: plan.grades.cut.escapesCaught, biggestFirstAfterCut: plan.grades.baselineCut.escapesCaught } } : {}),
+        skippedVsBiggestFirst: plan.skippedVsBaseline.slice(0, 5).map((x) => ({ fire: label(x), sizeHa: r1(x.fire.sizeHa), spreadMMin: r1(x.ros), peopleWithin30km: Math.round(x.exposure.people) })),
+        dutyOfficer: dutyBriefing(plan, { live: d.source === "live" }),
+        ...(plan.grades ? { vsBiggestFirst: { ours: plan.grades.ours.escapesCaught, biggestFirst: plan.grades.baseline.escapesCaught, oursAfterCut: plan.grades.cut.escapesCaught, biggestFirstAfterCut: plan.grades.baselineCut.escapesCaught, escapesTotal: plan.grades.ours.escapesTotal } } : {}),
       };
     }
     case "fire": {
@@ -274,10 +277,14 @@ export async function doDispatch(engine: Engine, p: P): Promise<unknown> {
         ...(num(p.airtankers) !== undefined ? { airtankers: Math.min(20, Math.max(0, Math.round(num(p.airtankers)!))) } : {}),
         ...(num(p.skimmers) !== undefined ? { skimmers: Math.min(10, Math.max(0, Math.round(num(p.skimmers)!))) } : {}),
       });
+      // Rank with the new settings now (setCrewOptions re-learns the weights in the background).
+      await loadCases();
+      recomputeCrews();
       await recomputeFleet();
       openDispatch("crews");
-      const d = dispatch.get();
-      return { ok: true, crews: d.crews, cutPercent: d.cutPct, airtankers: d.airtankers, skimmers: d.skimmers, source: d.source };
+      const d = dispatch.get(), plan = d.plan;
+      return {
+        ok: true, ...(plan ? { crewsAfterCut: plan.cutCrews, firstFires: plan.pickedCut.slice(0, 3).map(label), lostCrewInCut: plan.lostCrew.map(label) } : {}), crews: d.crews, cutPercent: d.cutPct, airtankers: d.airtankers, skimmers: d.skimmers, source: d.source };
     }
     case "dispatch_crew_311": case "next_crew_311": {
       await ensure311();

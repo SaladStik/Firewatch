@@ -3,9 +3,8 @@
  * ElevenLabs agent's tools and as one-paragraph answers for local Ask (works with no agent at all).
  * Every call also opens the panel on that plan, so what Firefly says is on screen.
  */
-import { app } from "../state/app";
 import { label, type CrewPlan, type Scored } from "./crews";
-import { calgarySnowForecast, flyTo, loadCases, openDispatch, recompute311, recomputeCrews, recomputeFleet, setCrewOptions } from "./controller";
+import { calgarySnowForecast, flyTo, loadCases, openDispatch, plan311Now, recomputeCrews, recomputeFleet, setCrewOptions } from "./controller";
 import { KIND } from "./fleet";
 import { dutyBriefing } from "./crews";
 import { supervisor8am, supervisorNoon, typeOf, type Disruption } from "./ops311";
@@ -67,10 +66,9 @@ export async function plan311Facts(opts: { roads?: number; waste?: number; jobsP
     disruption: opts.disruption ?? d.disruption,
     at: (opts.disruption ?? d.disruption) === "none" ? "morning" : "noon",
   });
-  await recompute311();
+  const p = await plan311Now();
   openDispatch("311");
   flyTo(51.045, -114.06, 22);
-  const p = dispatch.get().plan311!;
   const snow = calgarySnowForecast();
   return {
     planningDay: p.today,
@@ -93,7 +91,7 @@ function crewIntent(text: string) {
   const t = words(text);
   if (!/\bcrews?\b|next crew|lost a crew|biggest first|largest first|duty officer/.test(t)) return null;
   if (/\b311\b|pothole|ticket|calgary/.test(t)) return null;
-  const n = t.match(/(\d{1,3})\s*crews?/);
+  const n = t.match(/(\d{1,3})\s*(?:ground |fire ?|wildfire )?crews?\b/) ?? t.match(/\bcrews?\s*(?:to|=|:|at|of)\s*(\d{1,3})\b/);
   const cut = t.match(/(?:cut|drop|lose|fewer|reduce\w*)[^\d]{0,12}(\d{1,2})\s*%|(\d{1,2})\s*%\s*(?:cut|fewer|less)/);
   const source: CrewSource | undefined = /history|2023|2024|2025|past|season|historical|demo/.test(t) ? "history" : /\blive\b|today|now|current/.test(t) ? "live" : undefined;
   // One season only when exactly one year is named ("2023 to 2025" means all of them).
@@ -134,7 +132,8 @@ export async function answerDispatch(text: string): Promise<string | null> {
   }
   const crews = crewIntent(text);
   if (crews) {
-    const live = (crews.source ?? (app.get().hotspots.length ? "live" : "history")) === "live";
+    // Keep the list the panel is on (the case seasons by default) unless the question names one.
+    const live = (crews.source ?? dispatch.get().source) === "live";
     await crewPlanFacts({ ...crews, source: live ? "live" : "history" });
     const plan = dispatch.get().plan;
     if (!plan) return live ? "There are no active fires in focus right now. Ask me to rank the 2023 to 2025 seasons instead." : "The case data is still loading.";
