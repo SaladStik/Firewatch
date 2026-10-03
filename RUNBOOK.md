@@ -72,3 +72,5 @@ To host `dist/` somewhere else, build with the data server's public address inst
 Server settings (environment variables):
 - `PORT`: the port to listen on (default `8787`).
 - `FIREWATCH_PREWARM`: the provinces whose weather is kept fresh (default `alberta`).
+
+To run the data server on Databricks instead, see **[DEPLOY-DATABRICKS.md](DEPLOY-DATABRICKS.md)**.

@@ -16,7 +16,8 @@
     "bake:pbf": "tsx scripts/export-regions.ts && python scripts/bake_osm_pbf.py",
     "bake:traffic": "python scripts/bake_traffic.py",
     "validate:fwi": "tsx scripts/validate-fwi.ts",
-    "server": "tsx server/index.ts"
+    "server": "tsx server/index.ts",
+    "deploy:databricks": "bash scripts/deploy-databricks.sh"
   },
   "dependencies": {
     "@elevenlabs/react": "^1.16.0",
