@@ -32,3 +32,6 @@ __pycache__/
 
 # Databricks CLI sync state
 .databricks/
+
+# Wrangler local state (wrangler pages dev)
+.wrangler/
