@@ -207,3 +207,10 @@ test("accented names don't match plain words, and still match when said", () => 
   const fly = planRequest("fly to whati", b).calls.find((c) => c.tool === "flyToPlace");
   assert.ok(fly && fly.tool === "flyToPlace" && fly.args.name === "Whatì");
 });
+
+test("a hotspot question lists the heat instead of only setting the forecast", () => {
+  const plan = planRequest("are there any hotspots today?", brief({ forecastDay: 3 }));
+  assert.equal(plan.reply, "fires");
+  assert.ok(plan.calls.some((c) => c.tool === "listFires" && c.args.heatFirst));
+  assert.deepEqual(tools("turn hotspots off"), ["setLayer"]);
+});

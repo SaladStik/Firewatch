@@ -6,7 +6,7 @@
 import { communityThreats, type CommunityThreat } from "../data/communityRisk";
 import type { Hotspot, Perimeter } from "../data/cwfis";
 import type { FireGrowth } from "../data/fireHistory";
-import { fireSources, type FireSource } from "../data/fireSpread";
+import { fireSources, spreadSources, type FireSource } from "../data/fireSpread";
 import { SIM_WEATHER_BOOST } from "../data/hazards";
 import { weatherAt, type DayWeather, type WeatherGrid } from "../data/openMeteo";
 import type { Place } from "../data/places";
@@ -34,6 +34,8 @@ export interface FactsSnapshot {
   /** Workspace indices of the regions in focus. */
   focus: Set<number>;
   regionNames: string[];
+  /** Province codes (AB, BC…) by workspace index, to name each province's own fire agency. */
+  regionCodes?: string[];
   now: number;
 }
 
@@ -99,9 +101,13 @@ export interface ActiveFire {
 }
 
 const AGENCY_NAMES: Record<string, string> = {
-  AB: "Alberta Wildfire", BC: "BC Wildfire Service", SK: "Saskatchewan Public Safety Agency", PC: "Parks Canada (national parks)",
+  AB: "Alberta Wildfire", BC: "BC Wildfire Service", SK: "Saskatchewan Public Safety Agency", MB: "Manitoba Wildfire Service",
+  ON: "Ontario Forest Fires", QC: "SOPFEU (Quebec)", YT: "Yukon Wildland Fire Management", NT: "NWT Wildfire",
+  PC: "Parks Canada (national parks)",
 };
-const agencyName = (code: string) => AGENCY_NAMES[code] ?? code;
+export const agencyName = (code: string) => AGENCY_NAMES[code] ?? `${code} fire agency`;
+/** "2026WB16" → "WB16", "2026-R11970" → "R11970": short enough to say aloud. */
+export const shortName = (n: string) => n.replace(/^20\d\d[-_ ]?/, "") || n;
 
 const radiusKm = (ha: number) => Math.sqrt(ha / 100 / Math.PI);
 
@@ -114,7 +120,7 @@ export function activeFires(s: FactsSnapshot): ActiveFire[] {
   const official = s.reported.filter((f) => inFocus(s, f.lat, f.lng, f.region)).map((f): ActiveFire => {
     const w = project(f.lat, f.lng);
     const perim = perims.find((p) => Math.hypot(p.x - w.x, p.z - w.z) <= p.r0 + 2);
-    return { fid: f.id, name: f.name, agency: f.agency, stage: f.stage, lat: f.lat, lng: f.lng, ...w, r0: radiusKm(f.sizeHa), sizeHa: f.sizeHa, simulated: false,
+    return { fid: f.id, name: shortName(f.name), agency: f.agency, stage: f.stage, lat: f.lat, lng: f.lng, ...w, r0: radiusKm(f.sizeHa), sizeHa: f.sizeHa, simulated: false,
       region: f.region ?? nearestPlace(s, f.lat, f.lng)?.place.region, perimeterId: perim?.id };
   });
   const sims = fireSources(s.hotspots.filter((h) => h.agency === "SIMULATION"), [], s.now)
@@ -252,7 +258,9 @@ export function briefing(s: FactsSnapshot) {
   // Per province, and who reported them: a park's fires come from Parks Canada, not the province.
   const byRegion = [...s.focus].map((i) => {
     const here = official.filter((f) => f.region === i);
-    const agencies: Record<string, number> = {};
+    // The province's own agency is always listed, so "none" is said out loud.
+    const own = s.regionCodes?.[i];
+    const agencies: Record<string, number> = own ? { [agencyName(own)]: 0 } : {};
     for (const f of here) agencies[agencyName(f.agency)] = (agencies[agencyName(f.agency)] ?? 0) + 1;
     return { region: s.regionNames[i] ?? "", ...byStage(here), reportedBy: agencies };
   });
@@ -292,7 +300,7 @@ const growthOf = (s: FactsSnapshot, f: ActiveFire) => (f.perimeterId ? s.fireGro
 export function fireView(s: FactsSnapshot, f: ActiveFire) {
   const g = growthOf(s, f);
   return {
-    fire_id: f.fid, agencyFireNumber: f.name, reportedBy: agencyName(f.agency), stage: STAGE_LABEL[f.stage], hectares: Math.round(f.sizeHa),
+    fire_id: f.fid, name: f.name, reportedBy: f.simulated ? "demo scenario (simulated)" : agencyName(f.agency), stage: STAGE_LABEL[f.stage], hectares: Math.round(f.sizeHa),
     near: nearestPlaceText(s, f.lat, f.lng), recentGrowthKmPerDay: g ? r1(g.observedKmDay) : null,
     ...(f.simulated ? { simulated: true } : {}),
   };
@@ -365,11 +373,12 @@ export function crewRanking(s: FactsSnapshot, crews: number) {
   const ranked = activeFires(s).map((f) => {
     const reasons: string[] = [];
     let exposure = 0;
+    const own = ownProjection(s, f);
     for (const p of s.places) {
       if (p.landmark) continue;
       const q = project(p.lat, p.lng);
       const km = Math.max(0, Math.hypot(q.x - f.x, q.z - f.z) - f.r0);
-      const inPath = at(q.x, q.z) >= 0 && km < 120;
+      const inPath = !!own && at(q.x, q.z) >= 0 && km < 120 && own(q.x, q.z);
       if (km > 60 && !inPath) continue;
       const w = (inPath ? 1 : 0.5) * Math.max(0, 1 - (km / 60) * (inPath ? 0.5 : 1));
       exposure += w * Math.log10(10 + p.pop);
@@ -463,21 +472,43 @@ export function riskZones(s: FactsSnapshot, g: RiskGrid, max = 5) {
     });
 }
 
-/** Where a fire's projected burn heads (cells within 150 km): compass direction and furthest reach. */
+/** The fires the map projects (same as engine.pushHazards): official spreading fires plus demo ones. */
+function spreadOrigins(s: FactsSnapshot) {
+  return [...spreadSources(s.reported, s.perimeters, s.now, s.fireGrowth), ...fireSources(s.hotspots.filter((h) => h.agency === "SIMULATION"), [], s.now)];
+}
+
+/**
+ * For a fire the map projects: a test of whether a projected point is this fire's (nearer its
+ * edge than any other projected fire's). Null when the fire isn't projected.
+ */
+export function ownProjection(s: FactsSnapshot, fire: { x: number; z: number }) {
+  const origins = spreadOrigins(s);
+  const me = origins.find((o) => Math.hypot(o.x - fire.x, o.z - fire.z) <= o.r0 + 2);
+  if (!me) return null;
+  const edge = (o: { x: number; z: number; r0: number }, x: number, z: number) => Math.hypot(o.x - x, o.z - z) - o.r0;
+  return Object.assign((x: number, z: number) => { const mine = edge(me, x, z); return !origins.some((o) => o !== me && edge(o, x, z) < mine); }, { r0: me.r0 });
+}
+
+/**
+ * Where a fire's projected burn heads: compass direction and furthest reach, from the projected
+ * cells nearer to this fire than to any other projected fire. Null when it isn't projected.
+ */
 export function spreadHeading(s: FactsSnapshot, fire: { x: number; z: number }) {
   const f = s.spread;
   if (!f?.cells.length) return null;
+  const own = ownProjection(s, fire);
+  if (!own) return null;
   let sx = 0, sz = 0, n = 0, far = 0;
   for (let i = 0; i < f.cells.length; i += 3) {
     const p = hexToWorld(f.cells[i], f.cells[i + 1], f.size);
     const dx = p.x - fire.x, dz = p.z - fire.z, d = Math.hypot(dx, dz);
-    if (d > 150) continue;
+    if (d > 150 || !own(p.x, p.z)) continue;
     sx += dx; sz += dz; n++;
     far = Math.max(far, d);
   }
   if (!n) return null;
   const mx = sx / n, mz = sz / n;
-  return { headsToward: Math.hypot(mx, mz) < 0.5 ? "all directions (no clear lean)" : bearing(mx, mz), reachKm: r1(far) };
+  return { headsToward: Math.hypot(mx, mz) < 0.5 ? "all directions (no clear lean)" : bearing(mx, mz), reachKmFromCentre: r1(far), fireRadiusNowKm: r1(own.r0) };
 }
 
 /** The wind at a point for each forecast day up to `day`: where it blows from and toward, km/h. */

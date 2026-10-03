@@ -8,7 +8,7 @@ import type { Engine } from "../engine";
 import { NODE_STATUSES, NODE_TYPES } from "../hex/nodeTypes";
 import { project } from "../geo/projection";
 import { app, focusIndices, type Layers } from "../state/app";
-import { activeFires, briefing, crewRanking, explainAt, findPlace, fireList, fireView, HEAT_NOTE, heatDetections, heatView, placeReport, riskZones, spreadHeading, townsInPath, windByDay, type FactsSnapshot } from "./facts";
+import { activeFires, briefing, crewRanking, explainAt, findPlace, fireList, fireView, HEAT_NOTE, heatDetections, heatView, ownProjection, placeReport, riskZones, spreadHeading, townsInPath, windByDay, type FactsSnapshot } from "./facts";
 import { flyFireflyTo, fireflyController } from "./mascot";
 
 export function snapshot(): FactsSnapshot {
@@ -18,7 +18,7 @@ export function snapshot(): FactsSnapshot {
     places: s.places, hotspots: [...s.hotspots, ...sim], perimeters: s.perimeters, weather: s.weather,
     reported: s.reportedFires, reportedOk: s.dataStatus.reported !== "error",
     forecastDay: s.forecastDay, simulation: s.simulation, spread: s.spread, fireGrowth: s.fireGrowth,
-    focus: new Set(focusIndices()), regionNames: s.regions.map((r) => r.name), now: Date.now(),
+    focus: new Set(focusIndices()), regionNames: s.regions.map((r) => r.name), regionCodes: s.regions.map((r) => r.code), now: Date.now(),
   };
 }
 
@@ -102,15 +102,19 @@ export function makeTools(engine: Engine) {
       const fire = found.fire ?? found.heat!;
       const f = found.fire ? fireView(s, found.fire) : { ...heatView(s, found.heat!), heatNote: HEAT_NOTE };
       void show(fire.lat, fire.lng, 60);
-      // Towns reached by any fire's projection, kept to those plausibly from this one (≤ 150 km).
+      // Towns in a projected path that belongs to this fire (not a neighbour's), within 150 km.
       const w = project(fire.lat, fire.lng);
-      const towns = townsInPath(s)
-        .filter((t) => { const q = project(t.lat, t.lng); return Math.hypot(q.x - w.x, q.z - w.z) < 150; })
+      const own = ownProjection(s, w);
+      const towns = (own ? townsInPath(s) : [])
+        .filter((t) => { const q = project(t.lat, t.lng); return Math.hypot(q.x - w.x, q.z - w.z) < 150 && own!(q.x, q.z); })
         .slice(0, 8)
         .map(({ place, population, day }) => ({ place, population, day }));
       return json({
         ...f, horizonDays: days, communitiesInProjectedPath: towns,
-        projectedSpread: spreadHeading(s, fire),
+        projectedSpread: spreadHeading(s, fire)
+          ?? (found.heat ? "none: heat detections are unconfirmed, so they aren't projected"
+            : found.fire!.stage === "under_control" ? "none: under-control fires aren't projected"
+            : !app.get().layers.spread ? "none: the projected spread layer is off" : "none: the model doesn't reach new ground by this day"),
         windAtFireByDay: windByDay(s, fire.lat, fire.lng, days),
         note: `${NOTE} The projection adds up each day's noon wind (and runs faster uphill), while the wind layer shows only the selected day's wind (today: the live wind), so the spread can lean away from the wind on screen when the wind shifts during the week.`,
       });

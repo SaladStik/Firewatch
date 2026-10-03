@@ -5,7 +5,7 @@ import { snowShare } from "../data/rain";
 import { project } from "../geo/projection";
 import { app, type Layers } from "../state/app";
 import { dayLabel, compassName } from "../ui/weatherFormat";
-import { activeFires, fireView, heatDetections, rankedFires } from "../firefly/facts";
+import { activeFires, agencyName, fireView, heatDetections, rankedFires } from "../firefly/facts";
 import { snapshot } from "../firefly/tools";
 import { buildBrief, fireList as briefFires, threatList, threatReasonAt } from "./brief";
 import { renderReply } from "./reply";
@@ -87,16 +87,22 @@ function runCall(engine: Engine, call: ToolCall): ToolResult {
       const s = snapshot();
       const idx = call.args.regionIndex;
       if (idx != null && idx >= 0) s.focus = new Set([idx]);
-      const scope = [...s.focus].map((i) => s.regionNames[i]).filter(Boolean).join(", ") || "the regions in focus";
+      const regions = [...s.focus];
+      const scope = regions.map((i) => s.regionNames[i]).filter(Boolean).join(", ") || "the regions in focus";
       const heat = heatDetections(s).filter((h) => h.kind === "hotspots" && !h.officialFire);
+      const hotspots = s.hotspots.filter((h) => h.agency !== "SIMULATION" && h.region != null && s.focus.has(h.region)).length;
       return {
-        tool: call.tool, summary: "Listed active fires", simulation: s.simulation, fireScope: scope,
-        fires: rankedFires(s).map((x) => fireView(s, x)).map((f) => ({
-          stage: f.stage,
-          // A national park's fires come from Parks Canada, not the province.
-          label: `${f.agencyFireNumber}${f.reportedBy.startsWith("Parks Canada") ? " (Parks Canada)" : ""}, ${f.stage}, ${f.hectares.toLocaleString("en-CA")} ha${f.near ? `, ${f.near}` : ""}`,
-        })),
-        heat: { clusters: heat.length, farm: heat.filter((h) => h.likelyFarmOrControlledBurn).length },
+        tool: call.tool, summary: "Listed active fires",
+        firesAnswer: {
+          simulation: s.simulation, scope, heatFirst: call.args.heatFirst,
+          // One province: name its own agency even when it reports none (a park's fires are Parks Canada's).
+          ownAgency: regions.length === 1 && s.regionCodes?.[regions[0]] ? agencyName(s.regionCodes[regions[0]]) : undefined,
+          fires: rankedFires(s).map((x) => fireView(s, x)).map((f) => ({
+            stage: f.stage, agency: f.reportedBy,
+            label: `${f.name}, ${f.stage}, ${f.hectares.toLocaleString("en-CA")} ha${f.near ? `, ${f.near}` : ""}`,
+          })),
+          heat: { hotspots, clusters: heat.length, farm: heat.filter((h) => h.likelyFarmOrControlledBurn).length },
+        },
       };
     }
     case "flyToFire": {

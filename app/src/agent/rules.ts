@@ -178,8 +178,13 @@ function wantsThreats(text: string): boolean {
   return /\bat risk\b/.test(text) || (/\b(communities|towns)\b/.test(text) && /\b(risk|threatened|danger)\b/.test(text));
 }
 
+/** A question about hotspots (not a layer toggle): "any hotspots today?", "how many hotspots". */
+function wantsHeat(text: string): boolean {
+  return /\b(any|how many|are there|list|what|which|where are)\b.*\b(hotspots?|heat detections?)\b/.test(text);
+}
+
 function wantsFireList(text: string): boolean {
-  return /\b(active fires|list fires|what fires|which fires)\b/.test(text);
+  return /\b(active fires|list fires|what fires|which fires|(any|how many|list) (wild)?fires)\b/.test(text) || wantsHeat(text);
 }
 
 function wantsLargestFire(text: string): boolean {
@@ -269,7 +274,7 @@ export function planRequest(raw: string, brief: Brief): Plan {
     calls.push({ tool: "flyToRegion", args: { index: region.index, name: region.name, regionId: region.id } });
   }
   if (threats) calls.push({ tool: "listThreats", args: {} });
-  if (fires) calls.push({ tool: "listFires", args: region ? { regionIndex: region.index } : {} });
+  if (fires) calls.push({ tool: "listFires", args: { ...(region ? { regionIndex: region.index } : {}), ...(wantsHeat(text) ? { heatFirst: true } : {}) } });
   if (explain) {
     const aboutHere = /\b(here|this hex|this spot|selection|selected)\b/.test(text);
     const point = place

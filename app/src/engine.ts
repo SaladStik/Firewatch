@@ -9,7 +9,7 @@ import { makeFwiSeed } from "./data/fwiSeed";
 import { loadFireHistory, loadHotspots, loadPerimeters, loadStations, loadWeather, usingDataServer } from "./data/liveData";
 import { growthCalibration, type FireGrowth, type FireHistory } from "./data/fireHistory";
 import { fetchReportedFires } from "./data/reportedFires";
-import { fireSources, growthSources } from "./data/fireSpread";
+import { fireSources, growthSources, spreadSources } from "./data/fireSpread";
 import { growthCellSize } from "./world/fireGrowth";
 import { buildSnapshot, isPerimeterActive, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
 import { FORECAST_DAYS, weatherAt, type WeatherGrid } from "./data/openMeteo";
@@ -293,7 +293,12 @@ export class Engine {
     // Grow every active fire over the real fuel map, day by day up to the selected day (world/fireGrowth.ts).
     let spread = null;
     if (s.layers.spread) {
-      const src = growthSources(fireSources(hotspots, s.perimeters, Date.now(), growth), s.weather, s.forecastDay, weatherBoost, (d) => storms[d] ?? []);
+      // Official out-of-control / being-held fires, plus the demo's simulated ignitions.
+      const fires = [
+        ...spreadSources(s.reportedFires, s.perimeters, Date.now(), growth),
+        ...fireSources(hotspots.filter((h) => h.agency === "SIMULATION"), [], Date.now()),
+      ];
+      const src = growthSources(fires, s.weather, s.forecastDay, weatherBoost, (d) => storms[d] ?? []);
       if (src.length) spread = await this.client.growth(src, s.forecastDay, growthCellSize(src, s.forecastDay));
     }
     app.set({ spread, fireGrowth: growth });

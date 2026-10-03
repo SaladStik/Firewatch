@@ -1,5 +1,6 @@
 /** Contract shared by the rule brain and any later model. Tools and the panel only see this. */
 import type { Layers } from "../state/app";
+import type { FiresAnswer } from "./reply";
 
 export interface BriefPlace {
   name: string;
@@ -77,7 +78,7 @@ export type ToolCall =
   | { tool: "setForecastDay"; args: { day: number } }
   | { tool: "setSimulation"; args: { on: boolean } }
   | { tool: "listThreats"; args: Record<string, never> }
-  | { tool: "listFires"; args: { regionIndex?: number } }
+  | { tool: "listFires"; args: { regionIndex?: number; heatFirst?: boolean } }
   | { tool: "flyToFire"; args: Record<string, never> }
   | { tool: "explain"; args: { name: string; lat: number; lng: number; pop: number; regionIndex: number } };
 
@@ -116,10 +117,8 @@ export interface ToolResult {
   summary: string;
   facts?: ExplainFacts;
   threats?: { name: string; reason: string }[];
-  /** Agency-reported fires (worst stage first), where they were counted, and unconfirmed satellite heat. */
-  fires?: { label: string; stage: string }[];
-  fireScope?: string;
-  heat?: { clusters: number; farm: number };
+  /** Agency-reported fires and unconfirmed satellite heat (reply.ts firesReply). */
+  firesAnswer?: FiresAnswer;
   dayLabel?: string;
   simulation?: boolean;
 }

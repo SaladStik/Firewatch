@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { firesReply } from "../src/agent/reply.ts";
+import { spreadSources } from "../src/data/fireSpread.ts";
 import type { Hotspot } from "../src/data/cwfis.ts";
 import { toReportedFire, type ReportedFire } from "../src/data/reportedFires.ts";
 import { activeFires, briefing, crewRanking, fireList, type FactsSnapshot } from "../src/firefly/facts.ts";
@@ -65,11 +66,20 @@ test("demo fires count as simulated out-of-control fires", () => {
   assert.equal(briefing(s).officialWildfires.total, 0);
 });
 
-test("the rule brain's fire reply counts official fires and calls hotspots unconfirmed heat", () => {
-  const none = firesReply([], false, "Alberta", { clusters: 8, farm: 4 });
-  assert.match(none, /No active wildfires reported by the fire agencies in Alberta/);
-  assert.match(none, /8 hotspot clusters: unconfirmed heat/);
-  assert.match(none, /4 look like farm or controlled burns/);
-  const some = firesReply([{ label: "WB16", stage: "out of control" }, { label: "WB8", stage: "under control" }], false, "Alberta");
-  assert.match(some, /^2 active wildfires reported in Alberta \(1 out of control, 1 under control\): WB16; WB8\.$/);
+test("the quick fire answer splits official fires by agency and calls hotspots unconfirmed heat", () => {
+  const heat = { hotspots: 38, clusters: 8, farm: 4 };
+  const pc = (label: string, stage: string) => ({ label, stage, agency: "Parks Canada (national parks)" });
+  const ab = firesReply({ fires: [pc("WB16", "out of control"), pc("WB8", "under control"), pc("WB6", "under control")], simulation: false, scope: "Alberta", heat, ownAgency: "Alberta Wildfire" });
+  assert.equal(ab, "Alberta Wildfire reports no active wildfires in Alberta; Parks Canada reports 3 in national parks there (1 out of control, 2 under control). Top: WB16; WB8; and 1 more. Satellites also see 38 hotspots in the last 24 h (8 clusters): unconfirmed heat, not confirmed wildfires, and 4 look like farm or controlled burns.");
+  const none = firesReply({ fires: [], simulation: false, scope: "Alberta", ownAgency: "Alberta Wildfire" });
+  assert.match(none, /^Alberta Wildfire reports no active wildfires in Alberta\.$/);
+  const hot = firesReply({ fires: [], simulation: false, scope: "Alberta", heat, ownAgency: "Alberta Wildfire", heatFirst: true });
+  assert.match(hot, /^Alberta: satellites detected 38 hotspots in the last 24 h \(8 clusters\): unconfirmed heat/);
+});
+
+test("only out-of-control and being-held official fires are projected", () => {
+  const fire = (stage: string, lat: number) => ({ lat, lng: -115, sizeHa: 500, stage });
+  const src = spreadSources([fire("out_of_control", 55), fire("being_held", 56), fire("under_control", 57)], []);
+  assert.deepEqual(src.map((s) => Math.round(s.lat)), [55, 56]);
+  assert.ok(src.every((s) => s.kind === "reported" && s.r0 > 1));
 });
