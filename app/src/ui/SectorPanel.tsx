@@ -1,4 +1,5 @@
 /** Details for the selected hex + actions. */
+import { fireHotspotsOf } from "../state/fires";
 import { Crosshair, Flag, X } from "lucide-react";
 import { GRID } from "../config/grid";
 import { airAt } from "../data/airQuality";
@@ -28,7 +29,8 @@ export function SectorPanel({ engine }: { engine: Engine | null }) {
   const day = useStore(app, (s) => s.forecastDay);
   const perimeters = useStore(app, (s) => s.perimeters);
   const growth = useStore(app, (s) => s.fireGrowth);
-  const hotspots = useStore(app, (s) => s.hotspots);
+  // Heat that counts as fire (likely farm burns left out, reported fires added): state/fires.ts.
+  const hotspots = useStore(app, fireHotspotsOf);
   const spread = useStore(app, (s) => s.spread);
   const sim = useStore(app, (s) => s.simulation);
   const regions = useStore(app, (s) => s.regions);

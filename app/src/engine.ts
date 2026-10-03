@@ -9,6 +9,7 @@ import { makeFwiSeed } from "./data/fwiSeed";
 import { loadFireHistory, loadHotspots, loadPerimeters, loadReportedFires, loadStations, loadWeather, usingDataServer } from "./data/liveData";
 import { growthCalibration, type FireGrowth, type FireHistory } from "./data/fireHistory";
 import { fireSources, growthSources, spreadSources } from "./data/fireSpread";
+import { fireHotspots } from "./data/firePoints";
 import { growthCellSize } from "./world/fireGrowth";
 import { buildSnapshot, isPerimeterActive, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
 import { caseHotspots, initDispatch, loadCases } from "./dispatch/controller";
@@ -311,7 +312,7 @@ export class Engine {
     app.set({ spread, fireGrowth: growth });
     this.rainBlobs = rain;
     await this.client.setHazards(buildSnapshot({
-      hotspots, reportedFires: s.reportedFires, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost, spread, rain, growth,
+      hotspots: fireHotspots(hotspots, s.reportedFires, s.perimeters), reportedFires: s.reportedFires, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, weatherBoost, spread, rain, growth,
     }));
     await this.scene.world.refreshStatus();
     // The open sector panel shows status/risk from click time; re-read it for the new hazards.
@@ -344,7 +345,7 @@ export class Engine {
       if (s.airThreats.length) app.set({ airThreats: [] });
       return;
     }
-    const hotspots = this.allHotspots().filter((h) => s.simulation || h.agency !== "SIMULATION");
+    const hotspots = fireHotspots(this.allHotspots().filter((h) => s.simulation || h.agency !== "SIMULATION"), s.reportedFires, s.perimeters);
     app.set({
       airThreats: airThreats({
         places: s.places.filter((p) => !p.landmark && p.pop >= 200 && focus.has(p.region)),
@@ -372,7 +373,7 @@ export class Engine {
       this.scene.setTraffic(null);
       return;
     }
-    const hotspots = this.allHotspots();
+    const hotspots = fireHotspots(this.allHotspots(), s.reportedFires, s.perimeters);
     const boost = s.simulation ? SIM_WEATHER_BOOST : 1;
     const iso = s.weather[0]?.dates?.[s.forecastDay];
     const sim = s.simulation

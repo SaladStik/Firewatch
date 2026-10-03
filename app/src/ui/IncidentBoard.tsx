@@ -1,6 +1,7 @@
 /**
  * Duty incident board: active fires with status, size, values at risk, last update.
  */
+import { fireHotspotsOf } from "../state/fires";
 import { useMemo, useState } from "react";
 import {
   buildIncidents,
@@ -84,7 +85,8 @@ function Row({
 
 export function IncidentBoard({ engine }: { engine: Engine | null }) {
   const perimeters = useStore(app, (s) => s.perimeters);
-  const hotspots = useStore(app, (s) => s.hotspots);
+  // Heat that counts as fire (likely farm burns left out, reported fires added): state/fires.ts.
+  const hotspots = useStore(app, fireHotspotsOf);
   const places = useStore(app, (s) => s.places);
   const weather = useStore(app, (s) => s.weather);
   const day = useStore(app, (s) => s.forecastDay);

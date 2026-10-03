@@ -72,6 +72,8 @@ Code: `riskFromFwi`.
 
 ## 3. Risk on each hex
 
+**What counts as fire.** One rule, used by the map, Firefly and every panel (`data/firePoints.ts`). The heat that counts is every satellite hotspot except likely farm or controlled burns, plus every reported fire still burning (as a point at its reported location) that no counted hotspot is near. A likely farm or controlled burn is a cluster that meets all three conditions: at least half of it on farmland, under 25 MW of fire radiative power, and no reported fire within 5 km. This heat drives the risk near fire below, communities at risk (§6), highways (§7), smoke, values at risk, the incident board and the stations. Projected spread uses reported fires only (§4.1).
+
 Each hex's risk is built in order:
 
 1. **An agency-reported fire touching the hex:** "Out of control" (risk 1), "Being held" (0.95) or "Under control" (0.6), the worst stage winning. Fires come from the national fire list (Natural Resources Canada, the same data as CIFFC); the fire's reported hectares set its radius. Satellite hotspots are unconfirmed heat detections (often farm or controlled burns), so they never set a fire status; they still raise risk around them (below).

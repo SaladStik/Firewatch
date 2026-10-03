@@ -1,4 +1,5 @@
 /** A small snapshot of the map for the brain. Built from state already in the app. */
+import { fireHotspotsOf } from "../state/fires";
 import type { Engine } from "../engine";
 import { communityThreats } from "../data/communityRisk";
 import { isPerimeterActive, simulatedHotspots } from "../data/hazards";
@@ -25,9 +26,9 @@ function ringCenter(ring: [number, number][]): { lat: number; lng: number } {
   return { lat: lat / n, lng: lng / n };
 }
 
-/** Satellite hotspots only. Demo ignitions and demo instrument stations are not communities-at-risk inputs. */
+/** Heat that counts as fire (state/fires.ts). Demo ignitions and demo instrument stations are not communities-at-risk inputs. */
 function liveHotspots(): Hotspot[] {
-  return app.get().hotspots.filter((h) => h.agency !== "SIMULATION");
+  return fireHotspotsOf(app.get()).filter((h) => h.agency !== "SIMULATION");
 }
 
 function hotspotsForFires(): Hotspot[] {

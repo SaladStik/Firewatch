@@ -1,6 +1,7 @@
 /**
  * Forecast day picker. Community risk chips stay out of the way on small/medium screens.
  */
+import { fireHotspotsOf } from "../state/fires";
 import { useMemo } from "react";
 import { communityThreats } from "../data/communityRisk";
 import { FORECAST_DAYS } from "../data/openMeteo";
@@ -19,7 +20,8 @@ export function ForecastBar({ engine }: { engine: Engine | null }) {
   const status = useStore(app, (s) => s.dataStatus);
   const places = useStore(app, (s) => s.places);
   const sim = useStore(app, (s) => s.simulation);
-  const hotspots = useStore(app, (s) => s.hotspots);
+  // Heat that counts as fire (likely farm burns left out, reported fires added): state/fires.ts.
+  const hotspots = useStore(app, fireHotspotsOf);
   const perimeters = useStore(app, (s) => s.perimeters);
   const spread = useStore(app, (s) => s.spread);
   const growth = useStore(app, (s) => s.fireGrowth);

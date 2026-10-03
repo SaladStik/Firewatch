@@ -18,6 +18,7 @@ import { dispatch } from "../dispatch/store";
 import type { Engine } from "../engine";
 import { app, focusIndices } from "../state/app";
 import { DATA_TOPICS, DISPATCH_ACTIONS } from "./topics";
+import { fireHotspotsOf } from "../state/fires";
 
 export { DATA_TOPICS, DISPATCH_ACTIONS };
 
@@ -35,7 +36,11 @@ function findFire(id: string): { s: Scored; rank: number } | null {
   const plan = dispatch.get().plan;
   if (!plan || !id) return null;
   const q = id.toLowerCase();
-  const i = plan.ranked.findIndex((s) => s.fire.id.toLowerCase() === q || label(s).toLowerCase().includes(q));
+  // Our short agency number ("WB16"), the national id list_fires gives ("2026_PC_2026WB16"), or the label.
+  const i = plan.ranked.findIndex((s) => {
+    const id = s.fire.id.toLowerCase();
+    return id === q || (id.length >= 3 && q.endsWith(id)) || label(s).toLowerCase().includes(q);
+  });
   return i >= 0 ? { s: plan.ranked[i], rank: i + 1 } : null;
 }
 
@@ -115,7 +120,8 @@ export async function askData(engine: Engine, p: P): Promise<unknown> {
       if (placeName) { const pl = s.places.find((x) => x.name.toLowerCase() === placeName.toLowerCase()); if (pl) { lat = pl.lat; lng = pl.lng; what = pl.name; } }
       if (lat === undefined || lng === undefined) return { error: "Give a fire_id or a place (or select a hex)." };
       const regions = s.regions.filter((_, i) => focusIndices().includes(i));
-      const hot = s.simulation ? [...s.hotspots, ...regions.flatMap((r) => simulatedHotspots(r.demoSites))] : s.hotspots;
+      const fires = fireHotspotsOf(s);
+      const hot = s.simulation ? [...fires, ...regions.flatMap((r) => simulatedHotspots(r.demoSites))] : fires;
       const r = valuesAtRisk({ lat, lng, assets: assetsForRegions(regions.map((x) => x.id)), hotspots: hot, perimeters: s.perimeters, weather: s.weather, day: s.forecastDay, spread: s.spread, growth: s.fireGrowth });
       return { around: what, fire: r.focus.label, assets: r.items.slice(0, 10).map((v) => ({ name: v.asset.name, kind: v.asset.kind, km: r1(v.km), direction: v.dir, reason: v.reason })) };
     }
