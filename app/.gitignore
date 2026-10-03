@@ -29,3 +29,6 @@ __pycache__/
 
 # Local secrets and ids (see .env.example)
 .env
+
+# Databricks CLI sync state
+.databricks/

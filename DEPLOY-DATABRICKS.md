@@ -44,10 +44,17 @@ unzip -oj /tmp/dbx.zip databricks -d ~/.local/bin && chmod +x ~/.local/bin/datab
 databricks --version
 ```
 
-Then authenticate once, which opens a browser:
+Then authenticate once, which opens a browser. Quote the host if it has a `?` in it:
 
 ```bash
-databricks auth login --host https://<your-workspace-host>
+databricks auth login --host "https://<your-workspace-host>?o=<workspace-id>"
+```
+
+It saves a profile named after the workspace (e.g. `dbc-16e256ad-ebf8`), **not** `DEFAULT`, so
+pass that name to the deploy script or the CLI may not find the credentials:
+
+```bash
+PROFILE=dbc-16e256ad-ebf8 npm run deploy:databricks
 ```
 
 ## 1. What is already set up
@@ -69,7 +76,7 @@ Nothing in the server needs editing — these are in the repo:
 
 ```bash
 cd app
-npm run deploy:databricks          # or: APP=another-name npm run deploy:databricks
+PROFILE=<your-profile> npm run deploy:databricks     # APP=another-name to rename it
 ```
 
 It uploads `server/` and the handful of files the server imports from `src/`, leaving out
@@ -138,12 +145,17 @@ nothing to gain from rebuilding remotely.
 
 ```bash
 cd app
-VITE_DATA_SERVER=same-origin npm run build
-npx wrangler pages deploy dist --project-name firewatch
+npm run deploy:pages               # PROJECT=another-name to rename it
 ```
 
-`same-origin` is what makes the page call its own `/api`, which is the function above.
-Subsequent deploys only upload files whose hashes changed, so the first one is the slow one.
+That builds with `VITE_DATA_SERVER=same-origin` — which is what makes the page call its own
+`/api` instead of the sources directly — checks the build actually came out that way, and
+uploads `dist` with wrangler. Subsequent deploys only send files whose hashes changed, so the
+first one is the slow one.
+
+The check is worth knowing about: without `VITE_DATA_SERVER` the data-server branch is tree-shaken
+out of the bundle entirely, so the script greps for one of its paths rather than for the string
+`same-origin`, which is in the bundle either way and would pass on a wrong build.
 
 If you would rather connect the git repository instead, the settings are: root directory `app`,
 build command `npm run build`, output directory `dist`, and environment variables
@@ -157,8 +169,8 @@ In **Pages → Settings → Variables and Secrets**, for the production environm
 
 | Name | Value | Secret? |
 |---|---|---|
-| `DATABRICKS_HOST` | `https://dbc-….cloud.databricks.com` | no |
-| `DATABRICKS_APP_URL` | `https://<app>-<id>.<region>.databricksapps.com` | no |
+| `DATABRICKS_HOST` | the workspace, e.g. `https://dbc-16e256ad-ebf8.cloud.databricks.com` | no |
+| `DATABRICKS_APP_URL` | the app, e.g. `https://firewatch-data-7474655220625705.aws.databricksapps.com` | no |
 | `DATABRICKS_CLIENT_ID` | the service principal's id | no |
 | `DATABRICKS_CLIENT_SECRET` | the service principal's secret | **yes** |
 
