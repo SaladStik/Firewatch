@@ -46,7 +46,8 @@ What he can do:
 - **Drive the map:** fly to places and fires, set the forecast day, toggle layers, turn the demo scenario on or off.
 - **Proactive alerts:** a new fire, a town entering a projected path, or extreme danger tomorrow. He flies there and says so (`src/firefly/monitor.ts`).
 - **Crew allocation:** "I have 3 crews, where?" ranks fires by threat to communities and growth, with reasons.
-- **Mood:** alert (red lantern) when a town is in a projected path, worried before an extreme day, happy when it's calm.
+- **Mood:** alert (red lantern) when a town is in a projected path, worried before an extreme day, curious when a town is listed, and idle when it's calm — idle is also where he starts.
+- **Look:** `src/firefly.config.ts`, pasted out of the preview page's "copy config" (`/firefly.html`). The mascot module keeps its own default; this is the one the map applies.
 
 Setup:
 1. Create an agent in the ElevenLabs dashboard from [`src/firefly/AGENT.md`](src/firefly/AGENT.md): first message, system prompt, and the 11 client tools (names and parameters must match `tools.ts`).

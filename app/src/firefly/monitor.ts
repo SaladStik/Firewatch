@@ -51,5 +51,5 @@ export function situationMood(w: Watch): MoodName {
   if (w.threatened.some((t) => inPath(t.reason))) return "alert";
   if (w.extremeTomorrow.length) return "worried";
   if (w.threatened.length) return "curious";
-  return "happy";
+  return "idle";
 }

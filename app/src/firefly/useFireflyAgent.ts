@@ -54,7 +54,7 @@ export function useFireflyAgent(engine: Engine | null) {
   const [muted, setMuted] = useState(true);
   const toolsRef = useRef<ReturnType<typeof makeTools> | null>(null);
   /** Ambient mood from the last situation check; restored after each reply. */
-  const moodRef = useRef<MoodName>("happy");
+  const moodRef = useRef<MoodName>("idle");
   /** Messages typed before the session finished connecting; sent on connect. */
   const queue = useRef<string[]>([]);
   /** Last typed message, so its transcript echo isn't shown twice. */
