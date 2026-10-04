@@ -34,18 +34,58 @@ if ! "${DBX[@]}" apps get "$APP" >/dev/null 2>&1; then
   "${DBX[@]}" apps create "$APP" --description "FIRE//WATCH data server"
 fi
 
-# The server needs server/ and the handful of files it imports from src/. public/ is ~900 MB of
-# baked map data the API never touches, and node_modules/dist are rebuilt on the other side.
+# Free Edition stops an app's compute a day after it starts ("stopped due to workspace or
+# account status"), and `apps deploy` refuses to run against a stopped app. Start it and wait.
+state() { "${DBX[@]}" apps get "$APP" -o json 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("compute_status") or {}).get("state","?"), ((d.get("active_deployment") or {}).get("status") or {}).get("state","NONE"))' 2>/dev/null; }
+read -r compute deploy_state <<<"$(state)"
+if [ "$compute" != "ACTIVE" ]; then
+  echo "Compute is $compute — starting the app..."
+  "${DBX[@]}" apps start "$APP" >/dev/null 2>&1 || true
+fi
+# `apps start` deploys the previously synced source itself, and a second deploy on top of a
+# pending one is rejected, so wait for whatever is in flight to finish.
+for _ in $(seq 1 80); do
+  read -r compute deploy_state <<<"$(state)"
+  [ "$compute" = "ACTIVE" ] && { [ "$deploy_state" = "SUCCEEDED" ] || [ "$deploy_state" = "FAILED" ] || [ "$deploy_state" = "NONE" ]; } && break
+  sleep 15
+done
+echo "Compute $compute, last deployment $deploy_state."
+
+# Stage exactly what the server needs, rather than uploading the whole app.
+#
+# Databricks runs `npm run build` by itself whenever package.json has a build script, and that
+# build has no business running here: this app serves the API, the website is on Cloudflare
+# Pages. It also cannot succeed — src/ui/InstrumentData.tsx imports
+# ../../../wildfire/instruments.json, which lives outside app/ and so is not in the upload, so
+# `tsc -b` fails and takes the whole deployment with it. Staging a package.json with no build
+# script means the step never runs.
+#
+# src/ is copied whole because the server imports a dozen modules from it and tsx only
+# compiles what it actually loads; public/ (~900 MB of baked map data the API never touches),
+# node_modules, dist, tests and the Cloudflare function are all left out.
+# Staged outside the repository on purpose: `databricks sync` honours .gitignore, so a staging
+# directory inside app/ would have to be either committed or silently excluded from its own
+# upload.
+STAGE="$(mktemp -d -t firewatch-deploy)"
+trap 'rm -rf "$STAGE"' EXIT
+echo "Staging the server..."
+cp -R "$HERE/server" "$HERE/src" "$STAGE/"
+rm -rf "$STAGE/server/.cache"
+cp "$HERE/app.yaml" "$HERE/package-lock.json" "$STAGE/"
+python3 - "$HERE/package.json" "$STAGE/package.json" <<'PYEOF'
+import json, sys
+pkg = json.load(open(sys.argv[1]))
+pkg["scripts"] = {k: v for k, v in pkg["scripts"].items() if k == "server"}
+json.dump(pkg, open(sys.argv[2], "w"), indent=2)
+PYEOF
+
+# Clear the target first. `sync` keys its snapshot to the source directory, so pointing it at a
+# new one leaves every file from a previous upload behind — including the old package.json,
+# which is exactly the build script this staging exists to avoid. The folder is ours and is
+# rebuilt on every deploy, so removing it is safe.
 echo "Uploading source..."
-"${DBX[@]}" sync "$HERE" "$TARGET" --full \
-  --exclude "public/**" \
-  --exclude "node_modules/**" \
-  --exclude "dist/**" \
-  --exclude "tests/**" \
-  --exclude "scripts/.cache/**" \
-  --exclude "server/.cache/**" \
-  --exclude "functions/**" \
-  --exclude "wrangler.toml"
+"${DBX[@]}" workspace delete "$TARGET" --recursive >/dev/null 2>&1 || true
+"${DBX[@]}" sync "$STAGE" "$TARGET" --full
 
 echo "Deploying..."
 "${DBX[@]}" apps deploy "$APP" --source-code-path "$TARGET"

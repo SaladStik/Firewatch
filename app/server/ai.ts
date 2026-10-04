@@ -28,6 +28,16 @@ const MAX_TOKENS = 1024;
 /** Per device: enough for a conversation with tool calls, not enough to run up a bill. */
 const PER_MINUTE = 40;
 const TIMEOUT_MS = 45_000;
+/**
+ * Foundation Model endpoints are shared, so the workspace has a queries-per-second ceiling and
+ * answers 429 REQUEST_LIMIT_EXCEEDED over it. One question costs up to MAX_STEPS model calls
+ * (src/firefly/llm.ts), so a couple of questions in quick succession reaches it easily — and
+ * without this, mid-reasoning the whole answer fails. Back off briefly and try again instead.
+ */
+const RETRY_429 = 3;
+const RETRY_BACKOFF_MS = 1200;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let cached: { token: string; expires: number } | null = null;
 async function token(): Promise<string> {
@@ -80,14 +90,23 @@ export async function aiChat(raw: string, ip: string): Promise<{ status: number;
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(URL_, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: ctl.signal,
-    });
-    const text = await res.text();
-    if (!res.ok) return { status: 502, body: { error: `Model ${res.status}: ${text.slice(0, 300)}` } };
+    let res: Response, text: string;
+    for (let attempt = 0; ; attempt++) {
+      res = await fetch(URL_, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: ctl.signal,
+      });
+      text = await res.text();
+      // The shared endpoint's own rate limit, not ours: wait a moment rather than fail the answer.
+      if (res.status !== 429 || attempt >= RETRY_429) break;
+      await sleep(RETRY_BACKOFF_MS * (attempt + 1));
+    }
+    if (!res.ok) {
+      const busy = res.status === 429;
+      return { status: busy ? 503 : 502, body: { error: busy ? "The model is busy (workspace rate limit); try again in a moment." : `Model ${res.status}: ${text.slice(0, 300)}` } };
+    }
     const out = JSON.parse(text) as { choices?: { message?: unknown; finish_reason?: string }[]; usage?: unknown };
     const choice = out.choices?.[0];
     if (!choice?.message) return { status: 502, body: { error: "The model returned no message." } };
