@@ -105,6 +105,7 @@ export class HexWorld {
    */
   update(targetX: number, targetZ: number, dist: number, camera?: Camera) {
     this.frame++;
+    this.lastTarget = [targetX, targetZ];
     if (this.hold) return;
     this.buildArrivals();
     this.switchLevel(dist);
@@ -444,13 +445,18 @@ export class HexWorld {
    */
   async refreshStatus() {
     this.staleStatus.clear();
-    const jobs: Promise<void>[] = [];
+    const shown: ChunkMesh[] = [];
     for (const st of this.levels) for (const cm of st.chunks.values()) {
-      if (cm.group.visible) jobs.push(this.restatus(cm));
+      if (cm.group.visible) shown.push(cm);
       else this.staleStatus.add(cm);
     }
-    await Promise.all(jobs);
+    // Nearest the middle of the screen first: the colour fills in from where you're looking.
+    const [tx, tz] = this.lastTarget, mid = (cm: ChunkMesh) => Math.hypot(cm.centre.x - tx, cm.centre.z - tz);
+    shown.sort((a, b) => mid(a) - mid(b));
+    await Promise.all(shown.map((cm) => this.restatus(cm)));
   }
+
+  private lastTarget: [number, number] = [0, 0];
 
   /** Cached chunks whose status predates the current hazards. */
   private staleStatus = new Set<ChunkMesh>();
@@ -459,7 +465,7 @@ export class HexWorld {
   private restatus(cm: ChunkMesh): Promise<void> {
     this.staleStatus.delete(cm);
     this.restatusInFlight++;
-    return this.client.restatus(cm.data).then((res) => {
+    return this.client.restatusFast(cm.data).then((res) => {
       if (!res || res.status.length !== cm.data.count || cm.disposed) return;
       cm.data.status.set(res.status);
       cm.data.risk.set(res.risk);

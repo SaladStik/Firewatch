@@ -261,6 +261,34 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
         hazards = new HazardField(msg.hazards);
         reply(true);
         break;
+      case "restatusFast": {
+        // Only the hazards changed: evaluate them at each built hex and redo the outline masks
+        // between neighbours in this chunk (a neighbour in another chunk keeps its old bit).
+        const size = GRID.levels[msg.level].size, n = msg.x.length;
+        const status = new Uint8Array(n), risk = new Float32Array(n), edges = new Uint8Array(n), key = new Int32Array(n);
+        const at = new Map<number, number>();
+        for (let i = 0; i < n; i++) {
+          const land = msg.land[i] as LandClass;
+          const hz = land === LandClass.None ? { status: 0 as NodeStatus, risk: 0 } : hazards.evaluate(msg.x[i], msg.z[i], land, size);
+          status[i] = hz.status;
+          risk[i] = hz.risk;
+          key[i] = msg.region[i] * 1000 + familyId(land) * 8 + statusGroup(hz.status);
+          at.set(msg.q[i] * 100_003 + msg.r[i], i);
+        }
+        for (let i = 0; i < n; i++) {
+          let mask = 0;
+          for (let k = 0; k < 6; k++) {
+            const ang = (Math.PI / 3) * k;
+            const h = worldToHex(msg.x[i] + Math.cos(ang) * SQRT3 * size, msg.z[i] + Math.sin(ang) * SQRT3 * size, size);
+            const j = at.get(h.q * 100_003 + h.r);
+            if (j === undefined) mask |= msg.edges[i] & (1 << k);
+            else if (key[j] !== key[i]) mask |= 1 << k;
+          }
+          edges[i] = mask;
+        }
+        reply({ status, risk, edges }, [status.buffer, risk.buffer, edges.buffer]);
+        break;
+      }
       case "restatus": {
         // Deterministic rebuild → same cell order; statuses AND edge masks refresh together.
         const c = await buildChunk(msg.level, msg.cx, msg.cz, false);

@@ -10,7 +10,7 @@ import { loadFireHistory, loadHotspots, loadPerimeters, loadReportedFires, loadS
 import { growthCalibration, type FireGrowth, type FireHistory } from "./data/fireHistory";
 import { fireSources, growthSources, spreadSources } from "./data/fireSpread";
 import { fireHotspots } from "./data/firePoints";
-import { growthCellSize } from "./world/fireGrowth";
+import { growthCellSize, type GrowthField } from "./world/fireGrowth";
 import { buildSnapshot, isPerimeterActive, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
 import { caseHotspots, initDispatch, loadCases } from "./dispatch/controller";
 import { FORECAST_DAYS, weatherAt, type WeatherGrid } from "./data/openMeteo";
@@ -331,7 +331,16 @@ export class Engine {
         ...fireSources(hotspots.filter((h) => h.agency === "SIMULATION"), [], Date.now()),
       ];
       const src = growthSources(fires, s.weather, s.forecastDay, weatherBoost, (d) => storms[d] ?? []);
-      if (src.length) spread = await this.client.growth(src, s.forecastDay, growthCellSize(src, s.forecastDay));
+      if (src.length) {
+        // Same fires, weather and day → same projection: kept, so going back and forth is instant.
+        const size = growthCellSize(src, s.forecastDay), key = JSON.stringify([src, s.forecastDay, size]);
+        spread = this.growthCache.get(key) ?? null;
+        if (!spread) {
+          spread = await this.client.growth(src, s.forecastDay, size);
+          this.growthCache.set(key, spread);
+          if (this.growthCache.size > 24) this.growthCache.delete(this.growthCache.keys().next().value as string);
+        }
+      }
     }
     app.set({ spread, fireGrowth: growth });
     this.rainBlobs = rain;
@@ -420,6 +429,8 @@ export class Engine {
   }
 
   private rainBlobs: RainBlob[] = [];
+  /** Projections already worked out, by their exact inputs (pushHazards). */
+  private growthCache = new Map<string, GrowthField>();
 
   /**
    * A storm placed by a script (the pitch page) instead of the demo scenario's: over a point from

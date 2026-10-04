@@ -240,6 +240,18 @@ export async function prepare(e: Engine) {
   pitch.set({ prep: "Waiting for every province's weather" });
   await weatherAll;
   snow ??= findSnow();
+  // Every projection the story shows, worked out now (the engine keeps them): the replay, days
+  // 1–3, the storm, the snow's day. On stage they come straight from memory.
+  pitch.set({ prep: "Running the fire projections" });
+  const fx = { sim: true, layers: { spread: true, beacons: true } } as const;
+  await world(e, fx);
+  for (const day of [1, 2, 3]) await world(e, { ...fx, day });
+  if (fire) {
+    const storm = fireStorm(fire);
+    await world(e, { ...fx, layers: { ...fx.layers, rain: true }, day: 3, storm });
+    if (snow) await world(e, { ...fx, layers: { ...fx.layers, rain: true }, day: snow.day, storm });
+  }
+  await world(e, {});
   STEPS.forEach((_, i) => prewarmStep(e, i));
   const total = Math.max(1, e.scene.world.busy);
   for (let i = 0; i < 900 && e.scene.world.busy > 0; i++) {
@@ -439,7 +451,7 @@ export const STEPS: Step[] = [
       e.scene.setOrbit(0.7);
       await wait(900);
       // The storm settles over the fire from tomorrow: day 3's projection is rescored with it.
-      await world(e, { sim: true, layers: { spread: true, beacons: true, rain: true }, day: 3, storm: { lat: fire.fire.lat, lng: fire.fire.lng, fromDay: 1, rKm: 70 } });
+      await world(e, { sim: true, layers: { spread: true, beacons: true, rain: true }, day: 3, storm: fireStorm(fire) });
     },
   },
   {
@@ -516,6 +528,9 @@ export const STEPS: Step[] = [
     },
   },
 ];
+
+/** The rain the story brings over the fire (the same object every time, so its projection is cached). */
+const fireStorm = (f: Scored) => ({ lat: f.fire.lat, lng: f.fire.lng, fromDay: 1, rKm: 70 });
 
 /** Send crews and aircraft to the top fires (the aircraft layer flies their sorties). */
 function sendTopFires() {

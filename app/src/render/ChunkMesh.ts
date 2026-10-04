@@ -91,6 +91,8 @@ export class ChunkMesh {
   private hidden: Uint8Array;
   /** The regions this chunk's hexes belong to (to skip a chunk that's all hidden). */
   readonly regions: number[];
+  /** Its middle, in world km. */
+  readonly centre: { x: number; z: number };
   /** Its colours are out of date (restyled when next shown, see HexWorld's restyle queue). */
   styleDirty = false;
   disposed = false;
@@ -160,6 +162,8 @@ export class ChunkMesh {
     if (data.buildings.length) this.buildBuildings(mats.building, g.boundingSphere, born);
     this.hidden = new Uint8Array(data.count);
     this.regions = [...new Set(data.region)];
+    const cb = chunkWorldBounds(data.cx, data.cz, GRID.chunkCells, GRID.levels[data.level].size);
+    this.centre = { x: (cb.minX + cb.maxX) / 2, z: (cb.minZ + cb.maxZ) / 2 };
     this.restyle();
     // A chunk never moves: compute its matrices once and skip it in the scene's per-frame matrix
     // pass (three walks every child, hidden or not, and a big cache made that a real cost).

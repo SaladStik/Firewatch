@@ -89,6 +89,8 @@ export type WorkerRequest =
   | { id: number; type: "addRegion"; url: string; index: number; landmarks: Landmark[] }
   | { id: number; type: "chunk"; level: number; cx: number; cz: number }
   | { id: number; type: "restatus"; level: number; cx: number; cz: number }
+  /** New hazards for hexes already built: their centres, land and region (no terrain rebuild). */
+  | { id: number; type: "restatusFast"; level: number; q: Int32Array; r: Int32Array; x: Float32Array; z: Float32Array; land: Uint8Array; region: Uint8Array; edges: Uint8Array }
   | { id: number; type: "hazards"; hazards: HazardSnapshot }
   | { id: number; type: "growth"; sources: GrowthSource[]; horizon: number; size: number }
   | { id: number; type: "sample"; x: number; z: number }
