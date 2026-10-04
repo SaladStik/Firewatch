@@ -1,0 +1,190 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{microtype}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{ember}{HTML}{C2410C}
+\definecolor{ink}{HTML}{1C1917}
+\definecolor{ash}{HTML}{57534E}
+
+\hypersetup{
+  pdftitle={FIRE//WATCH: An Autonomous Wildfire Intelligence System},
+  pdfauthor={FIRE//WATCH},
+  colorlinks=true,
+  linkcolor=ember,
+  urlcolor=ember,
+  citecolor=ember
+}
+
+\titleformat{\section}{\Large\bfseries\color{ink}}{\thesection}{0.75em}{}
+\titleformat{\subsection}{\large\bfseries\color{ink}}{\thesubsection}{0.65em}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.55em}
+\titlespacing*{\subsection}{0pt}{1.05em}{0.35em}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{ash}FIRE//WATCH}
+\fancyhead[R]{\small\color{ash}Autonomous wildfire intelligence}
+\fancyfoot[C]{\small\color{ash}\thepage}
+\renewcommand{\headrulewidth}{0.3pt}
+
+\setlist[itemize]{leftmargin=1.25em,itemsep=0.28em,topsep=0.35em}
+\setlist[enumerate]{leftmargin=1.4em,itemsep=0.28em,topsep=0.35em}
+
+\newcommand{\fw}{\textsc{Fire}//\textsc{Watch}}
+
+\begin{document}
+
+\begin{center}
+{\color{ember}\Large\bfseries FIRE//WATCH}\\[0.45em]
+{\LARGE\bfseries An Autonomous Wildfire Intelligence System}\\[0.7em]
+{\color{ash}\large Canada, on a living hex map, watched without being asked}\\[1.15em]
+{\color{ash}\normalsize Open data \textperiodcentered\ Canadian fire science \textperiodcentered\ A voice that acts}
+\end{center}
+
+\vspace{0.4em}
+\noindent\rule{\textwidth}{0.4pt}
+
+\begin{abstract}
+\noindent
+\fw{} is a wildfire risk system that covers every province and territory of Canada and keeps its own watch. It does not wait for an analyst to refresh a spreadsheet. Satellite detections, fire perimeters, official moisture codes, and a seven-day weather forecast arrive on their own schedule, are cached once for every viewer, and are turned, cell by cell, into the Canadian Fire Weather Index and a fuel-aware projection of where each fire could travel. A small agent named Firefly lives on the map. It briefs the room, flies the camera to the place it is talking about, ranks fires for the crews on hand, and speaks up when a new fire appears, a town enters a projected path, or tomorrow looks extreme. Beside the national picture, a field station polls its own sensors and folds the reading into the same family of fire-weather mathematics. The result is decision support that stays current while people are looking at something else. It is a scenario built from open data and published fire science, not an official forecast.
+\end{abstract}
+
+\section{A country that updates itself}
+
+A fire lookout used to be a person in a tower, scanning a horizon that did not scroll. \fw{} keeps the job and changes the instrument. The map is a three-dimensional hex grid of all thirteen provinces and territories. Alberta is ready first; the rest of the country streams in behind it and comes forward the moment it is brought into focus. Forests, tundra, ice, towns, rivers, roads, and rail are not stickers laid on a basemap. They are the hexes themselves, so a fire, a highway, and a lake are the same kind of object and can be inspected the same way.
+
+What makes the system autonomous is that the picture does not freeze when the page loads. Live sources are fetched again on a clock. Danger is recomputed from yesterday's moisture, not from a blank slate. Each active fire is measured against its own recent growth before anyone is told how far it might go. Communities and highway corridors are listed only when there is a concrete reason, and that list is rebuilt for whichever forecast day is on the slider. Firefly does not wait to be asked about every change. When the watch detects one, he flies there and says so.
+
+The system is frank about its standing. Projected spread is a scenario. Simulated ignitions, when the demo is on, are labelled as simulation. For an emergency, the right authorities remain the provincial wildfire agencies and 911.
+
+\section{The watch that never has to be started}
+
+Autonomy here is a set of loops, each with a job and a cadence, none of which requires a person to press refresh.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}llp{7.4cm}@{}}
+\toprule
+\textbf{Loop} & \textbf{Cadence} & \textbf{What it does on its own} \\
+\midrule
+Satellite fires & 10 minutes & Hotspots and perimeters for all of Canada \\
+Weather and stations & Hourly & FWI inputs, wind, rain, official moisture codes \\
+Fire history & Hourly & Each active fire's observed growth, then its calibration \\
+Field station & Continuous & Local temperature and humidity, scored as they arrive \\
+Forecast day & On selection & Danger, spread, towns, and corridors recomputed \\
+Firefly monitor & Live & New fires, threatened towns, extreme days announced \\
+Map streaming & Every frame & Workers build the view ahead of the camera \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A shared data server can sit in front of those sources. It fetches each one once, keeps the last good copy if a source fails, waits before retrying, and serves every visitor the same picture. Responses carry an identifier so a device that already has the latest copy receives nothing new. Stale data is served at once while a single background refresh runs. Simultaneous visitors share one upstream request. However many screens are open, the sources see the same traffic. Provinces named for prewarming stay warm before anyone asks for them. Alberta is the default.
+
+\section{Danger that carries yesterday forward}
+
+Fire danger is the Canadian Forest Fire Weather Index, the national standard used by the Canadian Wildland Fire Information System and by provincial agencies. For every weather cell the system walks day by day through two weeks of history, today, and seven forecast days. Temperature, humidity, and wind are taken at noon local time, the standard observation hour, together with the day's rain.
+
+Three moisture codes remember the season so the model does not wake up amnesiac each morning. The Fine Fuel Moisture Code tracks litter that dries within hours. The Duff Moisture Code tracks the loose organic layer, on a lag of about two weeks. The Drought Code tracks deep organic layers, on a lag of about seven weeks, and is the seasonal drought signal. From those codes come the Initial Spread Index, the Buildup Index, and the Fire Weather Index itself, rated in the familiar five classes from Low through Extreme.
+
+The system prefers official numbers to its own spin-up, and it chooses them without being told which cell deserves which source.
+
+\begin{enumerate}
+  \item If a fire-weather station lies within 400 kilometres, today's moisture codes are an inverse-distance blend of the four nearest stations. The closest station dominates.
+  \item If there is no station but there are satellite hotspots within that same reach, the hotspot codes are used with care. Fires burn where fuels are driest, so those codes run dry for the country around them. Fine fuel then comes from local weather, and the slower codes are averaged with the system's own spin-up.
+  \item If nothing official is within reach, the cell starts from the standard startup values. Fine fuel settles within days. The deep codes stay low, because two weeks cannot rebuild a season of drying. The system knows this and does not pretend otherwise.
+\end{enumerate}
+
+Rain enters through the Index's own equations. Fine fuel needs more than half a millimetre before it changes, duff more than 1.5 millimetres, and the drought code more than 2.8. There is no separate rain fudge factor. The Fosberg index is still computed, because that is what the field station reports, and it is shown beside the Canadian rating for comparison. It does not set the danger class.
+
+\section{A fire that is allowed to disagree with the model}
+
+Spread uses the Canadian Fire Behaviour Prediction System. Each land-cover class becomes a fuel type: boreal mixedwood for forest, deciduous for shrub, standing or matted grass for grassland, cropland, wetland, and tundra, a reduced deciduous type for settlements, and nothing at all for water, ice, rock, and rivers. The head rate of spread follows the published curves. Wind stretches the fire into an ellipse. Slope pushes it uphill. Grass curing follows the season.
+
+Growth is minimum travel time on the hex grid, the same family of method used by FlamMap. From every burning hex, fire steps into its neighbours. The time to cross is distance divided by the rate of spread in that direction, using the neighbour's fuel and that day's weather. Whatever is reached inside the day's burning window burns that day. The next morning starts from the new edge. Fire moves through fuel in every direction, faster downwind and uphill, and it stops at a lake.
+
+Models are general. Fires are not. For every active perimeter in a focused province, the system pulls the satellite archive since the fire began, turns new detections into daily burned area, and runs the same behaviour model on the weather that actually occurred. The ratio of observed growth to modelled growth becomes a calibration factor, held between a crawl and a run, and blended back toward one when the history is short. A fire that has been sitting still is not drawn as a gallop. A fire that has been running is not drawn as a smoulder. New hotspot clusters, which have no history yet, begin uncalibrated and earn a factor as days accumulate.
+
+In a quiet stretch this matters more than the equations. Uncalibrated, a model can promise kilometres of growth on a day when the satellite record shows almost none. After calibration, the projection barely moves, which is what the fire is doing.
+
+\section{Towns and highways, named only for a reason}
+
+A community appears on the forecast bar only when the system can say why. A fire is nearby, inside a wind-shaped reach that stretches downwind and shrinks upwind, and that reach itself scales with how fast that fire has actually been growing. Or the growth model reaches the town by the selected day. Or the fire weather alone is Very High or worse. The reason is written beside the name: a fire eighteen kilometres to the west is a different fact from a hot, dry afternoon. On a quiet day the bar says the country is quiet. It does not invent a list to fill the space.
+
+Highways are watched the same way, with one extra rule. Fire weather alone never lists a road. A town is exposed where it stands. A road becomes a problem when something is burning beside it, or when the projected path crosses it. Alberta's own traffic counts then decide how much that proximity matters. Annual and summer averages, the commercial share, and the year-on-year trend are measurements, not guesses. The province does not publish which stretch of a highway each count belongs to, so the measured average is spread along the route by the population nearby, then clamped inside the highway's own measured range. A corridor is reported once, at the point where a fire comes closest, and freight is flagged when commercial traffic is high, because trucks are slower to clear and harder to turn around.
+
+When the demo scenario is on, the traffic side completes a chain the weather side has already started. A long weekend lifts demand. Threatened towns put people on the road. Fire closes the stretches it has reached. Congestion rises slowly and then fails quickly, the way traffic does. None of this changes how the fire burns. It changes what the fire costs.
+
+\section{Firefly, who acts as well as speaks}
+
+Firefly is the mascot and the agent. He is a small light on the map, and he is also a voice and a text interface whose facts come only from tools that read the same state the map is showing. He does not invent a hectare, a town, or a wind speed. If a tool returns nothing, he says so.
+
+Left to answer questions, he can already do the work of a watch desk.
+
+\begin{itemize}
+  \item \textbf{Situation briefing.} What is burning, which hotspots arrived in the last day, which fires are largest, which communities are threatened, and which forecast day looks worst.
+  \item \textbf{Place check.} One community across today and the next week: danger, temperature, humidity, wind, rain, days since rain, the nearest fire, when a projection might arrive, and the best and worst day in the window.
+  \item \textbf{Fire dossier.} Size, recent growth, and which communities the projection reaches, and on which day. Asking for a future day moves the map there first.
+  \item \textbf{Explanation.} Why a town or the selected hex is rated as it is: fuel, the components of the Fire Weather Index, a nearby fire, a projected path.
+  \item \textbf{Crew allocation.} Given a number of crews, he ranks fires by threat to communities and by growth, gives a reason for each pick, and can flag them for patrol.
+  \item \textbf{Map control.} He flies the camera to a place or a fire, sets the forecast day, shows or hides layers, focuses provinces, and turns the labelled demo on or off when asked.
+\end{itemize}
+
+The autonomous part is that he does not only answer. A monitor compares the live situation with the one he last saw. A new fire, a town entering a projected path, or extreme danger on the way is handed to him as an alert. If a voice session is open and he is not already speaking, he announces it in a sentence or two, flies to the location, and asks whether the room wants the detail. If nobody is listening, the alert still appears in his bubble. His lantern follows the same watch: red when a town lies in a projected path, uneasy before an extreme day, curious when a town is merely listed, idle when the country is calm. Idle is also where he starts. He does not perform concern in order to seem alive.
+
+He is bound by the same honesty as the map. He says ``projected'' and ``could reach.'' He does not say ``will.'' He will not act on an offer until someone says yes. If the room goes quiet, he waits. For anything that is an emergency, he points to official alerts and to 911.
+
+\section{A station that keeps its own hours}
+
+The national map is one watch. A local instrument is another. The field service polls an Arduino on a loop, over USB or over the network, and at the same time asks Open-Meteo for the wind the sensor does not carry. When a reading arrives it is scored at once: temperature and humidity become a Fosberg assessment, with a note of which inputs were missing and whether the reading is still fresh. If the sensor is offline, unplugged, or never configured, the loop does not crash the watch. It records the failure and tries again. Supplemental weather is fetched only when it is due, at the station's own latitude and longitude. The station does not need a person to sit with it. It needs power, a port, and the loop.
+
+That local index is the reason Fosberg still appears on the national map. The tower and the instrument should be able to speak about the same afternoon.
+
+\section{A map that builds itself in front of the camera}
+
+The country is too large to draw at street scale all at once, so the renderer is autonomous about what it bothers to build. Chunks are assembled off the main thread by a pool of workers, one for each spare core, and they arrive as typed arrays. The loaded area is pushed forward along the direction of view. Off-screen chunks are never built. The nearest are built first. Near the camera the hexes are fine; toward the horizon they step down through coarser rings, so the distance is visible without paying for millions of tiny cells. While a fine chunk is still on its way, the coarse chunk under it stands in, and the ground does not open a hole.
+
+Street-level roads, streams, and rail load by one-degree tiles, and only when a street-zoom chunk needs them. Startup carries buildings, places, and the wide rivers. Labels follow the camera as well: on Auto, major cities show from far away and smaller towns appear as the view comes in. Weather is fetched only for provinces in focus, so an idle territory does not spend the day's quota. Unfocused land keeps its fires and its fuel. It is simply drawn quieter, until a click brings it forward.
+
+The eye is reserved for what matters. Bloom is for active fire, perimeters, and high or extreme risk. Ordinary forest does not glow. A burning block still turns with its hex, including the towers that stand on it.
+
+\section{A forecast that re-runs, and a storm that drifts}
+
+Moving the forecast bar does not tint today's map a different colour. It re-runs the day. Moisture codes advance. Danger classes move. The growth model steps forward, one burning window at a time, up to the day selected. Communities and corridors are listed again, for that day, with that day's wind. The fires themselves stay where the satellites last saw them. The violet hexes are where they could be, not where they are.
+
+For a room in which nothing is burning, a demo scenario can be switched on, and once it is on it moves without further direction. Simulated ignitions are marked as such. A heatwave lifts danger and spread. A rainstorm seventy-five kilometres across starts over a demo fire, drifts downwind with the real wind at about fifty-five kilometres a day, and weakens as it goes. Under it, risk is damped and any fire it covers slows. The same wind drives the animated streams on the map, and the same precipitation falls as rain or, at freezing, as snow. The storm is a scenario. Its motion is not a slide someone has to advance.
+
+\section{What remains a person's decision}
+
+Autonomy in \fw{} is the work of watching, scoring, projecting, and speaking. It is not the work of ordering an evacuation or of certifying a forecast. Crews are ranked, not dispatched. Patrols are flagged, not staffed. Closures in the demo are a picture of cost, not a notice to drivers. The calibration factor is a correction drawn from satellites, not a claim that tomorrow will resemble the last five days in every way. Deep moisture far from any station is known to run low. Highway volumes between control sections are a model clamped to measurements, and the typical error is still large enough that the ranking is the product, not a traffic count.
+
+Those limits are part of the system, not a footnote to be hoped away. A watch that updates itself is useful because a person can trust the refresh and still be the one who decides.
+
+\section{Closing}
+
+\fw{} is a fire lookout built out of open data, Canadian fire science, and a set of loops that do not need to be reminded. The country refreshes. The season's dryness is carried forward. Each fire is allowed to correct the model with its own history. Towns and highways are named only when there is a reason. Firefly briefs, flies, ranks, and interrupts. A small station on a desk keeps the same kind of hours. The map builds whatever the camera is about to see, and the forecast, once chosen, recomputes itself.
+
+The horizon is still the horizon. The difference is that it is being watched the whole time.
+
+\vspace{1.6em}
+\noindent{\color{ash}\small
+Elevation from Tilezen and AWS Terrain Tiles.
+Land cover from ESA WorldCover 2021 (CC BY 4.0).
+Map data \copyright\ OpenStreetMap contributors (ODbL).
+Fire data from the Canadian Wildland Fire Information System, Natural Resources Canada (Open Government Licence -- Canada).
+Weather from Open-Meteo (CC BY 4.0).
+Traffic volumes and highway geometry from the Government of Alberta (Open Government Licence -- Alberta).
+Fire Weather Index after Van Wagner (1987).
+Fire behaviour after the Canadian Forest Fire Behaviour Prediction System.
+Growth after Finney's minimum-travel-time method.
+Projected spread is a scenario, not an official forecast.}
+
+\end{document}
