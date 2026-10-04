@@ -55,27 +55,59 @@ async function accessToken(env: Env): Promise<string> {
   return cached.token;
 }
 
-/** Which of the four variables this needs are missing (see the header). */
-function missingVars(env: Env): string[] {
-  const needed: (keyof Env)[] = ["DATABRICKS_APP_URL", "DATABRICKS_HOST", "DATABRICKS_CLIENT_ID", "DATABRICKS_CLIENT_SECRET"];
-  // A token set directly stands in for the host and the service principal (local testing).
-  const have = (k: keyof Env) => typeof env[k] === "string" && (env[k] as string).length > 0;
-  return needed.filter((k) => !have(k) && !(env.DATABRICKS_TOKEN && k !== "DATABRICKS_APP_URL"));
+/**
+ * Read one binding, whichever shape Pages gives it.
+ *
+ * A plain variable, and a secret created with the dashboard's "Encrypt", both arrive as
+ * strings. A Secrets Store binding instead arrives as an object whose value only comes back
+ * from `await .get()` — so treating bindings as strings silently loses exactly the ones that
+ * hold a secret, which looks identical to never having set them.
+ */
+async function readVar(env: Env, key: keyof Env): Promise<string> {
+  const v: unknown = env[key];
+  if (typeof v === "string") return v;
+  if (v && typeof (v as { get?: unknown }).get === "function") {
+    try { return String((await (v as { get(): Promise<string> }).get()) ?? ""); } catch { return ""; }
+  }
+  return "";
+}
+
+/** The four this needs, resolved; `missing` says what was wrong with each one that isn't usable. */
+export async function config(env: Env): Promise<{ vals: Record<string, string>; missing: string[] }> {
+  const needed = ["DATABRICKS_APP_URL", "DATABRICKS_HOST", "DATABRICKS_CLIENT_ID", "DATABRICKS_CLIENT_SECRET"] as const;
+  const vals: Record<string, string> = {};
+  const missing: string[] = [];
+  const token = await readVar(env, "DATABRICKS_TOKEN");
+  for (const k of needed) {
+    vals[k] = await readVar(env, k);
+    if (vals[k]) continue;
+    // A token set directly stands in for the host and the service principal (local testing).
+    if (token && k !== "DATABRICKS_APP_URL") continue;
+    // Say what was actually there: "unset" and "set but unreadable" need different fixes.
+    const raw: unknown = env[k];
+    const shape = raw === undefined ? "not set"
+      : raw === null ? "null"
+      : typeof raw === "string" ? "set but empty"
+      : `bound as ${typeof raw}${typeof (raw as { get?: unknown }).get === "function" ? " (get() returned nothing)" : " (no get(), so unreadable here)"}`;
+    missing.push(`${k}: ${shape}`);
+  }
+  vals.DATABRICKS_TOKEN = token;
+  return { vals, missing };
 }
 
 async function forward(ctx: { request: Request; env: Env }): Promise<Response> {
   // Say which variable is missing. Reading an unset one used to throw, and Cloudflare turned
   // that into a bare "error code: 502" that reads like a platform fault rather than a
   // forgotten setting in Pages → Settings → Variables and Secrets.
-  const missing = missingVars(ctx.env);
+  const { vals, missing } = await config(ctx.env);
   if (missing.length) {
-    return Response.json({ error: `The site is not configured to reach the data server: ${missing.join(", ")} not set on this Pages project.` }, { status: 503 });
+    return Response.json({ error: `The site cannot reach the data server. On this Pages project — ${missing.join("; ")}.` }, { status: 503 });
   }
 
   const url = new URL(ctx.request.url);
   let token: string;
   try {
-    token = await accessToken(ctx.env);
+    token = await accessToken(vals as unknown as Env);
   } catch (e) {
     // The map keeps working without the data server, so say what happened and don't pretend.
     return Response.json({ error: `Data server unreachable: ${String(e)}` }, { status: 502 });
@@ -91,7 +123,7 @@ async function forward(ctx: { request: Request; env: Env }): Promise<Response> {
   const ip = ctx.request.headers.get("cf-connecting-ip");
   if (post && ip) headers.set("X-Forwarded-For", ip);
 
-  const res = await fetch(`${ctx.env.DATABRICKS_APP_URL.replace(/\/+$/, "")}${url.pathname}${url.search}`, {
+  const res = await fetch(`${vals.DATABRICKS_APP_URL.replace(/\/+$/, "")}${url.pathname}${url.search}`, {
     method: post ? "POST" : "GET", headers, ...(post ? { body: await ctx.request.text() } : {}),
   });
 
