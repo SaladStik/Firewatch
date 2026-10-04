@@ -21,8 +21,18 @@ const BUCKET_KM = 40;
 /** Numeric bucket key (this runs for every hex on every restatus; string keys were the hot spot). */
 const bucketKey = (bx: number, bz: number) => bx * 100003 + bz;
 
+/** Grid cell (km) for reported fires and perimeters: each is listed in every cell it reaches. */
+const AREA_KM = 25;
+/** How far beyond a fire's radius the largest hex reaches (evaluate's `reach`: 0.95 × the 22 km L0 hex). */
+const MAX_REACH_KM = 21;
+
 export class HazardField {
   private buckets = new Map<number, HazardSnapshot["hotspots"]>();
+  /** Reported fires and perimeters by grid cell: a hex checks only its own cell's, not Canada's. */
+  private firesAt = new Map<number, HazardSnapshot["reported"]>();
+  private perimsAt = new Map<number, HazardSnapshot["perimeters"]>();
+  /** The weather grid that answered last (neighbouring hexes nearly always share it). */
+  private lastGrid: HazardSnapshot["weather"][number] | null = null;
   constructor(private snap: HazardSnapshot) {
     this.spreadDay = growthLookup(snap.spread);
     for (const h of snap.hotspots) {
@@ -31,7 +41,24 @@ export class HazardField {
       if (!b) this.buckets.set(k, (b = []));
       b.push(h);
     }
+    const index = <T>(map: Map<number, T[]>, item: T, minX: number, maxX: number, minZ: number, maxZ: number) => {
+      for (let bz = Math.floor(minZ / AREA_KM); bz <= Math.floor(maxZ / AREA_KM); bz++) {
+        for (let bx = Math.floor(minX / AREA_KM); bx <= Math.floor(maxX / AREA_KM); bx++) {
+          const k = bucketKey(bx, bz);
+          let b = map.get(k);
+          if (!b) map.set(k, (b = []));
+          b.push(item);
+        }
+      }
+    };
+    for (const f of snap.reported) {
+      const r = f.r + MAX_REACH_KM;
+      index(this.firesAt, f, f.x - r, f.x + r, f.z - r, f.z + r);
+    }
+    for (const p of snap.perimeters) index(this.perimsAt, p, p.minX, p.maxX, p.minZ, p.maxZ);
   }
+
+  private cell(x: number, z: number) { return bucketKey(Math.floor(x / AREA_KM), Math.floor(z / AREA_KM)); }
 
   private forHotspotsNear(x: number, z: number, maxKm: number, fn: (h: HazardSnapshot["hotspots"][number]) => void) {
     const r = Math.ceil(maxKm / BUCKET_KM);
@@ -59,7 +86,8 @@ export class HazardField {
 
   weatherRisk(x: number, z: number): number {
     const { lat, lng } = unproject(x, z);
-    const w = this.snap.weather.find((g) => lat >= g.lat0 && lat <= g.lat0 + (g.nLat - 1) * g.step && lng >= g.lng0 && lng <= g.lng0 + (g.nLng - 1) * g.step);
+    const inside = (g: HazardSnapshot["weather"][number]) => lat >= g.lat0 && lat <= g.lat0 + (g.nLat - 1) * g.step && lng >= g.lng0 && lng <= g.lng0 + (g.nLng - 1) * g.step;
+    const w = this.lastGrid && inside(this.lastGrid) ? this.lastGrid : (this.lastGrid = this.snap.weather.find(inside) ?? null);
     if (!w) return 0.2;
     const fi = Math.min(w.nLng - 1.001, Math.max(0, (lng - w.lng0) / w.step));
     const fj = Math.min(w.nLat - 1.001, Math.max(0, (lat - w.lat0) / w.step));
@@ -69,7 +97,7 @@ export class HazardField {
   }
 
   private inPerimeter(x: number, z: number): 0 | 1 | 2 {
-    for (const p of this.snap.perimeters) {
+    for (const p of this.perimsAt.get(this.cell(x, z)) ?? []) {
       if (x < p.minX || x > p.maxX || z < p.minZ || z > p.maxZ) continue;
       let inside = false;
       for (const ring of p.rings) {
@@ -104,7 +132,7 @@ export class HazardField {
     // A reported fire whose area (or point, if small) touches this hex; the worst stage wins.
     const reach = Math.max(hexSize * 0.95, 0.4);
     let stage = 3;
-    for (const f of this.snap.reported) if (f.stage < stage && Math.hypot(f.x - x, f.z - z) <= f.r + reach) stage = f.stage;
+    for (const f of this.firesAt.get(this.cell(x, z)) ?? []) if (f.stage < stage && Math.hypot(f.x - x, f.z - z) <= f.r + reach) stage = f.stage;
     if (stage === 0) return { status: NodeStatus.Burning, risk: 1 };
     if (stage === 1) return { status: NodeStatus.Perimeter, risk: 0.95 };
     if (stage === 2) return { status: NodeStatus.UnderControl, risk: 0.6 };

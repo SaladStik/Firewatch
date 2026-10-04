@@ -85,6 +85,12 @@ export class WorldClient {
   restatus(c: ChunkData) {
     return this.any<{ status: Uint8Array; risk: Float32Array; edges: Uint8Array } | null>({ type: "restatus", level: c.level, cx: c.cx, cz: c.cz });
   }
+  /** New hazards for a built chunk, from the hexes it already has (much cheaper than restatus). */
+  restatusFast(c: ChunkData) {
+    return this.any<{ status: Uint8Array; risk: Float32Array; edges: Uint8Array }>({
+      type: "restatusFast", level: c.level, q: c.q, r: c.r, x: c.x, z: c.z, land: c.land, region: c.region, edges: c.edges,
+    });
+  }
   /** Run the fuel-aware fire growth model on one worker (it needs the land cover). */
   growth(sources: GrowthSource[], horizon: number, size: number) {
     return this.any<GrowthField>({ type: "growth", sources, horizon, size });

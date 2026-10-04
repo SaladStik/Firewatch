@@ -88,3 +88,31 @@ Server settings (environment variables):
 - `FIREWATCH_PREWARM`: the provinces whose weather is kept fresh (default `alberta`).
 
 To run the data server on Databricks instead, see **[DEPLOY-DATABRICKS.md](DEPLOY-DATABRICKS.md)**.
+
+## The pitch page
+
+A guided three-minute tour of the app on one screen: `/pitch.html`.
+
+1. Start the data server with every province kept warm:
+
+   ```bash
+   # macOS / Linux / Git Bash
+   FIREWATCH_PREWARM=all npm run server
+
+   # Windows PowerShell
+   $env:FIREWATCH_PREWARM="all"; npm run server
+   ```
+
+2. Start the app pointed at it (step 3 above) and open http://localhost:5173/pitch.html.
+3. Wait for the loading bar. It builds every scene ahead, so nothing loads during the talk (about 1–2 minutes).
+4. Press F for fullscreen.
+
+Controls:
+
+| Key | Action |
+|---|---|
+| → / Space / PageDown / click | Next |
+| ← / PageUp / right-click | Back |
+| Home / End | Start / last step |
+| M | Free map (for questions) |
+

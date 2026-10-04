@@ -10,7 +10,7 @@ import { loadFireHistory, loadHotspots, loadPerimeters, loadReportedFires, loadS
 import { growthCalibration, type FireGrowth, type FireHistory } from "./data/fireHistory";
 import { fireSources, growthSources, spreadSources } from "./data/fireSpread";
 import { fireHotspots } from "./data/firePoints";
-import { growthCellSize } from "./world/fireGrowth";
+import { growthCellSize, type GrowthField } from "./world/fireGrowth";
 import { buildSnapshot, isPerimeterActive, SIM_WEATHER_BOOST, simulatedHotspots } from "./data/hazards";
 import { caseHotspots, initDispatch, loadCases } from "./dispatch/controller";
 import { FORECAST_DAYS, weatherAt, type WeatherGrid } from "./data/openMeteo";
@@ -142,6 +142,7 @@ export class Engine {
     app.set({ focus: ids });
     this.scene.setFocus(focusIndices());
     this.pushTraffic(); // corridors are listed per focused region
+    if (this.scene.world.hideUnfocused) { this.pushWind(); this.pushRain(); } // fields follow what's drawn
     if (added) void this.refreshData(); // newly focused region → fetch its weather
   }
 
@@ -210,6 +211,29 @@ export class Engine {
     await this.pushHazards();
     // Each active fire's own growth history, fetched in the background; re-score when it lands.
     void this.refreshFireHistory(perimeters).then((changed) => { if (changed) void this.pushHazards(); });
+  }
+
+  /**
+   * Load the weather of regions not in focus yet (quietly, one at a time), so focusing them later
+   * (the pitch's reveal of all of Canada) needs no fetch. Rescores the map once at the end.
+   */
+  async prefetchWeather(ids: string[]) {
+    const now = Date.now();
+    for (const r of app.get().regions.filter((x) => ids.includes(x.id) && app.get().loaded.includes(x.id))) {
+      if (this.disposed) return;
+      const c = this.weatherCache.get(r.id) ?? readStoredWeather(r.id);
+      if (c && now - c.at < WEATHER_TTL_MS) { this.weatherCache.set(r.id, c); continue; }
+      try {
+        const grid = await loadWeather(r, usingDataServer ? undefined : await this.fwiSeed(app.get().hotspots));
+        const entry = { at: Date.now(), grid };
+        this.weatherCache.set(r.id, entry);
+        storeWeather(r.id, entry);
+      } catch (e) {
+        if (c) this.weatherCache.set(r.id, c);
+        console.warn(`[engine] weather for ${r.name} unavailable`, e);
+      }
+    }
+    app.set({ weather: [...this.weatherCache.values()].map((c) => c.grid) });
   }
 
   private stations: { at: number; list: FwiStation[] } | null = null;
@@ -293,7 +317,7 @@ export class Engine {
     const weatherBoost = s.simulation ? SIM_WEATHER_BOOST : 1;
     // Demo scenario: a rainstorm drifting downwind day by day (one per focused region's demo sites).
     const storms: RainBlob[][] = [];
-    for (let d = 0; d <= s.forecastDay; d++) storms.push(s.simulation ? this.demoStorms(d) : []);
+    for (let d = 0; d <= s.forecastDay; d++) storms.push(s.simulation || this.storyStorm ? this.demoStorms(d) : []);
     const rain = storms[s.forecastDay];
     // Projected spread for every active fire (real, plus simulated ones in the demo scenario).
     // Each fire's own growth history scales how far it's projected to go (data/fireHistory.ts).
@@ -307,7 +331,16 @@ export class Engine {
         ...fireSources(hotspots.filter((h) => h.agency === "SIMULATION"), [], Date.now()),
       ];
       const src = growthSources(fires, s.weather, s.forecastDay, weatherBoost, (d) => storms[d] ?? []);
-      if (src.length) spread = await this.client.growth(src, s.forecastDay, growthCellSize(src, s.forecastDay));
+      if (src.length) {
+        // Same fires, weather and day → same projection: kept, so going back and forth is instant.
+        const size = growthCellSize(src, s.forecastDay), key = JSON.stringify([src, s.forecastDay, size]);
+        spread = this.growthCache.get(key) ?? null;
+        if (!spread) {
+          spread = await this.client.growth(src, s.forecastDay, size);
+          this.growthCache.set(key, spread);
+          if (this.growthCache.size > 24) this.growthCache.delete(this.growthCache.keys().next().value as string);
+        }
+      }
     }
     app.set({ spread, fireGrowth: growth });
     this.rainBlobs = rain;
@@ -321,7 +354,10 @@ export class Engine {
     // One beacon per ~BEACON_CLUSTER_KM cell: beacons are additive, so a dense cluster of
     // hotspots stacked into one blinding glow.
     const cells = new Map<string, { x: number; z: number; simulated: boolean }>();
+    const shown = new Set(focusIndices());
     for (const h of hotspots) {
+      // Regions that aren't drawn (pitch page) show no beacons either.
+      if (this.scene.world.hideUnfocused && h.region != null && !shown.has(h.region)) continue;
       const w = project(h.lat, h.lng);
       const key = `${Math.floor(w.x / BEACON_CLUSTER_KM)},${Math.floor(w.z / BEACON_CLUSTER_KM)}`;
       if (!cells.has(key)) cells.set(key, { x: w.x, z: w.z, simulated: h.agency === "SIMULATION" });
@@ -393,8 +429,27 @@ export class Engine {
   }
 
   private rainBlobs: RainBlob[] = [];
+  /** Projections already worked out, by their exact inputs (pushHazards). */
+  private growthCache = new Map<string, GrowthField>();
+
+  /**
+   * A storm placed by a script (the pitch page) instead of the demo scenario's: over a point from
+   * forecast day `fromDay` on, so a projection can be shown with and without the rain.
+   */
+  private storyStorm: { lat: number; lng: number; fromDay: number; rKm: number } | null = null;
+
+  setStoryStorm(storm: { lat: number; lng: number; fromDay: number; rKm?: number } | null, push = true) {
+    this.storyStorm = storm ? { rKm: 60, ...storm } : null;
+    return push ? this.pushHazards() : Promise.resolve();
+  }
 
   private demoStorms(day: number): RainBlob[] {
+    const st = this.storyStorm;
+    if (st) {
+      if (day < st.fromDay) return [];
+      const w = project(st.lat, st.lng);
+      return [{ x: w.x, z: w.z, r: st.rKm, intensity: 1 }];
+    }
     const s = app.get();
     const sites = s.regions.filter((r) => s.focus.includes(r.id)).map((r) => r.demoSites);
     return demoStorms(sites, s.weather, day);
@@ -404,13 +459,21 @@ export class Engine {
   private pushRain() {
     const s = app.get();
     // Rain drifts and leans with the same wind as the streamlines (even when the wind layer is hidden).
-    this.scene.setRain(s.layers.rain ? new RainField(s.weather, s.forecastDay, this.rainBlobs) : null, new WindField(s.weather, s.forecastDay));
+    const wx = this.drawnWeather();
+    this.scene.setRain(s.layers.rain ? new RainField(wx, s.forecastDay, this.rainBlobs) : null, new WindField(wx, s.forecastDay));
+  }
+
+  /** Weather grids under the drawn map: all of them, or only focused regions' when the rest is hidden. */
+  private drawnWeather() {
+    if (!this.scene.world.hideUnfocused) return app.get().weather;
+    const focus = app.get().focus;
+    return [...this.weatherCache].filter(([id]) => focus.includes(id)).map(([, c]) => c.grid);
   }
 
   /** Wind streamlines for the selected day (today = live wind). */
   private pushWind() {
     const s = app.get();
-    this.scene.setWind(s.layers.wind ? new WindField(s.weather, s.forecastDay) : null);
+    this.scene.setWind(s.layers.wind ? new WindField(this.drawnWeather(), s.forecastDay) : null);
   }
 
   /** Ground elevation (m) at a world point, from the terrain rasters (no hex needs to be loaded). */
@@ -457,6 +520,21 @@ export class Engine {
     if (key === "traffic") this.pushTraffic();
     if (key === "wind") this.pushWind();
     if (key === "rain") this.pushRain();
+  }
+
+  /** Several layers at once. Returns true when the hazards need rescoring (spread or beacons changed): the caller runs pushHazards once. */
+  setLayers(patch: Partial<Layers>): boolean {
+    const before = app.get().layers;
+    app.set((s) => ({ layers: { ...s.layers, ...patch } }));
+    const l = app.get().layers, changed = (k: keyof Layers) => before[k] !== l[k];
+    // Only a change to what colours the hexes restyles them (that's every cached chunk).
+    if (changed("risk") || changed("fires") || changed("air")) this.applyLayers(l);
+    else if (changed("bloom")) this.scene.setBloom(l.bloom);
+    if (changed("air")) this.pushAir();
+    if (changed("traffic")) this.pushTraffic();
+    if (changed("wind")) this.pushWind();
+    if (changed("rain")) this.pushRain();
+    return changed("spread") || changed("beacons");
   }
 
   private applyLayers(l: Layers) {
