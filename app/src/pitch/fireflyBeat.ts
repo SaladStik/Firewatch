@@ -86,7 +86,7 @@ export async function speak(text: string, signal: { cancelled: () => boolean }) 
   speaking = true;
   ctl.setMood("idle");
   try {
-    if (await hasClip()) return await playClip(text, signal);
+    if (await hasClip() && await playClip(text, signal)) return;
     if (await liveAgent(text, signal)) return;
     // No voice: the bubble, at a reading pace.
     const secs = Math.max(4, text.length * 0.06);
@@ -98,7 +98,16 @@ export async function speak(text: string, signal: { cancelled: () => boolean }) 
   }
 }
 
-async function playClip(text: string, signal: { cancelled: () => boolean }) {
+/**
+ * Play the recorded line and move his mouth with it. False when it won't play, so the caller
+ * can fall back to the live agent or the bubble.
+ *
+ * The browser blocks audio until the page has been interacted with, and the pitch starts
+ * itself. A blocked play used to be swallowed, which left `audio.paused` true — so the wait
+ * below finished on its first frame and the beat passed in silence without even pausing for
+ * the line.
+ */
+async function playClip(text: string, signal: { cancelled: () => boolean }): Promise<boolean> {
   const ctl = stage().controller;
   const audio = new Audio(CLIP);
   const ac = new AudioContext();
@@ -107,7 +116,15 @@ async function playClip(text: string, signal: { cancelled: () => boolean }) {
   ac.createMediaElementSource(audio).connect(an);
   an.connect(ac.destination);
   const buf = new Uint8Array(an.fftSize);
-  await audio.play().catch(() => {});
+  // A context created before any interaction starts suspended, and output stays silent.
+  if (ac.state === "suspended") await ac.resume().catch(() => {});
+  try {
+    await audio.play();
+  } catch {
+    void ac.close();
+    return false;
+  }
+  if (ac.state === "suspended" || audio.paused) { void ac.close(); return false; }
   ctl.say(text, Math.max(3, audio.duration || text.length * 0.065), { linger: 3 });
   await new Promise<void>((done) => {
     const tick = () => {
@@ -120,6 +137,7 @@ async function playClip(text: string, signal: { cancelled: () => boolean }) {
     };
     requestAnimationFrame(tick);
   });
+  return true;
 }
 
 /** The live agent, made to say exactly the line. False when it can't (no agent, mic not allowed, override off). */

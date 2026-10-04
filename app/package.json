@@ -19,6 +19,7 @@
     "server": "tsx server/index.ts",
     "deploy:databricks": "bash scripts/deploy-databricks.sh",
     "deploy:pages": "bash scripts/deploy-pages.sh",
+    "record:firefly": "tsx scripts/record-firefly-line.ts",
     "case:crews": "tsx scripts/case-crews.ts",
     "case:311": "tsx scripts/case-311.ts",
     "bake:city": "tsx scripts/bake-city.ts",
