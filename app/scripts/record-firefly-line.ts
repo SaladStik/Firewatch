@@ -7,8 +7,8 @@
  *
  *   ELEVENLABS_API_KEY=… npm run record:firefly
  *
- * The key is read from the environment or app/.env, and never written anywhere. Same voice and
- * model as the Ask panel (server/speak.ts), so the recorded line matches his live voice.
+ * The key is read from the environment or app/.env, and never written anywhere. Same voice as
+ * the live agent (Jessica), so the recorded line matches Firefly's voice in a conversation.
  *
  * The text is fixed because the pitch replays fixed data; re-check it by running
  * `fireflyLine()` in the pitch page's console (src/pitch/story.ts exports it).
@@ -27,8 +27,8 @@ const LINE =
   + "about 12 metres a minute. I'd send a unit crew from Fort McMurray and a skimmer group from "
   + "High Level. The first can be there in 49 minutes.";
 
-/** Firefly's voice and model, as the Ask panel uses them (server/speak.ts). */
-const VOICE = process.env.ELEVENLABS_VOICE_ID || "NOpBlnGInO9m6vDvFkFC";
+/** Jessica, the voice the live ElevenLabs agent speaks with (AGENT.md), so the pitch sounds like Firefly. */
+const VOICE = process.env.FIREFLY_PITCH_VOICE_ID || "r1KmysJdVYZjJCm4mL3b";
 const MODEL = "eleven_flash_v2_5";
 
 /** The key from the environment, or app/.env if it is only there. */
