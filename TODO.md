@@ -16,23 +16,17 @@ The voice agent's settings live in [`app/src/firefly/AGENT.md`](app/src/firefly/
 - [ ] **[Minh]** Check there are enough ElevenLabs credits for rehearsals plus the demo.
 ## Firefly's pitch voice
 
-`/pitch.html` plays a recorded line in Firefly's voice and moves his mouth with its waveform.
-The clip is missing, so the beat currently passes in silence with just the speech bubble.
-Either route works; the first needs a key, the second needs no key at all.
-
-- [ ] **Record the clip.** `ELEVENLABS_API_KEY=… npm run record:firefly` writes
-  `app/public/pitch/firefly-answer.mp3` using the same voice and model as the Ask panel, checks
-  what came back really is an mp3, and says what to do next. It needs an account API key with
-  text-to-speech permission — the public `VITE_ELEVENLABS_AGENT_ID` cannot do this (it answers
-  `401 Invalid API key`; it identifies the agent, it is not a credential). Commit the mp3 so the
-  deployed site has it. The line is fixed, because the pitch replays fixed data:
-  > HWF121, 47 kilometres northwest of Garden River. It's 1,000 hectares, crowning, and spreading about 12 metres a minute. I'd send a unit crew from Fort McMurray and a skimmer group from High Level. The first can be there in 49 minutes.
-
-  Re-check it with `fireflyLine()` in the pitch page's console.
-- [ ] **Or let the live agent say it**, which needs no key: in the agent's Security settings allow
-  overriding the **first message**, and grant the microphone once in the browser doing the pitch.
-  `liveAgent()` in `src/pitch/fireflyBeat.ts` then has the agent speak the line. It is skipped
-  silently when either condition is missing, which is the other reason there is no voice today.
+- [x] Record the line in Firefly's voice as `app/public/pitch/firefly-answer.mp3`. — Done in
+  "Give Firefly his voice in the pitch, as Jessica"; the pitch page plays it and moves his mouth
+  from its waveform. To re-record it after a wording change,
+  `ELEVENLABS_API_KEY=… npm run record:firefly` renders the current line with the same voice and
+  model the Ask panel uses and refuses to save anything that isn't really an mp3. Note the public
+  `VITE_ELEVENLABS_AGENT_ID` cannot do this — it answers `401 Invalid API key`, as it identifies
+  the agent rather than authenticating.
+- [ ] Optional, as a fallback if the clip ever fails to play: in the agent's Security settings
+  allow overriding the **first message**. `liveAgent()` in `src/pitch/fireflyBeat.ts` then has the
+  live agent say the line instead, though only in a browser that has already granted the
+  microphone.
 
 ## Databricks AI model [Nick]
 
