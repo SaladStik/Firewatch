@@ -85,6 +85,34 @@ function prewarm(e: Engine, v: View | null | undefined, first = false) {
   for (const dh of v.orbit ? [0, 90, 180, 270] : [0]) e.scene.prewarm(v.x, v.z, v.dist, v.heading + dh, v.tilt, { within: v.within, first });
 }
 
+/**
+ * Views the camera passes through flying from `a` to `b`, the same path Scene.cinematic takes
+ * (log-scale zoom that rises for long hops). Built ahead too, so a flight never outruns the map.
+ */
+function pathViews(a: View, b: View, n = 5): View[] {
+  const travel = Math.hypot(b.x - a.x, b.z - a.z);
+  const l0 = Math.log(a.dist), l1 = Math.log(b.dist), lm = Math.max(Math.log(Math.max(a.dist, b.dist, travel * 0.8)), (l0 + l1) / 2);
+  const out: View[] = [];
+  for (let k = 1; k < n; k++) {
+    const u = k / n, m = u * u * (3 - 2 * u);
+    const dist = Math.exp((1 - u) * (1 - u) * l0 + 2 * u * (1 - u) * lm + u * u * l1);
+    const within = a.within && b.within
+      ? { x: (a.within.x + b.within.x) / 2, z: (a.within.z + b.within.z) / 2, r: Math.max(a.within.r, b.within.r) + Math.hypot(a.within.x - b.within.x, a.within.z - b.within.z) / 2 }
+      : null;
+    out.push({ x: a.x + (b.x - a.x) * m, z: a.z + (b.z - a.z) * m, dist, heading: a.heading + (b.heading - a.heading) * u, tilt: a.tilt + (b.tilt - a.tilt) * u, within });
+  }
+  return out;
+}
+
+/** Build a step's view and the flight into it from the step before. */
+function prewarmStep(e: Engine, i: number, first = false) {
+  const to = STEPS[i]?.view?.(e), from = STEPS[i - 1]?.view?.(e);
+  if (!to) return;
+  // Later in the queue goes in first when jumping it: the landing view must come out on top.
+  if (from) for (const v of pathViews(from, to).reverse()) prewarm(e, v, first);
+  prewarm(e, to, first);
+}
+
 // ------------------------------------------------------------ how much of the map exists
 /**
  * The story starts small: only Calgary exists, a model of a city in the dark. Each zoom out
@@ -139,7 +167,9 @@ async function build311(): Promise<Story311 | null> {
   if (!plan) return null;
   // Routes need the street network (loaded in the planner's worker): wait for them.
   pitch.set({ prep: "Routing crews on Calgary's streets" });
-  for (let i = 0; i < 80 && !Object.keys(dispatch.get().routes).length; i++) await sleep(250);
+  // The loading screen is up anyway: wait as long as the street network takes (a busy machine
+  // took over 20 s once), up to two minutes.
+  for (let i = 0; i < 480 && !Object.keys(dispatch.get().routes).length; i++) await sleep(250);
   const d = dispatch.get(), p = d.plan311!, load = d.load311!;
   // The day's highest-priority job: work is chosen strictly by priority, so it's the city's #1.
   let best: { t: Ticket; crew: string; total: number } | null = null;
@@ -194,7 +224,8 @@ export async function prepare(e: Engine) {
   const plan = dispatch.get().plan;
   topFires = plan?.pickedCut.slice(0, 6) ?? [];
   fire = topFires[0] ?? null;
-  pitch.set({ story311: await build311().catch(() => null) });
+  // The 311 story is the opening act: try twice before going on without it.
+  pitch.set({ story311: (await build311().catch(() => null)) ?? (await build311().catch(() => null)) });
   // Every province's weather, quietly, for the snow and the reveal of Canada.
   weatherAll = e.prefetchWeather(app.get().regions.map((r) => r.id)).catch(() => {});
   await world(e, {});
@@ -209,7 +240,7 @@ export async function prepare(e: Engine) {
   pitch.set({ prep: "Waiting for every province's weather" });
   await weatherAll;
   snow ??= findSnow();
-  STEPS.forEach((st) => prewarm(e, st.view?.(e)));
+  STEPS.forEach((_, i) => prewarmStep(e, i));
   const total = Math.max(1, e.scene.world.busy);
   for (let i = 0; i < 900 && e.scene.world.busy > 0; i++) {
     pitch.set({ prep: `Building the story · ${Math.round(100 * (1 - e.scene.world.busy / total))}%`, built: 1 - e.scene.world.busy / total });
@@ -428,9 +459,11 @@ export const STEPS: Step[] = [
       const sn = snow;
       pitch.set({ caption: { layout: "caption", kicker: "Weather", title: "And snow where it's freezing.", body: `${Math.round(sn.mm)} mm forecast ${sn.near}, high of ${Math.round(sn.temp)} °C. Snow damps fire just like rain.`.replace("  ", " ") } });
       // A spotlight on the snow: the circle travels with the camera, then comes back to Alberta.
+      // Its province is switched on first, so it's built and there when the camera arrives.
+      e.setFocus([...new Set(["alberta", regionAt(sn.lat, sn.lng) ?? "alberta"])]);
       reveal(e, { kind: "spot", lat: sn.lat, lng: sn.lng, km: 170 }, 3.6);
       await fly(e, this.view?.(e), 3.6);
-      await world(e, { sim: true, layers: { spread: true, beacons: true, rain: true }, day: sn.day, storm: stormNow, focus: [...new Set(["alberta", regionAt(sn.lat, sn.lng) ?? "alberta"])] });
+      await world(e, { sim: true, layers: { spread: true, beacons: true, rain: true }, day: sn.day, storm: stormNow, focus: app.get().focus });
       e.scene.setOrbit(0.8);
     },
   },
@@ -500,7 +533,7 @@ export function go(e: Engine, n: number) {
   pitch.set({ step: i, caption: typeof st.caption === "function" ? st.caption() : st.caption, ticker: "", ...(i === FIREFLY_STEP ? {} : { ask: null }) });
   if (i !== FIREFLY_STEP) fireflyOut();
   // Where the presenter goes next is built first (the rest was queued at load).
-  prewarm(e, STEPS[i + 1]?.view?.(e), true);
+  prewarmStep(e, i + 1, true);
   const wait = (ms: number) => new Promise<void>((ok, fail) => setTimeout(() => (id === current ? ok() : fail(new Cancelled())), ms));
   void st.enter({ e, id, wait }).catch((err) => { if (!(err instanceof Cancelled)) console.warn("[pitch]", err); });
 }

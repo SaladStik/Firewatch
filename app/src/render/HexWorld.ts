@@ -190,7 +190,12 @@ export class HexWorld {
         if (cm && this.stale.has(key) && canRequest) { requested++; this.request(level, cx, cz, key); }
         if (cm) {
           cm.holeOn = hole ? 1 : 0;
-          if (!cm.group.visible) { cm.group.visible = true; cm.rebirth(now); if (cm.styleDirty) this.restyleQueue.add(cm); }
+          if (!cm.group.visible) {
+            cm.group.visible = true;
+            cm.rebirth(now);
+            if (this.staleStatus.has(cm)) void this.restatus(cm); // shown out of date: now, not later
+            else if (cm.styleDirty) this.restyleQueue.add(cm);
+          }
           st.lastUsed.set(key, this.frame);
         } else {
           if (inView) nowMissing.push(bx);
@@ -234,6 +239,7 @@ export class HexWorld {
       this.request(c.level, c.cx, c.cz, c.key);
     }
     this.drainRestyles();
+    this.catchUpStatus();
     if (this.frame % 30 === 0) this.evict();
     if (this.frame % 10 === 0) this.emitStats();
   }
@@ -431,18 +437,44 @@ export class HexWorld {
 
   // ------------------------------------------------------------ hazards
   /** Re-evaluate status/risk for every loaded chunk (after new hazard data). */
+  /**
+   * Chunks on screen first (the caller waits for those); every cached chunk off screen is marked
+   * out of date and caught up in the background, a few at a time, or at once when it's shown.
+   * Rescoring every cached chunk in one go put the ones on screen behind thousands of hidden ones.
+   */
   async refreshStatus() {
+    this.staleStatus.clear();
     const jobs: Promise<void>[] = [];
     for (const st of this.levels) for (const cm of st.chunks.values()) {
-      jobs.push(this.client.restatus(cm.data).then((res) => {
-        if (!res || res.status.length !== cm.data.count) return;
-        cm.data.status.set(res.status);
-        cm.data.risk.set(res.risk);
-        cm.data.edges.set(res.edges);
-        this.queueRestyle(cm);
-      }));
+      if (cm.group.visible) jobs.push(this.restatus(cm));
+      else this.staleStatus.add(cm);
     }
     await Promise.all(jobs);
+  }
+
+  /** Cached chunks whose status predates the current hazards. */
+  private staleStatus = new Set<ChunkMesh>();
+  private restatusInFlight = 0;
+
+  private restatus(cm: ChunkMesh): Promise<void> {
+    this.staleStatus.delete(cm);
+    this.restatusInFlight++;
+    return this.client.restatus(cm.data).then((res) => {
+      if (!res || res.status.length !== cm.data.count || cm.disposed) return;
+      cm.data.status.set(res.status);
+      cm.data.risk.set(res.risk);
+      cm.data.edges.set(res.edges);
+      this.queueRestyle(cm);
+    }).finally(() => { this.restatusInFlight--; });
+  }
+
+  /** Background catch-up of off-screen chunks (a few in flight at a time). */
+  private catchUpStatus() {
+    for (const cm of this.staleStatus) {
+      if (this.restatusInFlight >= 3) return;
+      if (cm.disposed) { this.staleStatus.delete(cm); continue; }
+      void this.restatus(cm);
+    }
   }
 
   // ------------------------------------------------------------ node API
