@@ -55,7 +55,23 @@ async function accessToken(env: Env): Promise<string> {
   return cached.token;
 }
 
-export async function onRequestGet(ctx: { request: Request; env: Env }): Promise<Response> {
+/** Which of the four variables this needs are missing (see the header). */
+function missingVars(env: Env): string[] {
+  const needed: (keyof Env)[] = ["DATABRICKS_APP_URL", "DATABRICKS_HOST", "DATABRICKS_CLIENT_ID", "DATABRICKS_CLIENT_SECRET"];
+  // A token set directly stands in for the host and the service principal (local testing).
+  const have = (k: keyof Env) => typeof env[k] === "string" && (env[k] as string).length > 0;
+  return needed.filter((k) => !have(k) && !(env.DATABRICKS_TOKEN && k !== "DATABRICKS_APP_URL"));
+}
+
+async function forward(ctx: { request: Request; env: Env }): Promise<Response> {
+  // Say which variable is missing. Reading an unset one used to throw, and Cloudflare turned
+  // that into a bare "error code: 502" that reads like a platform fault rather than a
+  // forgotten setting in Pages → Settings → Variables and Secrets.
+  const missing = missingVars(ctx.env);
+  if (missing.length) {
+    return Response.json({ error: `The site is not configured to reach the data server: ${missing.join(", ")} not set on this Pages project.` }, { status: 503 });
+  }
+
   const url = new URL(ctx.request.url);
   let token: string;
   try {
@@ -89,8 +105,24 @@ export async function onRequestGet(ctx: { request: Request; env: Env }): Promise
   return new Response(res.status === 304 ? null : res.body, { status: res.status, headers: out });
 }
 
-/** Only Firefly's chat is posted; everything else under /api is read-only. */
-export function onRequestPost(ctx: { request: Request; env: Env }): Promise<Response> {
-  if (new URL(ctx.request.url).pathname !== "/api/ai/chat") return Promise.resolve(Response.json({ error: "Method not allowed" }, { status: 405 }));
-  return onRequestGet(ctx);
+/**
+ * The only export, deliberately: Cloudflare prefers a method-specific `onRequestGet` over
+ * `onRequest`, so exporting both would leave this wrapper — and its catch — unreachable.
+ * Without the catch, an unhandled throw becomes Cloudflare's own bare 502, which says nothing
+ * about what went wrong.
+ */
+export async function onRequest(ctx: { request: Request; env: Env }): Promise<Response> {
+  const method = ctx.request.method;
+  try {
+    // Only Firefly's chat is posted; everything else under /api is read-only.
+    if (method === "POST" && new URL(ctx.request.url).pathname !== "/api/ai/chat") {
+      return Response.json({ error: "Method not allowed" }, { status: 405 });
+    }
+    if (method !== "GET" && method !== "HEAD" && method !== "POST") {
+      return Response.json({ error: "Method not allowed" }, { status: 405 });
+    }
+    return await forward(ctx);
+  } catch (e) {
+    return Response.json({ error: `Proxy failed: ${String(e)}` }, { status: 502 });
+  }
 }
