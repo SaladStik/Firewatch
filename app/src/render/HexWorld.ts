@@ -132,6 +132,7 @@ export class HexWorld {
     }
 
     const now = sharedUniforms.uTime.value;
+    const rv = sharedUniforms.uReveal.value;
     let requested = 0;
     const want = new Map<number, Set<string>>();
     type Box = { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -178,6 +179,10 @@ export class HexWorld {
       for (const { cx, cz, bx, hole, inView } of needed) {
         const key = chunkKey(level, cx, cz);
         if (this.empty.has(key)) continue;
+        // Nothing of it would show (outside the reveal circle, or only hidden regions): skip it.
+        if (rv.z > 0 && Math.hypot(Math.max(bx.minX - rv.x, 0, rv.x - bx.maxX), Math.max(bx.minZ - rv.y, 0, rv.y - bx.maxZ)) > rv.z) continue;
+        const cmAll = st.chunks.get(key);
+        if (cmAll && this.style.hideUnfocused && !cmAll.regions.some((r) => this.style.focus.has(r))) continue;
         if (!inView && !st.chunks.has(key)) continue; // off-screen: don't build it
         keys.add(key);
         const cm = st.chunks.get(key);
@@ -394,21 +399,33 @@ export class HexWorld {
     for (const st of this.levels) for (const cm of st.chunks.values()) this.queueRestyle(cm);
   }
 
+  /** Out-of-date chunks not on screen: recoloured with spare frame time, before they're needed. */
+  private dirtyHidden = new Set<ChunkMesh>();
+
   private queueRestyle(cm: ChunkMesh) {
     cm.styleDirty = true;
     if (cm.group.visible) this.restyleQueue.add(cm);
+    else this.dirtyHidden.add(cm);
   }
 
   private drainRestyles() {
-    if (!this.restyleQueue.size) return;
-    const t0 = performance.now();
+    if (!this.restyleQueue.size && !this.dirtyHidden.size) return;
+    const t0 = performance.now(), over = () => performance.now() - t0 > HexWorld.RESTYLE_BUDGET_MS;
     for (const cm of this.restyleQueue) {
       this.restyleQueue.delete(cm);
       if (cm.disposed || !cm.styleDirty) continue;
-      if (!cm.group.visible) continue; // stays dirty: restyled when shown
+      if (!cm.group.visible) { this.dirtyHidden.add(cm); continue; } // done with spare time
       cm.restyle();
       cm.styleDirty = false;
-      if (performance.now() - t0 > HexWorld.RESTYLE_BUDGET_MS) break;
+      if (over()) return;
+    }
+    // Nothing on screen waiting: get ahead on the cached ones.
+    for (const cm of this.dirtyHidden) {
+      this.dirtyHidden.delete(cm);
+      if (cm.disposed || !cm.styleDirty) continue;
+      cm.restyle();
+      cm.styleDirty = false;
+      if (over()) return;
     }
   }
 

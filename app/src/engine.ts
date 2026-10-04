@@ -516,7 +516,9 @@ export class Engine {
     const before = app.get().layers;
     app.set((s) => ({ layers: { ...s.layers, ...patch } }));
     const l = app.get().layers, changed = (k: keyof Layers) => before[k] !== l[k];
-    this.applyLayers(l);
+    // Only a change to what colours the hexes restyles them (that's every cached chunk).
+    if (changed("risk") || changed("fires") || changed("air")) this.applyLayers(l);
+    else if (changed("bloom")) this.scene.setBloom(l.bloom);
     if (changed("air")) this.pushAir();
     if (changed("traffic")) this.pushTraffic();
     if (changed("wind")) this.pushWind();

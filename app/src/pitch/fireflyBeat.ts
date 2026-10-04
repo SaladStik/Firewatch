@@ -37,7 +37,7 @@ export function answerFor(fire: Scored | null): string {
   return `${label(fire).split(" ")[0]}${where}. ${why}${go}`;
 }
 
-const article = (s: string) => `${/^[aeiou]/.test(s) ? "an" : "a"} ${s}`;
+const article = (s: string) => `${/^[aeio]/.test(s) ? "an" : "a"} ${s}`; // "a unit", "an air tanker"
 const list = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 
 // ------------------------------------------------------------ the mascot

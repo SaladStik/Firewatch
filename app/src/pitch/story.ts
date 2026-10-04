@@ -184,6 +184,8 @@ function findSnow() {
 
 /** Everything the steps need, while the loading screen is up. */
 export async function prepare(e: Engine) {
+  // Provinces out of focus aren't drawn at all: Alberta is all there is until Canada is revealed.
+  e.scene.setHideUnfocused(true);
   pitch.set({ prep: "Loading Alberta's 2023–2025 fire seasons" });
   await loadCases();
   if (!dispatch.get().plan) recomputeCrews();
@@ -202,21 +204,24 @@ export async function prepare(e: Engine) {
   // Build Calgary's scenes completely before the curtain lifts (the model, street level, the
   // routes), then everything after them in the background, in story order, while the
   // presenter talks over the title.
-  pitch.set({ prep: "Building Calgary" });
-  STEPS.slice(0, 5).forEach((st) => prewarm(e, st.view?.(e)));
-  for (let i = 0; i < 240 && e.scene.world.busy > 0; i++) await sleep(250);
-  STEPS.slice(5).forEach((st) => prewarm(e, st.view?.(e)));
-  // The snow beat's place comes from every province's weather: queue it once that's in.
-  void weatherAll?.then(() => { snow ??= findSnow(); prewarm(e, STEPS[SNOW_STEP].view?.(e)); });
-  pitch.set({ prep: "", ready: true });
+  // Every step's map is built before the curtain lifts, so nothing loads during the talk: the
+  // story in order (Calgary first), then the snow's place once every province's weather is in.
+  pitch.set({ prep: "Waiting for every province's weather" });
+  await weatherAll;
+  snow ??= findSnow();
+  STEPS.forEach((st) => prewarm(e, st.view?.(e)));
+  const total = Math.max(1, e.scene.world.busy);
+  for (let i = 0; i < 900 && e.scene.world.busy > 0; i++) {
+    pitch.set({ prep: `Building the story · ${Math.round(100 * (1 - e.scene.world.busy / total))}%`, built: 1 - e.scene.world.busy / total });
+    await sleep(200);
+  }
+  pitch.set({ prep: "", ready: true, built: 1 });
 }
 
 // ------------------------------------------------------------ steps
 const CALGARY = { lat: 51.045, lng: -114.06 };
 /** The opening: Calgary at the L5 zoom (32–76 km), a model of the city. */
 const OPEN_DIST = 58;
-/** The snow beat (its place is found once every province's weather is in). */
-const SNOW_STEP = 12;
 /** "One fire": where Firefly's answer flies the camera. */
 const FIRE_STEP = 9;
 /** Firefly's beat (he's hidden on every other step). */

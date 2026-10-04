@@ -39,6 +39,8 @@ export const pitch = createStore({
   ready: false,
   /** Loading note under the progress bar. */
   prep: "",
+  /** Share of the story's map built ahead (0..1), for the loading bar. */
+  built: 0,
   caption: null as Caption | null,
   /** A short live line under the caption (e.g. the forecast day while the prediction plays). */
   ticker: "",

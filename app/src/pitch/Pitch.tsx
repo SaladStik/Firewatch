@@ -190,7 +190,9 @@ function Loader() {
   const boot = useStore(app, (s) => s.boot);
   const ready = useStore(pitch, (s) => s.ready);
   const prep = useStore(pitch, (s) => s.prep);
-  const progress = boot.done ? 0.85 + (prep ? 0.1 : 0.15) : (boot.progress ?? 0) * 0.85;
+  const built = useStore(pitch, (s) => s.built);
+  // Booting the map is the first 40 %; building every scene of the story ahead is the rest.
+  const progress = boot.done ? 0.4 + 0.6 * built : (boot.progress ?? 0) * 0.4;
   return (
     <div className="pitch-loader absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#070c0a]" data-done={ready}>
       <div className="text-[clamp(40px,6vw,96px)] font-black tracking-tight text-white">FIRE<span className="text-[#ff6a3d]">//</span>WATCH</div>
