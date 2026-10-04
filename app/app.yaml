@@ -8,9 +8,11 @@
 command: ["sh", "-c", "PORT=$DATABRICKS_APP_PORT npm run server"]
 
 env:
-  # Provinces whose weather is kept warm in the background; others load on first request.
+  # Every province kept warm in the background, not just Alberta: the pitch page
+  # (/pitch.html) reveals from Calgary out to the whole country and must not stop to fetch
+  # weather mid-talk. "all" expands to every region in config/regions.ts.
   - name: FIREWATCH_PREWARM
-    value: "alberta"
+    value: "all"
   # The app directory is not a safe place to write, so the disk cache goes to /tmp. It is
   # ephemeral: after a redeploy the server refetches each source once and is warm again.
   - name: FIREWATCH_CACHE_DIR

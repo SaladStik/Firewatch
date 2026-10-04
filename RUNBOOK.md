@@ -93,6 +93,23 @@ To run the data server on Databricks instead, see **[DEPLOY-DATABRICKS.md](DEPLO
 
 A guided three-minute tour of the app on one screen: `/pitch.html`.
 
+**Start it about twenty minutes early.** Open-Meteo's free tier has a per-minute ceiling and one
+province is up to 90 grid points, so warming all thirteen trips the limit after about five of
+them. The server retries every five minutes and fills the rest in; measured from a cold start it
+reached five provinces immediately, nine after five minutes and all thirteen after sixteen.
+`/api/health` lists `weather` per province, and `fresh: false` with "Open-Meteo request limit
+reached" means it is still working through them, not broken.
+
+On the deployed data server this is already set (`FIREWATCH_PREWARM=all` in `app/app.yaml`), so
+the same wait applies after a deploy — and on Databricks Free Edition the app stops itself a day
+after starting, so check it is both running and warm before the talk:
+
+```bash
+databricks apps start firewatch-data --profile <your-profile>   # if its compute is stopped
+curl -H "Authorization: Bearer $(databricks auth token -p <your-profile> | jq -r .access_token)" \
+  https://<app url>/api/health
+```
+
 1. Start the data server with every province kept warm:
 
    ```bash
