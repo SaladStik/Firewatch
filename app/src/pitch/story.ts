@@ -529,6 +529,9 @@ export const STEPS: Step[] = [
   },
 ];
 
+/** Firefly's line, exactly as the story will say it (for recording public/pitch/firefly-answer.mp3). */
+export const fireflyLine = () => answerFor(fire);
+
 /** The rain the story brings over the fire (the same object every time, so its projection is cached). */
 const fireStorm = (f: Scored) => ({ lat: f.fire.lat, lng: f.fire.lng, fromDay: 1, rKm: 70 });
 

@@ -13,7 +13,7 @@ import { useStore } from "../state/store";
 import { AircraftLayer } from "../ui/AircraftLayer";
 import { CallLayer } from "./CallLayer";
 import { pitch, type Caption } from "./store";
-import { BASE_LAYERS, go, prepare, STEPS } from "./story";
+import { BASE_LAYERS, fireflyLine, go, prepare, STEPS } from "./story";
 import { TicketCard } from "./TicketCard";
 
 export function Pitch() {
@@ -30,7 +30,7 @@ export function Pitch() {
     app.set({ theme: "dark", focus: ["alberta"], layers: { ...BASE_LAYERS }, simulation: false, forecastDay: 0 });
     document.documentElement.dataset.theme = "dark";
     const e = new Engine();
-    Object.assign(window, { engine: e, app, dispatch, pitch, pitchGo: (n: number) => go(e, n) }); // for rehearsals and tests
+    Object.assign(window, { engine: e, app, dispatch, pitch, pitchGo: (n: number) => go(e, n), fireflyLine }); // for rehearsals and tests
     void e.boot(canvasRef.current!, labelsRef.current!).then(async () => {
       setEngine(e);
       await prepare(e);

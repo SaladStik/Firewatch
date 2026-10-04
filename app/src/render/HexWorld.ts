@@ -400,7 +400,7 @@ export class HexWorld {
    * cached chunk at once (hazards, focus, layer changes) froze the map for a second or more.
    */
   private restyleQueue = new Set<ChunkMesh>();
-  private static RESTYLE_BUDGET_MS = 5;
+  private static RESTYLE_BUDGET_MS = 8;
 
   private restyleAll() {
     for (const st of this.levels) for (const cm of st.chunks.values()) this.queueRestyle(cm);

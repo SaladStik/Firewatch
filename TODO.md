@@ -14,6 +14,11 @@ The voice agent's settings live in [`app/src/firefly/AGENT.md`](app/src/firefly/
 - [ ] **[Minh]** Add the deployed site's domain to the agent's allowlist. It rejects `localhost`, so test voice on the deployed site, or allow localhost temporarily.
 - [ ] **[Minh]** Live voice test: hold the mic and ask "what's next", "dispatch it", "potholes in Beltline", "mark that ticket urgent", "any water bombers flying?". In the ElevenLabs conversation log, check it called `ask_data` / `do_dispatch` rather than guessing.
 - [ ] **[Minh]** Check there are enough ElevenLabs credits for rehearsals plus the demo.
+- [ ] **[Minh]** Record Firefly's pitch line in his ElevenLabs voice (Jessica) and save it as `app/public/pitch/firefly-answer.mp3`. The pitch page plays it and moves his mouth with it. Exact text (it comes from the replay data, so it doesn't change):
+  > HWF121, 47 kilometres northwest of Garden River. It's 1,000 hectares, crowning, and spreading about 12 metres a minute. I'd send a unit crew from Fort McMurray and a skimmer group from High Level. The first can be there in 49 minutes.
+
+  Run `fireflyLine()` in the pitch page's console to re-check it.
+- [ ] **[Minh]** Fallback only: in the agent's Security settings, allow overriding the **first message**. Without the mp3, the pitch makes the live agent say the line, but only if the microphone was already allowed in that browser.
 
 ## Databricks AI model [Nick]
 
