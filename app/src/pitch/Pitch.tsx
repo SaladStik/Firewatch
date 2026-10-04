@@ -125,7 +125,7 @@ function CaptionView({ c, ticker }: { c: Caption; ticker: string }) {
   if (c.layout === "title") {
     return (
       <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center px-8 text-center">
-        <h1 className="pitch-reveal text-[clamp(56px,9vw,148px)] font-black leading-none tracking-tight text-white" style={{ textShadow: "0 0 40px rgb(255 120 60 / 0.35)" }}>
+        <h1 className="pitch-reveal text-[clamp(56px,9vw,148px)] font-black leading-none tracking-[-0.01em] text-white" style={{ textShadow: "0 0 40px rgb(255 120 60 / 0.35)" }}>
           <Logo />
         </h1>
         {c.body && <p className="pitch-reveal-late mt-6 max-w-3xl text-[clamp(18px,1.8vw,28px)] text-[#cfe3d8]">{c.body}</p>}
@@ -186,9 +186,12 @@ function Progress({ step }: { step: number }) {
   );
 }
 
-/** FIRE//WATCH: the slashes pulled in so they touch the E the way they touch the W. */
+/**
+ * FIRE//WATCH: the slashes overlap the E's foot and the W's top by the same amount (measured in
+ * Lato Black at −0.01 em letter-spacing, which both the loading screen and the title end on).
+ */
 function Logo() {
-  return <>FIRE<span className="ml-[-0.09em] text-[#ff6a3d]">//</span>WATCH</>;
+  return <>FIRE<span className="ml-[-0.07em] mr-[-0.02em] text-[#ff6a3d]">//</span>WATCH</>;
 }
 
 function Loader() {
@@ -200,7 +203,7 @@ function Loader() {
   const progress = boot.done ? 0.4 + 0.6 * built : (boot.progress ?? 0) * 0.4;
   return (
     <div className="pitch-loader absolute inset-0 z-50 flex flex-col items-center justify-center bg-[#070c0a]" data-done={ready}>
-      <div className="text-[clamp(40px,6vw,96px)] font-black tracking-tight text-white"><Logo /></div>
+      <div className="text-[clamp(40px,6vw,96px)] font-black tracking-[-0.01em] text-white"><Logo /></div>
       <div className="mt-8 h-[3px] w-[min(28rem,70vw)] overflow-hidden rounded-full bg-white/10">
         <div className="pitch-loader-bar h-full w-full bg-[#ff6a3d]" style={{ transform: `scaleX(${progress})` }} />
       </div>
