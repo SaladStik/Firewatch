@@ -64,6 +64,9 @@ export class ChunkMesh {
   private wallCap = 0;
   /** 1 = honour the finer ring's hole; 0 = draw everywhere (standing in for loading finer chunks). */
   holeOn = 1;
+  /** Its colours are out of date (restyled when next shown, see HexWorld's restyle queue). */
+  styleDirty = false;
+  disposed = false;
   /** Shared culling sphere for every draw in this chunk; refit as the vertical scale changes. */
   private bounds: Sphere;
   private halfDiag: number;
@@ -396,6 +399,7 @@ export class ChunkMesh {
   }
 
   dispose() {
+    this.disposed = true;
     this.hexGeo.dispose();
     this.wallsGeo.dispose();
     for (const p of this.props) p.obj.geometry.dispose();

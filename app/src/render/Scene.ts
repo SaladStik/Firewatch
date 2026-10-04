@@ -112,11 +112,13 @@ export class Scene {
   /** Labels only re-layout when the camera, focus or label mode changes. */
   private labelsDirty = true;
   private lastCam = new Float32Array(16);
+  /** The canvas's page rect, measured on resize (screenOf runs for hundreds of points a frame). */
+  private rect = new DOMRect();
   private viewW = 1;
   private viewH = 1;
   private gridColor = { value: new Vector3(0.77, 0.8, 0.77) };
-  private borderMat = new LineBasicMaterial({ color: new Color("#1c3d2e") });
-  private borderMatDim = new LineBasicMaterial({ color: new Color("#9aa89e") });
+  private borderMat = new LineBasicMaterial({ color: new Color("#1c3d2e"), transparent: true });
+  private borderMatDim = new LineBasicMaterial({ color: new Color("#9aa89e"), transparent: true });
   private bloomWanted = false;
   private light = true;
   private home = { x: 0, z: 0, dist: 1500 };
@@ -203,14 +205,15 @@ export class Scene {
   // ------------------------------------------------------------ setup helpers
   private makeGround() {
     const mat = new ShaderMaterial({
-      uniforms: { uFocus: sharedUniforms.uFocus, uRadius: sharedUniforms.uRadius, uGridColor: this.gridColor, uBg: sharedUniforms.uBg },
+      uniforms: { uFocus: sharedUniforms.uFocus, uRadius: sharedUniforms.uRadius, uGridColor: this.gridColor, uBg: sharedUniforms.uBg, uReveal: sharedUniforms.uReveal },
       vertexShader: `varying vec2 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xz; gl_Position = projectionMatrix * viewMatrix * w; }`,
       fragmentShader: `
-        uniform vec2 uFocus; uniform float uRadius; uniform vec3 uGridColor; uniform vec3 uBg; varying vec2 vW;
+        uniform vec2 uFocus; uniform float uRadius; uniform vec3 uGridColor; uniform vec3 uBg; uniform vec3 uReveal; varying vec2 vW;
         float grid(vec2 p, float s){ vec2 g = abs(fract(p / s - 0.5) - 0.5) / fwidth(p / s); return 1.0 - min(min(g.x, g.y), 1.0); }
         void main(){
           float s = pow(10.0, floor(log(uRadius * 0.12) / log(10.0)));
           float fade = 1.0 - smoothstep(uRadius * 0.4, uRadius * 1.25, length(vW - uFocus));
+          if (uReveal.z > 0.0) fade *= 1.0 - smoothstep(uReveal.z * 0.8, uReveal.z, length(vW - uReveal.xy));
           float g = grid(vW, s) * 0.5 + grid(vW, s * 10.0) * 0.8;
           gl_FragColor = vec4(mix(uBg, uGridColor, clamp(g * fade, 0.0, 1.0)), 1.0);
         }`,
@@ -421,6 +424,7 @@ export class Scene {
     if (!w || !h) return;
     this.viewW = w;
     this.viewH = h;
+    this.rect = this.canvas.getBoundingClientRect();
     this.labelsDirty = true;
     this.renderer.setSize(w, h, false);
     this.composer.setSize(w, h);
@@ -520,7 +524,9 @@ export class Scene {
     // Auto: major cities from afar; towns join as you zoom in.
     const minPop = this.labelMinPop >= 0 ? this.labelMinPop : dist > 120 ? 50_000 : dist > 40 ? 5_000 : 0;
     for (const l of this.labels) {
-      const inRange = Math.hypot(l.pos.x - focus.x, l.pos.z - focus.y) < radius * 0.85;
+      const rv = sharedUniforms.uReveal.value;
+      const inRange = Math.hypot(l.pos.x - focus.x, l.pos.z - focus.y) < radius * 0.85
+        && (rv.z <= 0 || Math.hypot(l.pos.x - rv.x, l.pos.z - rv.y) < rv.z * 0.8);
       // Only provinces in focus are labelled, so each one's places stay readable.
       const hidden = !this.focus.has(l.region) || (l.place.landmark ? dist > 45 || minPop === Infinity : l.place.pop < minPop);
       if (!inRange || hidden) { hide(l); continue; }
@@ -560,7 +566,7 @@ export class Scene {
     const node = this.world.nodeAt(x, z);
     const y = node ? this.world.topY(node) : elevM !== undefined ? reliefKm(elevM) * sharedUniforms.uVScale.value : 0;
     const v = new Vector3(x, y, z).project(this.camera);
-    const r = this.canvas.getBoundingClientRect();
+    const r = this.rect;
     // `front`: in front of the camera (lines may run off screen); `visible`: on screen too.
     return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height, visible: v.z < 1 && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1, front: v.z < 1 && Math.abs(v.x) < 4 && Math.abs(v.y) < 4 };
   }
@@ -579,6 +585,102 @@ export class Scene {
         this.camera.position.copy(t).addScaledVector(offset, state.d);
       },
     });
+  }
+
+  private shot: gsap.core.Tween | null = null;
+
+  /**
+   * A cinematic camera move (the pitch page): target, heading and tilt together, distance on a log
+   * scale so a street-to-continent zoom reads at an even pace. A long hop between two close views
+   * rises on the way (an arc in log-distance), the way a map flight should. Resolves when it lands.
+   * `heading`: degrees clockwise from north (0 = looking north); `tilt`: degrees from straight down.
+   */
+  cinematic(o: { x: number; z: number; dist: number; heading?: number; tilt?: number; duration?: number; ease?: string }): Promise<void> {
+    this.shot?.kill();
+    gsap.killTweensOf(this.controls.target); // a running flyTo
+    this.controls.autoRotate = false;
+    const t = this.controls.target, cam = this.camera.position;
+    const off = cam.clone().sub(t);
+    const d0 = Math.max(MIN_DIST, off.length()), d1 = Math.min(this.maxDist, Math.max(MIN_DIST, o.dist));
+    const h0 = Math.atan2(off.x, off.z), h1 = o.heading === undefined ? h0 : (o.heading * Math.PI) / 180;
+    const p0 = Math.acos(Math.min(1, Math.max(-1, off.y / d0))), p1 = o.tilt === undefined ? p0 : (o.tilt * Math.PI) / 180;
+    const dh = Math.atan2(Math.sin(h1 - h0), Math.cos(h1 - h0)); // shortest way round
+    const x0 = t.x, z0 = t.z, travel = Math.hypot(o.x - x0, o.z - z0);
+    // Rise to see both ends when the hop is long for the zoom we're at (quadratic Bézier in log d).
+    const l0 = Math.log(d0), l1 = Math.log(d1), lm = Math.max(Math.log(Math.max(d0, d1, travel * 0.8)), (l0 + l1) / 2);
+    const state = { u: 0 };
+    return new Promise((done) => {
+      this.shot = gsap.to(state, {
+        u: 1, duration: o.duration ?? 2.4, ease: o.ease ?? "power2.inOut",
+        onUpdate: () => {
+          const u = state.u, ld = (1 - u) * (1 - u) * l0 + 2 * u * (1 - u) * lm + u * u * l1;
+          // Move across while high: position follows a softer curve than the zoom.
+          const m = u * u * (3 - 2 * u);
+          t.x = x0 + (o.x - x0) * m;
+          t.z = z0 + (o.z - z0) * m;
+          const d = Math.exp(ld), h = h0 + dh * u, p = p0 + (p1 - p0) * u;
+          cam.set(t.x + d * Math.sin(p) * Math.sin(h), t.y + d * Math.cos(p), t.z + d * Math.sin(p) * Math.cos(h));
+          this.camera.lookAt(t);
+        },
+        onComplete: () => { this.shot = null; done(); },
+        onInterrupt: () => done(),
+      });
+    });
+  }
+
+  private revealTween: gsap.core.Tween | null = null;
+
+  /**
+   * Show only the map within `radiusKm` of a point (the pitch page's "just Calgary, then
+   * Alberta"), easing the circle to its new centre and size. `radiusKm` 0 shows everything.
+   */
+  setReveal(x: number, z: number, radiusKm: number, duration = 0) {
+    this.revealTween?.kill();
+    const v = sharedUniforms.uReveal.value;
+    const st = { x: v.z > 0 ? v.x : x, z: v.z > 0 ? v.y : z, r: v.z > 0 ? v.z : radiusKm || 20000 };
+    const end = radiusKm > 0 ? radiusKm : 20000;
+    const apply = () => { v.set(st.x, st.z, st.r); this.labelsDirty = true; };
+    if (duration <= 0) { st.x = x; st.z = z; st.r = end; apply(); if (radiusKm <= 0) v.set(0, 0, 0); return; }
+    // Log-scale growth, so a city-to-province reveal widens at an even pace.
+    const lr = { a: Math.log(st.r), x0: st.x, z0: st.z, u: 0 };
+    this.revealTween = gsap.to(lr, {
+      u: 1, duration, ease: "power2.inOut",
+      onUpdate: () => {
+        st.x = lr.x0 + (x - lr.x0) * lr.u;
+        st.z = lr.z0 + (z - lr.z0) * lr.u;
+        st.r = Math.exp(lr.a + (Math.log(end) - lr.a) * lr.u);
+        apply();
+      },
+      onComplete: () => { if (radiusKm <= 0) { v.set(0, 0, 0); this.labelsDirty = true; } },
+    });
+  }
+
+  /** Fade the province borders (the pitch hides them until a province is revealed). */
+  setBorderOpacity(opacity: number, duration = 0) {
+    for (const m of [this.borderMat, this.borderMatDim]) {
+      gsap.killTweensOf(m);
+      if (duration <= 0) m.opacity = opacity;
+      else gsap.to(m, { opacity, duration, ease: "power2.inOut" });
+    }
+  }
+
+  /** Slow orbit around the view target (degrees per second; 0 stops). Any cinematic move stops it. */
+  setOrbit(degPerSec: number) {
+    this.controls.autoRotate = degPerSec !== 0;
+    // OrbitControls: autoRotateSpeed 1 = one turn per 60 s at 60 fps (6°/s).
+    this.controls.autoRotateSpeed = degPerSec / 6;
+  }
+
+  /** Centre and fitting distance of the given regions (all loaded ones by default). */
+  boundsOf(indices: number[] = [...this.regionMetas.keys()]): { x: number; z: number; dist: number } | null {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const i of indices) {
+      const m = this.regionMetas.get(i);
+      if (!m) continue;
+      minX = Math.min(minX, m.minX); maxX = Math.max(maxX, m.minX + m.width * m.pxKm);
+      minZ = Math.min(minZ, m.minZ); maxZ = Math.max(maxZ, m.minZ + m.height * m.pxKm);
+    }
+    return minX < Infinity ? { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2, dist: Math.max(maxX - minX, maxZ - minZ) * 1.1 } : null;
   }
 
   zoomBy(factor: number) {

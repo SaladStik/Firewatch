@@ -212,6 +212,29 @@ export class Engine {
     void this.refreshFireHistory(perimeters).then((changed) => { if (changed) void this.pushHazards(); });
   }
 
+  /**
+   * Load the weather of regions not in focus yet (quietly, one at a time), so focusing them later
+   * (the pitch's reveal of all of Canada) needs no fetch. Rescores the map once at the end.
+   */
+  async prefetchWeather(ids: string[]) {
+    const now = Date.now();
+    for (const r of app.get().regions.filter((x) => ids.includes(x.id) && app.get().loaded.includes(x.id))) {
+      if (this.disposed) return;
+      const c = this.weatherCache.get(r.id) ?? readStoredWeather(r.id);
+      if (c && now - c.at < WEATHER_TTL_MS) { this.weatherCache.set(r.id, c); continue; }
+      try {
+        const grid = await loadWeather(r, usingDataServer ? undefined : await this.fwiSeed(app.get().hotspots));
+        const entry = { at: Date.now(), grid };
+        this.weatherCache.set(r.id, entry);
+        storeWeather(r.id, entry);
+      } catch (e) {
+        if (c) this.weatherCache.set(r.id, c);
+        console.warn(`[engine] weather for ${r.name} unavailable`, e);
+      }
+    }
+    app.set({ weather: [...this.weatherCache.values()].map((c) => c.grid) });
+  }
+
   private stations: { at: number; list: FwiStation[] } | null = null;
 
   /** Seed for the FWI System from today's stations + hotspots (data/fwiSeed.ts). Stations refreshed at most hourly. */
@@ -293,7 +316,7 @@ export class Engine {
     const weatherBoost = s.simulation ? SIM_WEATHER_BOOST : 1;
     // Demo scenario: a rainstorm drifting downwind day by day (one per focused region's demo sites).
     const storms: RainBlob[][] = [];
-    for (let d = 0; d <= s.forecastDay; d++) storms.push(s.simulation ? this.demoStorms(d) : []);
+    for (let d = 0; d <= s.forecastDay; d++) storms.push(s.simulation || this.storyStorm ? this.demoStorms(d) : []);
     const rain = storms[s.forecastDay];
     // Projected spread for every active fire (real, plus simulated ones in the demo scenario).
     // Each fire's own growth history scales how far it's projected to go (data/fireHistory.ts).
@@ -394,7 +417,24 @@ export class Engine {
 
   private rainBlobs: RainBlob[] = [];
 
+  /**
+   * A storm placed by a script (the pitch page) instead of the demo scenario's: over a point from
+   * forecast day `fromDay` on, so a projection can be shown with and without the rain.
+   */
+  private storyStorm: { lat: number; lng: number; fromDay: number; rKm: number } | null = null;
+
+  setStoryStorm(storm: { lat: number; lng: number; fromDay: number; rKm?: number } | null, push = true) {
+    this.storyStorm = storm ? { rKm: 60, ...storm } : null;
+    return push ? this.pushHazards() : Promise.resolve();
+  }
+
   private demoStorms(day: number): RainBlob[] {
+    const st = this.storyStorm;
+    if (st) {
+      if (day < st.fromDay) return [];
+      const w = project(st.lat, st.lng);
+      return [{ x: w.x, z: w.z, r: st.rKm, intensity: 1 }];
+    }
     const s = app.get();
     const sites = s.regions.filter((r) => s.focus.includes(r.id)).map((r) => r.demoSites);
     return demoStorms(sites, s.weather, day);
@@ -457,6 +497,19 @@ export class Engine {
     if (key === "traffic") this.pushTraffic();
     if (key === "wind") this.pushWind();
     if (key === "rain") this.pushRain();
+  }
+
+  /** Several layers at once. Returns true when the hazards need rescoring (spread or beacons changed): the caller runs pushHazards once. */
+  setLayers(patch: Partial<Layers>): boolean {
+    const before = app.get().layers;
+    app.set((s) => ({ layers: { ...s.layers, ...patch } }));
+    const l = app.get().layers, changed = (k: keyof Layers) => before[k] !== l[k];
+    this.applyLayers(l);
+    if (changed("air")) this.pushAir();
+    if (changed("traffic")) this.pushTraffic();
+    if (changed("wind")) this.pushWind();
+    if (changed("rain")) this.pushRain();
+    return changed("spread") || changed("beacons");
   }
 
   private applyLayers(l: Layers) {

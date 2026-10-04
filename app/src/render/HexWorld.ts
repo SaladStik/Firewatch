@@ -184,7 +184,7 @@ export class HexWorld {
         if (cm && this.stale.has(key) && canRequest) { requested++; this.request(level, cx, cz, key); }
         if (cm) {
           cm.holeOn = hole ? 1 : 0;
-          if (!cm.group.visible) { cm.group.visible = true; cm.rebirth(now); }
+          if (!cm.group.visible) { cm.group.visible = true; cm.rebirth(now); if (cm.styleDirty) this.restyleQueue.add(cm); }
           st.lastUsed.set(key, this.frame);
         } else {
           if (inView) nowMissing.push(bx);
@@ -219,6 +219,7 @@ export class HexWorld {
       if (!st.fadingOut) for (const [key, cm] of st.chunks) if (cm.group.visible && !keys?.has(key)) cm.group.visible = false;
     });
     this.visibleKeys = want;
+    this.drainRestyles();
     if (this.frame % 30 === 0) this.evict();
     if (this.frame % 10 === 0) this.emitStats();
   }
@@ -294,6 +295,37 @@ export class HexWorld {
     this.onStats?.({ level: this.active, hexSizeKm: GRID.levels[this.active].size, chunks, hexes, pending: this.pending.size });
   }
 
+  // ------------------------------------------------------------ restyling
+  /**
+   * Recolouring is spread over frames: a few milliseconds a frame, visible chunks only. Chunks
+   * hidden at the time are marked and recoloured when they're next shown. Recolouring every
+   * cached chunk at once (hazards, focus, layer changes) froze the map for a second or more.
+   */
+  private restyleQueue = new Set<ChunkMesh>();
+  private static RESTYLE_BUDGET_MS = 5;
+
+  private restyleAll() {
+    for (const st of this.levels) for (const cm of st.chunks.values()) this.queueRestyle(cm);
+  }
+
+  private queueRestyle(cm: ChunkMesh) {
+    cm.styleDirty = true;
+    if (cm.group.visible) this.restyleQueue.add(cm);
+  }
+
+  private drainRestyles() {
+    if (!this.restyleQueue.size) return;
+    const t0 = performance.now();
+    for (const cm of this.restyleQueue) {
+      this.restyleQueue.delete(cm);
+      if (cm.disposed || !cm.styleDirty) continue;
+      if (!cm.group.visible) continue; // stays dirty: restyled when shown
+      cm.restyle();
+      cm.styleDirty = false;
+      if (performance.now() - t0 > HexWorld.RESTYLE_BUDGET_MS) break;
+    }
+  }
+
   // ------------------------------------------------------------ hazards
   /** Re-evaluate status/risk for every loaded chunk (after new hazard data). */
   async refreshStatus() {
@@ -304,7 +336,7 @@ export class HexWorld {
         cm.data.status.set(res.status);
         cm.data.risk.set(res.risk);
         cm.data.edges.set(res.edges);
-        cm.restyle();
+        this.queueRestyle(cm);
       }));
     }
     await Promise.all(jobs);
@@ -336,7 +368,7 @@ export class HexWorld {
 
   setFocus(indices: number[]) {
     this.style.focus = new Set(indices);
-    for (const st of this.levels) for (const cm of st.chunks.values()) cm.restyle();
+    this.restyleAll();
   }
 
   /**
@@ -356,7 +388,7 @@ export class HexWorld {
   /** Install a global styling hook (see render/nodeStyle.ts). */
   setStyler(styler: NodeStyler | null) {
     this.style.styler = styler;
-    for (const st of this.levels) for (const cm of st.chunks.values()) cm.restyle();
+    this.restyleAll();
   }
 
   private chunkCoords(q: number, r: number) {

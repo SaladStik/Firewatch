@@ -35,6 +35,8 @@ export const sharedUniforms = {
   uRain: { value: new Vector4(0, 0, 1, 0) },
   /** Dev: Ctrl+Shift+D tints hexes by detail level and stand-in chunks magenta (render/Scene.ts). */
   uDebug: { value: 0 },
+  /** Reveal circle (the pitch page): only the map within radius z of (x, y) is drawn; z = 0 = everything. */
+  uReveal: { value: new Vector3(0, 0, 0) },
 };
 
 function emptyRainTex() {
@@ -100,6 +102,7 @@ uniform float uHoleOn;
 uniform float uLevelAlpha;
 uniform vec3 uHover;
 uniform vec3 uSelect;
+uniform vec3 uReveal;
 
 float easeOut(float t) { t = clamp(t, 0.0, 1.0); return 1.0 - pow(1.0 - t, 3.0); }
 
@@ -107,6 +110,8 @@ float easeOut(float t) { t = clamp(t, 0.0, 1.0); return 1.0 - pow(1.0 - t, 3.0);
 float presence(vec2 xz, float born, float seed, out float ringFade) {
   float d = length(xz - uFocusL);
   ringFade = 1.0 - smoothstep(uRadius * 0.82, uRadius, d);
+  // Outside the reveal circle the map isn't there yet: it rises in as the circle widens.
+  if (uReveal.z > 0.0) ringFade *= 1.0 - smoothstep(uReveal.z * 0.8, uReveal.z, length(xz - uReveal.xy));
   // Coarser rings leave a hole where the finer ring is drawn (unless standing in while it loads).
   if (uHoleOn > 0.5 && uInnerRadius > 0.0 && length(xz - uInnerFocus) < uInnerRadius * 0.9) { ringFade = 0.0; return 0.0; }
   float grow = easeOut((uTime - born - seed * 0.25 - (d / uRadius) * 0.35) / 0.5);
