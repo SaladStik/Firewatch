@@ -19,19 +19,20 @@ The voice agent's settings live in [`app/src/firefly/AGENT.md`](app/src/firefly/
 
 Typed questions go to a model on Databricks Model Serving through the data server ([`app/server/ai.ts`](app/server/ai.ts), [`app/src/firefly/llm.ts`](app/src/firefly/llm.ts)). So far it has only been tested against a mock model.
 
-- [ ] **[Nick]** Confirm the workspace is Databricks Free Edition. The legacy Community Edition has no Model Serving or Apps.
-- [ ] **[Nick]** Under Serving, check `databricks-meta-llama-3-3-70b-instruct` exists. To use a different endpoint (e.g. a Claude one), set `FIREWATCH_AI_ENDPOINT`.
-- [ ] **[Nick]** Run locally with `DATABRICKS_HOST` and `DATABRICKS_TOKEN` (see [RUNBOOK.md](RUNBOOK.md)). http://localhost:8787/api/ai should show `"available": true`.
-- [ ] **[Nick]** Real-model test in the app, where each reply should show "AI · <model>" and the tools it used:
-  - "who's next?" then "dispatch it"
-  - "find pothole tickets in Beltline and mark the worst one urgent"
-  - "which fires lost a crew if we cut 20%?"
-  - "is there smoke in Calgary?"
-  - "what should crew R1 do today?"
-- [ ] **[Nick]** If the model answers without calling tools, or calls them badly, try a stronger endpoint before changing the prompt.
-- [ ] **[Nick]** Deploy the data server (`npm run deploy:databricks`). Give the app's service principal "Can query" on the endpoint, then check `<app url>/api/ai` (see [DEPLOY-DATABRICKS.md](DEPLOY-DATABRICKS.md)).
-- [ ] **[Nick]** Redeploy the Cloudflare Pages site so its proxy forwards `POST /api/ai/chat`.
-- [ ] **[Nick]** Check Free Edition's rate limits are enough for the demo. If the model fails, Firefly falls back to ElevenLabs, then to answers from the app's own data.
+- [x] **[Nick]** Confirm the workspace is Databricks Free Edition. The legacy Community Edition has no Model Serving or Apps. — Both work: 12 serving endpoints and the app is deployed. Consistent with Free Edition: its compute stopped itself overnight with "stopped due to workspace or account status", which is the 24-hour rule.
+- [x] **[Nick]** Under Serving, check `databricks-meta-llama-3-3-70b-instruct` exists. — Exists and READY, along with 11 others (`databricks-gpt-oss-120b`, `databricks-llama-4-maverick`, …) if a stronger one is wanted via `FIREWATCH_AI_ENDPOINT`.
+- [x] **[Nick]** Run locally and check `/api/ai`. — `{"available":true,"provider":"databricks","model":"databricks-meta-llama-3-3-70b-instruct"}`. A personal access token is not needed: `ai.ts` also takes `DATABRICKS_CLIENT_ID`/`_SECRET`, and the service principal in the repo-root `.env` works. (Apps reject PATs anyway — see DEPLOY-DATABRICKS.md.)
+- [x] **[Nick]** Real-model test. — All six questions call the right tool first try, both locally and through the deployed app:
+  - "who's next?" → `ask_data(wildfire_queue)`
+  - "dispatch it" → `do_dispatch(dispatch_fire)`
+  - "find pothole tickets in Beltline and mark the worst one urgent" → `ask_data(tickets, Beltline, pothole)`
+  - "which fires lost a crew if we cut 20%?" → `plan_crews(crews 12, cut 20)`
+  - "is there smoke in Calgary?" → `ask_data(air_quality, Calgary)`
+  - "what should crew R1 do today?" → `ask_data(crews_311)`
+- [x] **[Nick]** If the model calls tools badly, try a stronger endpoint before changing the prompt. — Only "what should crew R1 do today?" was wrong: it opened the 311 desk instead of reading the crew's stops. `databricks-gpt-oss-120b` got it wrong too (it called `plan_311`), so it was tool choice, not model strength. Fixed with one rule in the `llm.ts` system prompt ("read before you open"); the explicit "open the 311 desk" and "plan 311 with 6 roads crews" still route to `open_dispatch` and `plan_311`.
+- [x] **[Nick]** Deploy the data server, give the app's service principal "Can query" on the endpoint, check `<app url>/api/ai`. — Deployed; `/api/ai` is available and a chat returns through it. **The "Can query" grant is not needed**: a plain service principal can call a Foundation Model endpoint already (tested), and these system endpoints have no id for Terraform's `serving_endpoint_id` anyway.
+- [ ] **[Nick]** Redeploy the Cloudflare Pages site so its proxy forwards `POST /api/ai/chat`. — The function already handles POST (method, body, `X-Forwarded-For` for per-device limits). Only the deploy is left, and it needs Cloudflare credentials: `wrangler login` then `npm run deploy:pages`, or let the connected git build run. The site also needs `VITE_ELEVENLABS_AGENT_ID` as a Pages build variable, since `app/.env` is gitignored.
+- [x] **[Nick]** Check Free Edition's rate limits are enough for the demo. — They are not, unaided: five chats in a row hit `429 REQUEST_LIMIT_EXCEEDED: Exceeded workspace QPS rate limit`. One question costs up to `MAX_STEPS` = 6 model calls, so this is reachable in normal use and used to fail the whole answer. `server/ai.ts` now backs off and retries a 429 (3 tries, 1.2 s growing); eight concurrent chats then all succeeded. A sustained 429 now returns 503 "the model is busy" rather than a raw 502.
 
 ## Merge and deploy
 
