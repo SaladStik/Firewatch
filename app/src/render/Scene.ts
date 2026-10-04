@@ -254,8 +254,17 @@ export class Scene {
     this.applyFocusVisuals();
   }
 
+  /** Don't draw regions out of focus at all: hexes, borders or labels (the pitch page). */
+  setHideUnfocused(on: boolean) {
+    this.world.setHideUnfocused(on);
+    this.applyFocusVisuals();
+  }
+
   private applyFocusVisuals() {
-    for (const [i, b] of this.borders) b.material = this.focus.has(i) ? this.borderMat : this.borderMatDim;
+    for (const [i, b] of this.borders) {
+      b.material = this.focus.has(i) ? this.borderMat : this.borderMatDim;
+      b.visible = this.focus.has(i) || !this.world.hideUnfocused;
+    }
     for (const l of this.labels) l.el.classList.toggle("map-label-dim", !this.focus.has(l.region));
     // Home = bounding box of the focused regions' rasters.
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -662,6 +671,18 @@ export class Scene {
       if (duration <= 0) m.opacity = opacity;
       else gsap.to(m, { opacity, duration, ease: "power2.inOut" });
     }
+  }
+
+  /** Build the map ahead for a camera pose the story will fly to next (HexWorld.prewarm). */
+  prewarm(x: number, z: number, dist: number, heading = 0, tilt = 45, o: { within?: { x: number; z: number; r: number } | null; first?: boolean } = {}) {
+    const cam = this.camera.clone();
+    const h = (heading * Math.PI) / 180, p = (tilt * Math.PI) / 180;
+    cam.position.set(x + dist * Math.sin(p) * Math.sin(h), dist * Math.cos(p), z + dist * Math.sin(p) * Math.cos(h));
+    cam.near = Math.max(0.05, dist * 0.02);
+    cam.far = dist * 12 + 3000;
+    cam.lookAt(x, 0, z);
+    cam.updateProjectionMatrix();
+    this.world.prewarm(x, z, dist, cam, o);
   }
 
   /** Slow orbit around the view target (degrees per second; 0 stops). Any cinematic move stops it. */

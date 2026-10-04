@@ -18,6 +18,7 @@ import { BLD_STRIDE } from "../world/overlays";
 import { MIN_THICKNESS, reliefKm } from "./heights";
 import { buildingLines, hexTop, hexWall, propLines } from "./geometry";
 import { resolveStyle, type NodeStyler } from "./nodeStyle";
+import { sharedUniforms } from "./materials";
 
 /** Building colour at the closest zoom level (linear RGB; × BUILDING_BRIGHTNESS in the shader feed). */
 const WHITE_BUILDING = 1.0;
@@ -30,7 +31,12 @@ export interface StyleSource {
   styler: NodeStyler | null;
   /** Workspace indices of regions in focus; the rest render slightly greyed. */
   focus: Set<number>;
+  /** The rest aren't drawn at all (the pitch page reveals provinces one stage at a time). */
+  hideUnfocused?: boolean;
 }
+
+/** A hex "born" this far in the future isn't there yet (its build-in animation hasn't started). */
+const UNBORN = 1e9;
 
 export interface ChunkMaterials {
   hex: ShaderMaterial;
@@ -64,6 +70,8 @@ export class ChunkMesh {
   private wallCap = 0;
   /** 1 = honour the finer ring's hole; 0 = draw everywhere (standing in for loading finer chunks). */
   holeOn = 1;
+  /** Per hex: hidden because its region is out of focus (StyleSource.hideUnfocused). */
+  private hidden: Uint8Array;
   /** Its colours are out of date (restyled when next shown, see HexWorld's restyle queue). */
   styleDirty = false;
   disposed = false;
@@ -131,6 +139,7 @@ export class ChunkMesh {
 
     if (GRID.levels[data.level].decorations) this.buildProps(mats.prop, g.boundingSphere, born);
     if (data.buildings.length) this.buildBuildings(mats.building, g.boundingSphere, born);
+    this.hidden = new Uint8Array(data.count);
     this.restyle();
     // Chunks never move: skip three's per-frame matrix walk over thousands of meshes.
     this.group.traverse((o) => {
@@ -255,6 +264,7 @@ export class ChunkMesh {
   /** Recompute colours / pulse / lift from the registry, overrides and styler. */
   restyle() {
     const d = this.data;
+    this.syncHidden();
     const line = this.aLine.array as Float32Array, style = this.aStyle.array as Float32Array;
     const edges = this.aEdges.array as Float32Array;
     const propCol = new Float32Array(d.count * 3), bldCol = new Float32Array(d.count * 3), lift = new Float32Array(d.count);
@@ -300,6 +310,32 @@ export class ChunkMesh {
         m[j * 3 + 2] = lift[hi];
       }
       p.color.needsUpdate = true;
+      p.meta.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Hexes whose region left focus (hide mode) are un-born: gone. Ones that came back are born
+   * now, so they rise in with the build-in animation (a province appearing out of the dark).
+   */
+  private syncHidden() {
+    const d = this.data, m = this.aMeta.array as Float32Array, now = sharedUniforms.uTime.value;
+    let changed = false;
+    for (let i = 0; i < d.count; i++) {
+      const hide = this.src.hideUnfocused && !this.src.focus.has(d.region[i]) ? 1 : 0;
+      if (hide === this.hidden[i]) continue;
+      this.hidden[i] = hide;
+      m[i * 2] = hide ? UNBORN : now;
+      changed = true;
+    }
+    if (!changed) return;
+    this.aMeta.needsUpdate = true;
+    for (const p of this.props) {
+      const pm = p.meta.array as Float32Array;
+      for (let j = 0; j < p.hexIndex.length; j++) {
+        const hi = p.hexIndex[j];
+        pm[j * 3] = this.hidden[hi] ? UNBORN : Math.min(pm[j * 3] === UNBORN ? now : pm[j * 3], now);
+      }
       p.meta.needsUpdate = true;
     }
   }
@@ -388,12 +424,12 @@ export class ChunkMesh {
   /** Replay the build-in animation (e.g. when a cached chunk re-enters view). */
   rebirth(time: number) {
     const m = this.aMeta.array as Float32Array;
-    for (let i = 0; i < this.data.count; i++) m[i * 2] = time;
+    for (let i = 0; i < this.data.count; i++) m[i * 2] = this.hidden[i] ? UNBORN : time;
     this.aMeta.needsUpdate = true;
     this.syncWalls();
     for (const p of this.props) {
       const pm = p.meta.array as Float32Array;
-      for (let j = 0; j < p.hexIndex.length; j++) pm[j * 3] = time;
+      for (let j = 0; j < p.hexIndex.length; j++) pm[j * 3] = this.hidden[p.hexIndex[j]] ? UNBORN : time;
       p.meta.needsUpdate = true;
     }
   }

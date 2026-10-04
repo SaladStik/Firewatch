@@ -106,6 +106,7 @@ export class HexWorld {
   update(targetX: number, targetZ: number, dist: number, camera?: Camera) {
     this.frame++;
     if (this.hold) return;
+    this.buildArrivals();
     this.switchLevel(dist);
     const L = this.active;
 
@@ -219,10 +220,70 @@ export class HexWorld {
       if (!st.fadingOut) for (const [key, cm] of st.chunks) if (cm.group.visible && !keys?.has(key)) cm.group.visible = false;
     });
     this.visibleKeys = want;
+    // Spare request slots build ahead for where the camera is going next (prewarm).
+    while (this.prewarmQueue.length && requested < GRID.maxChunkRequestsPerFrame && this.pending.size < this.maxPending / 2) {
+      const c = this.prewarmQueue.shift()!;
+      const st = this.levels[c.level];
+      if (st.chunks.has(c.key) || this.pending.has(c.key) || this.empty.has(c.key)) continue;
+      requested++;
+      this.request(c.level, c.cx, c.cz, c.key);
+    }
     this.drainRestyles();
     if (this.frame % 30 === 0) this.evict();
     if (this.frame % 10 === 0) this.emitStats();
   }
+
+  // ------------------------------------------------------------ prewarm
+  private prewarmQueue: { level: number; cx: number; cz: number; key: string }[] = [];
+
+  /**
+   * Build ahead the chunks a camera at this pose would show, without showing them (low priority:
+   * only spare request slots, after what's on screen now). A flight then lands on a built map.
+   */
+  prewarm(targetX: number, targetZ: number, dist: number, camera: Camera, o: { within?: { x: number; z: number; r: number } | null; first?: boolean } = {}) {
+    const L = levelForDistance(dist);
+    camera.updateMatrixWorld();
+    const frustum = new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    const dx = targetX - camera.position.x, dz = targetZ - camera.position.z, h = Math.hypot(dx, dz);
+    const tilt = h / Math.max(1e-6, Math.hypot(h, camera.position.y));
+    const fx = h > 1e-6 ? (dx / h) * tilt : 0, fz = h > 1e-6 ? (dz / h) * tilt : 0;
+    let reach = Math.min(dist * GRID.viewRadiusFactor, GRID.maxRadiusHexes * GRID.levels[L].size * SQRT3);
+    const rings = [{ level: L, reach }];
+    for (let j = L - 1; j >= Math.max(0, L - GRID.farRings); j--) {
+      const r = Math.min(reach * GRID.farRingReach, GRID.maxRadiusHexes * GRID.levels[j].size * SQRT3);
+      if (r <= reach * 1.05) break;
+      rings.push({ level: j, reach: r });
+      reach = r;
+    }
+    const box = new Box3(), list: { level: number; cx: number; cz: number; key: string; d: number }[] = [];
+    for (const { level, reach: r } of rings) {
+      const size = GRID.levels[level].size;
+      const back = Math.min(r, dist * 0.6), radius = (r + back) / 2, off = (r - back) / 2;
+      const focusX = targetX + fx * off, focusZ = targetZ + fz * off;
+      for (const c of chunksInRadius(focusX, focusZ, radius, GRID.chunkCells, size)) {
+        const bx = chunkWorldBounds(c.cx, c.cz, GRID.chunkCells, size);
+        box.min.set(bx.minX, -1, bx.minZ);
+        box.max.set(bx.maxX, 300, bx.maxZ);
+        if (!frustum.intersectsBox(box)) continue;
+        // Only what will exist there (the pitch's reveal circle): skip chunks wholly outside it.
+        const w = o.within;
+        if (w && Math.hypot(Math.max(bx.minX - w.x, 0, w.x - bx.maxX), Math.max(bx.minZ - w.z, 0, w.z - bx.maxZ)) > w.r) continue;
+        const key = chunkKey(level, c.cx, c.cz);
+        if (this.levels[level].chunks.has(key) || this.empty.has(key)) continue;
+        // Finest level first (it's what you see up close), nearest first within a level.
+        list.push({ level, cx: c.cx, cz: c.cz, key, d: (L - level) * 1e6 + Math.hypot((bx.minX + bx.maxX) / 2 - targetX, (bx.minZ + bx.maxZ) / 2 - targetZ) });
+      }
+    }
+    list.sort((a, b) => a.d - b.d);
+    const add = list.map(({ level, cx, cz, key }) => ({ level, cx, cz, key }));
+    const known = new Set(add.map((c) => c.key));
+    const rest = this.prewarmQueue.filter((c) => !known.has(c.key));
+    // `first`: where the camera goes next jumps the queue; otherwise it waits its turn.
+    this.prewarmQueue = o.first ? [...add, ...rest] : [...rest, ...add];
+  }
+
+  /** Chunks still on their way (requested, arrived but not built, or queued to prewarm). */
+  get busy() { return this.pending.size + this.arrivals.length + this.prewarmQueue.length; }
 
   /** Chunk builds in flight at once (scales with the worker pool). */
   maxPending = 16;
@@ -230,6 +291,35 @@ export class HexWorld {
   private request(level: number, cx: number, cz: number, key: string) {
     this.pending.add(key);
     this.client.chunk(level, cx, cz).then((data) => {
+      // Built on the main thread a few at a time (update → buildArrivals), not all in one frame.
+      this.arrivals.push({ level, key, data });
+    }).catch((e) => {
+      this.pending.delete(key);
+      console.error(`[world] chunk ${key} request failed`, e);
+      this.empty.add(key);
+    });
+  }
+
+  /** Chunks back from the worker, waiting for their meshes. */
+  private arrivals: { level: number; key: string; data: ChunkData | null }[] = [];
+  private static BUILD_BUDGET_MS = 6;
+
+  /**
+   * Turn arrived chunk data into meshes within a few ms a frame (at least one), nearest-wanted
+   * first: a burst of arrivals during a flight used to build all at once and hitch the frame.
+   */
+  private buildArrivals() {
+    if (!this.arrivals.length) return;
+    const t0 = performance.now();
+    while (this.arrivals.length) {
+      const { level, key, data } = this.arrivals.shift()!;
+      this.place(level, key, data);
+      if (performance.now() - t0 > HexWorld.BUILD_BUDGET_MS) break;
+    }
+  }
+
+  private place(level: number, key: string, data: ChunkData | null) {
+    {
       this.pending.delete(key);
       const st = this.levels[level];
       const old = st.chunks.get(key);
@@ -254,11 +344,7 @@ export class HexWorld {
       st.lastUsed.set(key, this.frame);
       st.group.add(cm.group);
       this.onChunkLoaded?.(data);
-    }).catch((e) => {
-      this.pending.delete(key);
-      console.error(`[world] chunk ${key} request failed`, e);
-      this.empty.add(key);
-    });
+    }
   }
 
   /** Active (finest) level for this camera distance, with hysteresis. */
@@ -370,6 +456,15 @@ export class HexWorld {
     this.style.focus = new Set(indices);
     this.restyleAll();
   }
+
+  /** Don't draw regions out of focus at all (the pitch page). */
+  setHideUnfocused(on: boolean) {
+    if (!!this.style.hideUnfocused === on) return;
+    this.style.hideUnfocused = on;
+    this.restyleAll();
+  }
+
+  get hideUnfocused() { return !!this.style.hideUnfocused; }
 
   /**
    * Rebuild every chunk (e.g. after another region's data loaded). Visible chunks stay on

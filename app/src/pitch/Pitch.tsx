@@ -74,6 +74,7 @@ export function Pitch() {
       <Captions />
       <TicketCard />
       <ReplayBadge />
+      <AskBar />
       <Progress step={step} />
       {/* Clicks advance the story unless the map is in free mode (M). */}
       {engine && ready && !free && (
@@ -144,6 +145,24 @@ function CaptionView({ c, ticker }: { c: Caption; ticker: string }) {
       <h2 className="mt-2 text-[clamp(32px,3.6vw,60px)] font-bold leading-[1.05] text-white">{c.title}</h2>
       {c.body && <p className="mt-3 text-[clamp(16px,1.35vw,22px)] leading-snug text-[#cfe3d8]">{c.body}</p>}
       {ticker && <div key={ticker} className="pitch-ticker mt-4 inline-block rounded-full border border-[#b06cff]/50 bg-[#b06cff]/15 px-3 py-1 text-[14px] text-[#e3ccff]">{ticker}</div>}
+    </div>
+  );
+}
+
+/** The question to Firefly, typing itself out like a chat message. */
+function AskBar() {
+  const ask = useStore(pitch, (s) => s.ask);
+  return (
+    <div className="pitch-fade pointer-events-none absolute bottom-24 right-[18vw] z-20 max-w-[min(34rem,40vw)]" style={{ opacity: ask ? 1 : 0 }}>
+      {ask && (
+        <div className="rounded-2xl rounded-br-sm border border-white/15 bg-[rgb(9_15_13/0.85)] px-5 py-3.5 shadow-[0_18px_50px_-20px_rgb(0_0_0/0.9)] backdrop-blur-md">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8fb3a2]">You</div>
+          <div className="mt-1 text-[clamp(18px,1.5vw,24px)] text-white">
+            {ask.q.slice(0, ask.shown)}
+            {ask.shown < ask.q.length && <span className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[3px] animate-pulse bg-white/80" />}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

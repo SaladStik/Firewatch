@@ -142,6 +142,7 @@ export class Engine {
     app.set({ focus: ids });
     this.scene.setFocus(focusIndices());
     this.pushTraffic(); // corridors are listed per focused region
+    if (this.scene.world.hideUnfocused) { this.pushWind(); this.pushRain(); } // fields follow what's drawn
     if (added) void this.refreshData(); // newly focused region → fetch its weather
   }
 
@@ -344,7 +345,10 @@ export class Engine {
     // One beacon per ~BEACON_CLUSTER_KM cell: beacons are additive, so a dense cluster of
     // hotspots stacked into one blinding glow.
     const cells = new Map<string, { x: number; z: number; simulated: boolean }>();
+    const shown = new Set(focusIndices());
     for (const h of hotspots) {
+      // Regions that aren't drawn (pitch page) show no beacons either.
+      if (this.scene.world.hideUnfocused && h.region != null && !shown.has(h.region)) continue;
       const w = project(h.lat, h.lng);
       const key = `${Math.floor(w.x / BEACON_CLUSTER_KM)},${Math.floor(w.z / BEACON_CLUSTER_KM)}`;
       if (!cells.has(key)) cells.set(key, { x: w.x, z: w.z, simulated: h.agency === "SIMULATION" });
@@ -444,13 +448,21 @@ export class Engine {
   private pushRain() {
     const s = app.get();
     // Rain drifts and leans with the same wind as the streamlines (even when the wind layer is hidden).
-    this.scene.setRain(s.layers.rain ? new RainField(s.weather, s.forecastDay, this.rainBlobs) : null, new WindField(s.weather, s.forecastDay));
+    const wx = this.drawnWeather();
+    this.scene.setRain(s.layers.rain ? new RainField(wx, s.forecastDay, this.rainBlobs) : null, new WindField(wx, s.forecastDay));
+  }
+
+  /** Weather grids under the drawn map: all of them, or only focused regions' when the rest is hidden. */
+  private drawnWeather() {
+    if (!this.scene.world.hideUnfocused) return app.get().weather;
+    const focus = app.get().focus;
+    return [...this.weatherCache].filter(([id]) => focus.includes(id)).map(([, c]) => c.grid);
   }
 
   /** Wind streamlines for the selected day (today = live wind). */
   private pushWind() {
     const s = app.get();
-    this.scene.setWind(s.layers.wind ? new WindField(s.weather, s.forecastDay) : null);
+    this.scene.setWind(s.layers.wind ? new WindField(this.drawnWeather(), s.forecastDay) : null);
   }
 
   /** Ground elevation (m) at a world point, from the terrain rasters (no hex needs to be loaded). */

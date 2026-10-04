@@ -47,4 +47,6 @@ export const pitch = createStore({
   story311: null as Story311 | null,
   /** Labelled as a replay whenever the demo scenario's fires are on the map. */
   replay: false,
+  /** The question being asked of Firefly, typed out to `shown` characters. */
+  ask: null as { q: string; shown: number } | null,
 });
