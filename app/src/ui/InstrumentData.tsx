@@ -15,7 +15,7 @@ import { downwind, SPREAD_MAX_KM, spreadInfluence } from "../world/spread";
 import { useStore } from "../state/store";
 import { AppBar, BarButton } from "./Hud";
 import { KV } from "./primitives";
-import { dayLabel } from "./weatherFormat";
+import { compass, dayLabel } from "./weatherFormat";
 
 type Station = {
   id: string;
@@ -142,12 +142,6 @@ function readingAt(station: Station, weather: WeatherGrid[], day: number, fires:
   };
 }
 
-function dashboardUrl(base: string, theme: "dark" | "light") {
-  const url = new URL(base);
-  url.searchParams.set("theme", theme);
-  return url.toString();
-}
-
 function coords(latitude: number | null, longitude: number | null) {
   if (latitude == null || longitude == null) return null;
   const ns = latitude >= 0 ? "N" : "S";
@@ -204,6 +198,50 @@ function metric(value: number | null, digits: number, unit: string) {
   return `${value.toFixed(digits)}${unit}`;
 }
 
+function fixed(value: number, digits: number) {
+  return Number.isFinite(value) ? value.toFixed(digits) : "—";
+}
+
+function StationWeather({ reading, day, dates }: { reading: Reading; day: number; dates?: string[] }) {
+  const wx = reading.day;
+  const tone = riskColor(reading.category);
+  if (!wx) {
+    return <p className="px-4 py-6 text-[11px] leading-relaxed text-ink-mute">No weather for this station yet.</p>;
+  }
+  return (
+    <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div className="label-xs mb-2">Weather · Open-Meteo · {dayLabel(day, dates)}</div>
+      <div className="grid max-w-xl grid-cols-2 gap-x-6">
+        <KV k="FIRE DANGER" v={`${fixed(wx.fwi, 1)} · ${reading.category ?? wx.danger}`} accent={tone ?? undefined} />
+        <KV k="FOSBERG" v={fixed(wx.ffwi, 1)} />
+        <KV k="MAX TEMP" v={`${fixed(wx.temp, 0)}°C`} />
+        <KV k="MIN HUMIDITY" v={`${fixed(wx.rh, 0)}%`} />
+        <KV k="WIND" v={`${fixed(wx.wind, 0)} km/h${Number.isFinite(wx.windFrom) ? ` from ${compass(wx.windFrom)}` : ""}`} />
+        <KV k="RAIN" v={`${fixed(wx.rainMm, 1)} mm`} />
+        <KV k="FFMC / DMC / DC" v={`${fixed(wx.ffmc, 1)} / ${fixed(wx.dmc, 1)} / ${fixed(wx.dc, 0)}`} />
+        <KV k="ISI / BUI" v={`${fixed(wx.isi, 1)} / ${fixed(wx.bui, 1)}`} />
+        <KV k="NEAR FIRE" v={reading.near ?? "No fire in reach"} accent={reading.near ? tone ?? undefined : undefined} />
+      </div>
+      {reading.cell && (
+        <div className="mt-5 max-w-3xl">
+          <div className="label-xs mb-2">Forecast</div>
+          <div className="grid grid-cols-2 gap-px border border-line sm:grid-cols-4">
+            {reading.cell.days.map((item, index) => (
+              <div key={dates?.[index] ?? index} className={`px-3 py-2 ${index === day ? "bg-phos/10" : ""}`}>
+                <div className="text-[10px] tracking-[0.12em] text-ink-mute">{dayLabel(index, dates)}</div>
+                <div className="mt-1 text-[12px] text-ink">{fixed(item.temp, 0)}°C</div>
+                <div className="text-[10px] text-ink-dim" style={riskColor(item.danger) ? { color: riskColor(item.danger)! } : undefined}>
+                  FWI {fixed(item.fwi, 1)} · {item.danger}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function InstrumentData({ onBack, engine }: { onBack: () => void; engine: Engine | null }) {
   const weather = useStore(app, (s) => s.weather);
   const day = useStore(app, (s) => s.forecastDay);
@@ -215,7 +253,6 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
   const growth = useStore(app, (s) => s.fireGrowth);
   const sim = useStore(app, (s) => s.simulation);
   const regions = useStore(app, (s) => s.regions);
-  const theme = useStore(app, (s) => s.theme);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [province, setProvince] = useState<(typeof PROVINCES)[number]["id"] | null>(null);
@@ -442,13 +479,7 @@ export function InstrumentData({ onBack, engine }: { onBack: () => void; engine:
                   <KV k="NEAR" v={selected.reading.near ?? "No fire in reach"} accent={selected.reading.near ? riskColor(selected.reading.category) ?? undefined : undefined} />
                 </div>
               </div>
-              {selected.dashboard ? (
-                <iframe title={selected.name} src={dashboardUrl(selected.dashboard, theme)} className="min-h-0 w-full flex-1 border-0 bg-white" />
-              ) : (
-                <div className="px-4 py-6 text-[11px] leading-relaxed text-ink-mute">
-                  This station has no dashboard. The readings above are from the map weather.
-                </div>
-              )}
+              <StationWeather reading={selected.reading} day={day} dates={weather[0]?.dates} />
             </>
         </section>
         )}
