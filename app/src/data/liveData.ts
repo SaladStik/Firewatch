@@ -65,7 +65,20 @@ export const loadStations = (): Promise<FwiStation[]> => (usingDataServer ? api(
  * Firefighting aircraft in the air now (adsb.lol). Only through the data server: adsb.lol doesn't
  * allow calls from web pages. Null without a server.
  */
-export const loadAircraft = (): Promise<{ aircraft: LiveAircraft[]; fetchedAt: string; seenAircraft: number } | null> => (usingDataServer ? api("/aircraft") : Promise.resolve(null));
+/**
+ * Firefighting aircraft now. Always asked for from `/api/aircraft`, even with no data server:
+ * no ADS-B service allows calls from a web page, so this one source always comes from
+ * something server-side, and on a serverless deployment that is the Pages Function in
+ * functions/api/aircraft.ts. Null when nothing answers, which hides the layer.
+ */
+export async function loadAircraft(): Promise<{ aircraft: LiveAircraft[]; fetchedAt: string; seenAircraft: number } | null> {
+  try {
+    const res = await fetch(usingDataServer ? `${API}/aircraft` : "/api/aircraft");
+    return res.ok ? ((await res.json()) as { aircraft: LiveAircraft[]; fetchedAt: string; seenAircraft: number }) : null;
+  } catch {
+    return null;
+  }
+}
 /** Calgary's live 311 queue (open crew field work; Open Calgary). */
 export const loadCalgary311 = (): Promise<{ rows: Row311[]; fetchedAt: string }> => (usingDataServer ? api("/calgary311/open") : fetchOpen311());
 /** One region's weather grid with the FWI System (the server seeds it itself). */
