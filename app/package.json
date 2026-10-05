@@ -15,6 +15,7 @@
     "bake:osm:all": "for r in alberta british-columbia saskatchewan manitoba ontario quebec new-brunswick nova-scotia prince-edward-island newfoundland-and-labrador yukon northwest-territories nunavut; do tsx scripts/bake-osm.ts $r || exit 1; done",
     "bake:pbf": "tsx scripts/export-regions.ts && python scripts/bake_osm_pbf.py",
     "bake:traffic": "python scripts/bake_traffic.py",
+    "bake:weather": "tsx scripts/bake-weather.ts",
     "validate:fwi": "tsx scripts/validate-fwi.ts",
     "server": "tsx server/index.ts",
     "deploy:databricks": "bash scripts/deploy-databricks.sh",

@@ -82,8 +82,26 @@ export async function loadAircraft(): Promise<{ aircraft: LiveAircraft[]; fetche
 /** Calgary's live 311 queue (open crew field work; Open Calgary). */
 export const loadCalgary311 = (): Promise<{ rows: Row311[]; fetchedAt: string }> => (usingDataServer ? api("/calgary311/open") : fetchOpen311());
 /** One region's weather grid with the FWI System (the server seeds it itself). */
-export const loadWeather = (region: Region, seed?: FwiSeed): Promise<WeatherGrid> =>
-  usingDataServer ? api(`/weather/${encodeURIComponent(region.id)}`) : fetchWeatherGrid(region.bbox, undefined, seed);
+/**
+ * One region's weather grid with the FWI System (the server seeds it itself).
+ *
+ * Without a data server the browser asks Open-Meteo directly, which is fine for a province or
+ * two but not for all thirteen: every coordinate in a request is billed, so the whole country
+ * is thousands of calls in seconds and the free tier starts refusing. So a refusal falls back
+ * to the baked snapshot (scripts/bake-weather.ts) rather than leaving a province with no
+ * weather at all. Live is always tried first, so a stale snapshot never overrides a working
+ * source.
+ */
+export async function loadWeather(region: Region, seed?: FwiSeed): Promise<WeatherGrid> {
+  if (usingDataServer) return api(`/weather/${encodeURIComponent(region.id)}`);
+  try {
+    return await fetchWeatherGrid(region.bbox, undefined, seed);
+  } catch (live) {
+    const res = await fetch(`${import.meta.env.BASE_URL}data/weather/${region.id}.json`).catch(() => null);
+    if (!res?.ok) throw live; // no snapshot either: report the real problem, not a 404
+    return (await res.json()) as WeatherGrid;
+  }
+}
 /** A fire's daily growth from the hotspot archive. */
 export const loadFireHistory = (p: Perimeter): Promise<FireHistory | null> =>
   usingDataServer ? api(`/fire-history/${encodeURIComponent(p.id)}`) : fetchFireHistory(p);
